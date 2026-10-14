@@ -245,6 +245,10 @@ class AutoBattleRuntime:
                 if not self._wait_turn_settled():
                     mfaalog.info(f"[AutoBattle] Stuck after attack (no scene change within {_ANIMATION_TIMEOUT_S}s). turns={turns}")
                     return BattleResult.fail("stuck_after_attack", turns)
+                if self._post_attack_returned_to_map:
+                    # 剧情后直接返回地图的关卡没有普通结算；交回调用方复核，
+                    # 不将剧情按钮本身视为胜利，也不进入下一回合。
+                    return BattleResult(True, "story_returned_to_map", turns + 1)
                 mfaalog.info(f"[AutoBattle] Turn {turns+1} settled, advancing to turn {turns+2}")
                 turns += 1
                 continue
@@ -563,24 +567,82 @@ class AutoBattleRuntime:
         return getattr(last, "name", None) or getattr(detail, "entry", None)
 
     def _wait_turn_settled(self) -> bool:
+        self._post_attack_returned_to_map = False
         mfaalog.info(f"[AutoBattle] _wait_turn_settled() timeout={_ANIMATION_TIMEOUT_S}s")
-        result = self._wait_until(_TERMINAL_OR_MAIN, _ANIMATION_TIMEOUT_S, tap_close=True)
+        result = self._wait_until(_TERMINAL_OR_MAIN, _ANIMATION_TIMEOUT_S,
+                                  tap_close=True, handle_story=True)
         mfaalog.info(f"[AutoBattle] _wait_turn_settled() result={result}")
         return result
 
-    def _wait_until(self, scenes, timeout_s: float, tap_close: bool = False) -> bool:
+    def _handle_post_attack_story(self, image) -> bool | None:
+        """None=不是剧情，True=已处理/按选项等待，False=处理失败。"""
+        name = "跳过剧情-点击跳过"
+        enabled = (self.ctx.get_node_data(name) or {}).get("enabled", True)
+        # 即使用户关闭自动跳过，也识别剧情以阻止右上角盲点；仅临时启用识别。
+        result = self.ctx.run_recognition(name, image,
+                                         pipeline_override={name: {"enabled": True}})
+        if not result or not result.hit:
+            return None
+        if not enabled:
+            return True
+        mfaalog.info("[AutoBattle] 出卡后检测到剧情，处理跳过后继续等待战斗或结算")
+        detail = self.ctx.run_task("战斗-出卡后剧情处理", pipeline_override={
+            name: {"next": ["跳过剧情-确认跳过", "跳过剧情-确认跳过-已消失"]},
+            "跳过剧情-确认跳过": {"next": ["战斗-剧情切换等待"]},
+            "跳过剧情-确认跳过-已消失": {
+                "next": ["战斗-剧情切换等待"], "on_error": []
+            },
+        })
+        ok = bool(detail and detail.status.succeeded and not self.ctx.tasker.stopping)
+        if not ok:
+            mfaalog.error("[AutoBattle] 出卡后剧情处理失败，保留现场停止等待")
+        return ok
+
+    def _wait_until(self, scenes, timeout_s: float, tap_close: bool = False,
+                    handle_story: bool = False) -> bool:
         mfaalog.info(f"[AutoBattle] _wait_until() scenes={[s.name for s in scenes]} timeout={timeout_s}s")
         deadline = time.monotonic() + timeout_s
+        story_seen = False
+        map_since = None
         while time.monotonic() < deadline:
             if self.ctx.tasker.stopping:
                 mfaalog.info("[AutoBattle] _wait_until() detected stop signal, aborting wait")
                 return False
             img = self.controller.post_screencap().wait().get()
+            if img is None:
+                mfaalog.error("[AutoBattle] 等待界面时截图失败")
+                return False
             scene = perception.detect_scene(self.ctx, img)
             if scene in scenes:
                 mfaalog.info(f"[AutoBattle] _wait_until() matched scene={scene.name}")
                 return True
-            if tap_close:
+            if handle_story and scene is Scene.UNKNOWN:
+                handled = self._handle_post_attack_story(img)
+                if handled is False:
+                    return False
+                if handled is True:
+                    story_seen = True
+                    map_since = None
+                    time.sleep(0.5)
+                    continue
+            if handle_story and story_seen:
+                # 剧情后有些关卡直接返回地图。两种独立底栏特征均命中且
+                # 稳定 3 秒才交回调度；短暂露出地图不能算完成。
+                returned = all((r := self.ctx.run_recognition(name, img)) and r.hit
+                               for name in ("可能已经结束战斗_不回主界面", "战斗结束-主界面"))
+                if returned:
+                    if map_since is None:
+                        map_since = time.monotonic()
+                    if time.monotonic() - map_since >= 3:
+                        self._post_attack_returned_to_map = True
+                        mfaalog.info("[AutoBattle] 剧情后已稳定返回地图，交回战后调度复核")
+                        return True
+                else:
+                    map_since = None
+            # 关闭跳过时连同盲点也禁用，避免在按钮尚未识别到的切换帧误触。
+            skip_enabled = (not handle_story or
+                            (self.ctx.get_node_data("跳过剧情-点击跳过") or {}).get("enabled", True))
+            if tap_close and skip_enabled and not story_seen:
                 self.executor.tap_top_right_close()
             time.sleep(0.5)
         mfaalog.info(f"[AutoBattle] _wait_until() timed out")
