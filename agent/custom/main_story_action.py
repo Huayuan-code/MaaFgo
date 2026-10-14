@@ -127,7 +127,7 @@ class StoryRunner:
         if any(self.reco(n, image) for n in ("战斗失败_不回主界面", "失败2_不回主界面")):
             raise StoryStopped("战斗失败，需要人工处理")
 
-    def interrupt(self, image, *, entering=False):
+    def interrupt(self, image, *, entering=False, forming=False):
         """已识别事件才操作；剧情跳过分帧确认，避免切换中重复点击。"""
         if entering and self.reco("全局-战前吃体力", image):
             entry = self.ctx.get_node_data("全局-战前吃体力") or {}
@@ -152,6 +152,8 @@ class StoryRunner:
             self.skip_confirm_until = self.clock() + 4
             return True
         names = ["进本-关闭告知弹窗"]
+        if entering or forming:
+            names.insert(0, "进本-自动编队确认")
         if entering:
             names = ["主线-纯剧情任务开始", "进本-编队提示-点击开始",
                      "进本-点击任务开始"] + names
@@ -159,6 +161,9 @@ class StoryRunner:
             result = self.reco(name, image)
             if result:
                 self.action(name, result)
+                if name == "进本-自动编队确认":
+                    # run_action 不执行 next；与通用进本一致，保存游戏自动编队结果。
+                    self.task("自动编队-编队决定")
                 self.pause()
                 return True
         return False
@@ -295,7 +300,7 @@ class StoryRunner:
             image = self.frame()
             if self.reco("主线-编制限制", image):
                 raise StoryStopped("已进入编队，但关卡要求指定首发队员；请按编制限制弹窗手动调整")
-            if self.interrupt(image):
+            if self.interrupt(image, forming=True):
                 formation_since = None
                 self.pause()
                 continue
