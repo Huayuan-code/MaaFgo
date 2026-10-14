@@ -161,6 +161,9 @@ class StoryRunner:
             result = self.reco(name, image)
             if result:
                 self.action(name, result)
+                if name == "进本-自动编队确认":
+                    # run_action 不执行 next；与通用进本一致，保存游戏自动编队结果。
+                    self.task("自动编队-编队决定")
                 self.pause()
                 return True
         return False
