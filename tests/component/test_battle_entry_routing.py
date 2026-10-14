@@ -112,6 +112,7 @@ class EntryRoutingTests(unittest.TestCase):
     def entry_graph(self, support="进本-选择助战", *, limit=3):
         names = ("进本流程", "进本流程-超时重试", "进本-等待战斗主界面或剧情",
                  "进本-关闭告知弹窗", "进本-选择助战", "助战action", "Chaldea助战action",
+                 "进本-自动编队确认",
                  "进本-队伍确认", MAIN, GUARD, BLIND,
                  "跳过剧情-确认跳过", "跳过剧情-无确认弹窗", "跳过剧情-点击跳过",
                  "跳过剧情-确认跳过-已消失", "跳过-可能在主界面", "完成跳过剧情")
