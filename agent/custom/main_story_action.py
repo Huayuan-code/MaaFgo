@@ -153,7 +153,7 @@ class StoryRunner:
             return True
         names = ["进本-关闭告知弹窗"]
         if entering or forming:
-            names.insert(0, "进本-自动编队确认")
+            names[:0] = ["进本-自动编队确认", "进本-编成条件提示"]
         if entering:
             names = ["主线-纯剧情任务开始", "进本-编队提示-点击开始",
                      "进本-点击任务开始"] + names

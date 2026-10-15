@@ -16,7 +16,7 @@
         "action": {
             "type": "StopApp",
             "param": {
-                "package": "com.bilibili.fatego"
+                "package": "com.aniplex.fategrandorder"
             }
         }
     }

@@ -188,7 +188,7 @@
         "action": {
             "type": "StopApp",
             "param": {
-                "package": "com.bilibili.fatego/.EmptyClass"
+                "package": "com.bilibili.fatego"
             }
         },
         "next": [
