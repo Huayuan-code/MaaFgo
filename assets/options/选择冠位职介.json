@@ -7,14 +7,9 @@
           "name": "剑",
           "pipeline_override": {
             "冠位戴冠战-职介": {
-              "recognition": {
-                "type": "TemplateMatch",
-                "param": {
-                  "template": [
-                    "grand/grand_saber.png"
-                  ]
-                }
-              }
+              "template": [
+                "grand/grand_saber.png"
+              ]
             },
             "执行羁绊补齐自动编队": {
               "attach": {
@@ -27,14 +22,9 @@
           "name": "弓",
           "pipeline_override": {
             "冠位戴冠战-职介": {
-              "recognition": {
-                "type": "TemplateMatch",
-                "param": {
-                  "template": [
-                    "grand/grand_archer.png"
-                  ]
-                }
-              }
+              "template": [
+                "grand/grand_archer.png"
+              ]
             },
             "执行羁绊补齐自动编队": {
               "attach": {
@@ -47,14 +37,9 @@
           "name": "枪",
           "pipeline_override": {
             "冠位戴冠战-职介": {
-              "recognition": {
-                "type": "TemplateMatch",
-                "param": {
-                  "template": [
-                    "grand/grand_lancer.png"
-                  ]
-                }
-              }
+              "template": [
+                "grand/grand_lancer.png"
+              ]
             },
             "执行羁绊补齐自动编队": {
               "attach": {
@@ -67,14 +52,9 @@
           "name": "骑",
           "pipeline_override": {
             "冠位戴冠战-职介": {
-              "recognition": {
-                "type": "TemplateMatch",
-                "param": {
-                  "template": [
-                    "grand/grand_rider.png"
-                  ]
-                }
-              }
+              "template": [
+                "grand/grand_rider.png"
+              ]
             },
             "执行羁绊补齐自动编队": {
               "attach": {
@@ -87,14 +67,9 @@
           "name": "术",
           "pipeline_override": {
             "冠位戴冠战-职介": {
-              "recognition": {
-                "type": "TemplateMatch",
-                "param": {
-                  "template": [
-                    "grand/grand_caster.png"
-                  ]
-                }
-              }
+              "template": [
+                "grand/grand_caster.png"
+              ]
             },
             "执行羁绊补齐自动编队": {
               "attach": {
@@ -107,14 +82,9 @@
           "name": "杀",
           "pipeline_override": {
             "冠位戴冠战-职介": {
-              "recognition": {
-                "type": "TemplateMatch",
-                "param": {
-                  "template": [
-                    "grand/grand_assassin.png"
-                  ]
-                }
-              }
+              "template": [
+                "grand/grand_assassin.png"
+              ]
             },
             "执行羁绊补齐自动编队": {
               "attach": {
@@ -127,14 +97,9 @@
           "name": "狂",
           "pipeline_override": {
             "冠位戴冠战-职介": {
-              "recognition": {
-                "type": "TemplateMatch",
-                "param": {
-                  "template": [
-                    "grand/grand_berserker.png"
-                  ]
-                }
-              }
+              "template": [
+                "grand/grand_berserker.png"
+              ]
             },
             "执行羁绊补齐自动编队": {
               "attach": {
@@ -147,23 +112,9 @@
           "name": "EX1",
           "pipeline_override": {
             "冠位戴冠战-职介": {
-              "recognition": {
-                "type": "TemplateMatch",
-                "param": {
-                  "roi": [
-                    97,
-                    357,
-                    27,
-                    34
-                  ],
-                  "template": [
-                    "grand/grand_ex1.png"
-                  ],
-                  "threshold": [
-                    0.85
-                  ]
-                }
-              }
+              "template": [
+                "grand/grand_ex1.png"
+              ]
             },
             "执行羁绊补齐自动编队": {
               "attach": {
@@ -176,23 +127,9 @@
           "name": "EX2",
           "pipeline_override": {
             "冠位戴冠战-职介": {
-              "recognition": {
-                "type": "TemplateMatch",
-                "param": {
-                  "roi": [
-                    94,
-                    353,
-                    26,
-                    39
-                  ],
-                  "template": [
-                    "grand/grand_ex2.png"
-                  ],
-                  "threshold": [
-                    0.85
-                  ]
-                }
-              }
+              "template": [
+                "grand/grand_ex2.png"
+              ]
             },
             "执行羁绊补齐自动编队": {
               "attach": {
