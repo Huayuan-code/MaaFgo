@@ -56,11 +56,11 @@
         "强化从者-全从者列表": {
             "type": "select",
             "label": "从者",
-            "default": "482. 新增从者1（5星·狂）",
+            "default": "482. 代达罗斯（5星·狂）",
             "cases": [
                 {
-                    "name": "482. 新增从者1（5星·狂）",
-                    "label": "482. 新增从者1（5星·狂）",
+                    "name": "482. 代达罗斯（5星·狂）",
+                    "label": "482. 代达罗斯（5星·狂）",
                     "option": [
                         "强化从者-目标-705400"
                     ],
@@ -85,7 +85,7 @@
                             }
                         }
                     },
-                    "description": "已选从者：新增从者1\n\n<img src=\"resource/base/image/servant_face/f_7054000.png\" width=\"79\" height=\"79\" alt=\"新增从者1头像\" />",
+                    "description": "已选从者：代达罗斯\n\n<img src=\"resource/base/image/servant_face/f_7054000.png\" width=\"79\" height=\"79\" alt=\"代达罗斯头像\" />",
                     "icon": "resource/base/image/servant_face/f_7054000.png"
                 },
                 {
@@ -28120,11 +28120,11 @@
         "强化从者-从者-5-berserker": {
             "type": "select",
             "label": "从者",
-            "default": "482. 新增从者1",
+            "default": "482. 代达罗斯",
             "cases": [
                 {
-                    "name": "482. 新增从者1",
-                    "label": "482. 新增从者1",
+                    "name": "482. 代达罗斯",
+                    "label": "482. 代达罗斯",
                     "option": [
                         "强化从者-目标-705400"
                     ],
@@ -28149,7 +28149,7 @@
                             }
                         }
                     },
-                    "description": "已选从者：新增从者1\n\n<img src=\"resource/base/image/servant_face/f_7054000.png\" width=\"79\" height=\"79\" alt=\"新增从者1头像\" />",
+                    "description": "已选从者：代达罗斯\n\n<img src=\"resource/base/image/servant_face/f_7054000.png\" width=\"79\" height=\"79\" alt=\"代达罗斯头像\" />",
                     "icon": "resource/base/image/servant_face/f_7054000.png"
                 },
                 {
@@ -39494,7 +39494,7 @@
                     }
                 }
             },
-            "description": "已选从者：新增从者1\n\n<img src=\"resource/base/image/servant_face/f_7054000.png\" width=\"79\" height=\"79\" alt=\"新增从者1头像\" />",
+            "description": "已选从者：代达罗斯\n\n<img src=\"resource/base/image/servant_face/f_7054000.png\" width=\"79\" height=\"79\" alt=\"代达罗斯头像\" />",
             "icon": "resource/base/image/servant_face/f_7054000.png"
         }
     }
