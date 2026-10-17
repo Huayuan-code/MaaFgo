@@ -148,6 +148,7 @@
         ]
     },
     "自动登录2": {
+        "max_hit": 3,
         "recognition": {
             "type": "OCR",
             "param": {
@@ -162,18 +163,20 @@
             "type": "Click",
             "param": {
                 "target": [
-                    462,
-                    421,
-                    396,
-                    163
+                    610,
+                    604,
+                    60,
+                    24
                 ]
             }
         },
         "post_delay": 15000,
         "next": [
             "直到达到主界面",
-            "[JumpBack]如果要关闭"
-        ]
+            "[JumpBack]如果要关闭",
+            "自动登录2"
+        ],
+        "on_error": []
     },
     "关闭主界面弹窗": {
         "recognition": {
