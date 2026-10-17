@@ -14,7 +14,9 @@ python tools/apply_android_patches.py
 
 该补丁保留原安装器的提交标记和归档校验：只有完整解包成功才写版本标记，失败仍可重试。卸载应用、系统“清除数据”仍由 Android 删除全部应用数据，保留规则仅适用于资源更新/重解。
 
-`0002-bind-screen-saver-to-default-display.patch` 将后台屏保明确绑定主屏。View 和 WindowManager 共用主屏的 WindowContext，Android 10 使用 DisplayContext；同时用当前主屏 Activity 的 `window.attributes.token` 锚定窗口。单例只弱引用 Activity，由 AppRoot 绑定与解绑，手动和自动屏保入口共用。无有效主屏宿主时拒绝显示；ROM 仍将窗口挂错屏时立即隐藏并撤窗，避免持续遮住游戏识别。
+`0002-bind-screen-saver-to-default-display.patch` 使用主 Activity 的附属窗口显示后台屏保。View 和 WindowManager 来自该 Activity，窗口类型为 `TYPE_APPLICATION_PANEL`，父 token 为 `decorView.windowToken`，绕过部分 ROM 将应用悬浮窗强制放到游戏屏的行为。单例只弱引用 Activity，由 AppRoot 绑定与解绑，手动和自动屏保入口共用。主 Activity 不可见、主屏或父 token 无效时拒绝显示；ROM 仍将窗口挂错屏时立即隐藏并撤窗，避免持续遮住游戏识别。
+
+`0003-skip-unconfigured-startup-update.patch` 在当前所选更新源缺配置时跳过启动自检，避免调试包每次启动弹错；不切换更新源，不更改用户设置。手动检查仍显示缺少配置的具体原因。
 
 验证补丁应用器与真实 Kotlin 安装器：
 

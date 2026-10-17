@@ -1,14 +1,13 @@
 diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt b/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
 --- a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
 +++ b/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
-@@ -1,10 +1,15 @@
+@@ -1,10 +1,14 @@
  package com.aliothmoon.maafw.overlay.screensaver
  
 +import android.app.Activity
  import android.content.Context
  import android.graphics.PixelFormat
  import android.graphics.Rect
-+import android.hardware.display.DisplayManager
  import android.os.Build
 +import android.os.IBinder
 +import android.view.Display
@@ -17,7 +16,7 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
  import android.view.WindowManager
  import androidx.compose.runtime.collectAsState
  import androidx.compose.runtime.getValue
-@@ -21,6 +26,7 @@
+@@ -21,6 +25,7 @@
  import com.aliothmoon.maafw.runner.toLogText
  import com.aliothmoon.maafw.settings.AppSettingsGateway
  import com.aliothmoon.maafw.theme.MaaFwTheme
@@ -25,7 +24,7 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
  import kotlinx.coroutines.CoroutineScope
  import kotlinx.coroutines.Dispatchers
  import kotlinx.coroutines.Job
-@@ -31,6 +37,7 @@
+@@ -31,6 +36,7 @@
  import kotlinx.coroutines.launch
  import kotlinx.coroutines.withContext
  import timber.log.Timber
@@ -33,18 +32,18 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
  
  /**
   * 后台模式的运行期屏保
-@@ -43,7 +50,9 @@
+@@ -43,7 +49,9 @@
      private val appSettings: AppSettingsGateway,
  ) {
  
 -    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-+    // Context/WindowManager 的 display=0 仍可能被 ROM 挂到游戏屏；每次显示都重新建宿主并锚定 Activity token。
++    // 屏保属于可见主 Activity 的子窗口；不再走被部分 ROM 强制路由到游戏屏的 2038 overlay。
 +    private val activityAnchor = ScreenSaverActivityAnchor()
 +    private var attachedWindows: WindowManager? = null
      private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
  
      /**
-@@ -61,6 +70,15 @@
+@@ -61,6 +69,15 @@
  
      /** 屏保上滚动那一行；只保最新一条，历史留在运行日志里 */
      private val latestLog = MutableStateFlow<String?>(null)
@@ -60,7 +59,7 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
  
      fun setup() {
          scope.launch {
-@@ -111,32 +129,63 @@
+@@ -111,32 +128,62 @@
              Timber.w("Not in background mode; ignoring screen-saver show request")
              return@withContext false
          }
@@ -70,17 +69,16 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
 -            .onSuccess {
 -                composeView = view
 -                viewModelOwner.start()
-+        val applicationToken = activityAnchor.applicationToken()
-+        if (applicationToken == null) {
-+            traceScreenSaver("show-rejected: no live primary Activity application token")
++        val activity = activityAnchor.current()
++        if (activity == null) {
++            traceScreenSaver("show-rejected: no primary Activity")
 +            return@withContext false
 +        }
 +
 +        runCatching {
-+            val windowHost = createScreenSaverWindowHost(context)
++            val windowHost = createScreenSaverWindowHost(activity)
 +            val view = createView(windowHost)
-+            // 必须是 Window.attributes.token（ActivityRecord token），不能用 decorView 的 IWindow token。
-+            val params = createLayoutParams().apply { token = applicationToken }
++            val params = createLayoutParams(windowHost)
 +            composeView = view
 +            attachedWindows = windowHost.windowManager
 +            viewModelOwner.start()
@@ -134,7 +132,7 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
      }
  
      /**
-@@ -155,7 +204,31 @@
+@@ -155,7 +202,31 @@
          }
      }
  
@@ -167,21 +165,41 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
          setViewTreeLifecycleOwner(viewModelOwner)
          setViewTreeViewModelStoreOwner(viewModelOwner)
          setViewTreeSavedStateRegistryOwner(viewModelOwner)
-@@ -197,6 +270,7 @@
+@@ -183,7 +254,7 @@
+      * 不可聚焦：返回键与音量键要原样落给系统，屏保不该改变它们的行为
+      * KEEP_SCREEN_ON + screenBrightness 压到最低是这层的核心——真息屏会让
+      */
+-    private fun createLayoutParams(): WindowManager.LayoutParams {
++    private fun createLayoutParams(host: ScreenSaverWindowHost): WindowManager.LayoutParams {
+         @Suppress("DEPRECATION")
+         val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+@@ -193,10 +264,12 @@
+         return WindowManager.LayoutParams(
+             WindowManager.LayoutParams.MATCH_PARENT,
+             WindowManager.LayoutParams.MATCH_PARENT,
+-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
++            host.windowType,
              flags,
              PixelFormat.TRANSLUCENT,
          ).apply {
++            token = host.parentWindowToken
 +            title = "MaaFGO ScreenSaver"
              gravity = Gravity.CENTER
              screenBrightness = MIN_BRIGHTNESS
              layoutInDisplayCutoutMode =
-@@ -212,3 +286,114 @@
+@@ -212,3 +285,104 @@
          const val GESTURE_EXCLUSION_DP = 120
      }
  }
 +
-+/** View 与 WindowManager 必须来自同一块物理主屏的窗口 Context。 */
-+internal data class ScreenSaverWindowHost(val context: Context, val windowManager: WindowManager)
++/** View、WindowManager 与 IWindow 父 token 均来自同一个可见主 Activity。 */
++internal data class ScreenSaverWindowHost(
++    val context: Context,
++    val windowManager: WindowManager,
++    val parentWindowToken: IBinder,
++    val windowType: Int = WindowManager.LayoutParams.TYPE_APPLICATION_PANEL,
++)
 +
 +/** Application 单例只保存弱引用；Activity 重建时旧 AppRoot 的解绑不能清掉新宿主。 */
 +internal class ScreenSaverActivityAnchor {
@@ -195,20 +213,6 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
 +        return true
 +    }
 +
-+    fun applicationToken(sdkInt: Int = Build.VERSION.SDK_INT): IBinder? =
-+        primaryScreenSaverApplicationToken(activity.get(), sdkInt)
-+}
-+
-+@Suppress("DEPRECATION")
-+internal fun primaryScreenSaverApplicationToken(activity: Activity?, sdkInt: Int): IBinder? {
-+    if (activity == null || activity.isFinishing || activity.isDestroyed) return null
-+    return runCatching {
-+        val displayId = if (sdkInt >= Build.VERSION_CODES.R) activity.display?.displayId
-+            else activity.windowManager.defaultDisplay.displayId
-+        if (displayId != Display.DEFAULT_DISPLAY) return null
-+        // WMS 用此 ActivityRecord token 先选物理 Display，再为 overlay 创建独立 WindowToken。
-+        activity.window.attributes.token
-+    }.getOrNull()
 +}
 +
 +/** OEM 仍挂错屏时立即隐藏、撤窗，避免黑色屏保持续遮挡游戏识别。 */
@@ -222,30 +226,29 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
 +    return false
 +}
 +
++@Suppress("DEPRECATION")
 +internal fun createScreenSaverWindowHost(
-+    context: Context,
++    activity: Activity?,
 +    sdkInt: Int = Build.VERSION.SDK_INT,
 +): ScreenSaverWindowHost {
-+    val displays = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
-+        ?: error("DisplayManager unavailable for screen saver")
-+    val primary = displays.getDisplay(Display.DEFAULT_DISPLAY)
-+        ?: error("Default display unavailable for screen saver")
-+    traceScreenSaver("host-request api=$sdkInt requestedDisplay=" + Display.DEFAULT_DISPLAY +
-+        " actualDisplay=" + primary.displayId + " original=" + describeScreenSaverContext(context, sdkInt))
-+    val displayContext = context.createDisplayContext(primary)
-+    traceScreenSaver("display-context " + describeScreenSaverContext(displayContext, sdkInt))
-+    // API 30 的双参数重载需先有 DisplayContext；直接传 Display 的重载要到 API 31 才存在。
-+    // API 29 沿用带显式 Display 的 WindowManager；不可回退到可能指向游戏虚拟屏的 Application Context。
-+    val windowContext = if (sdkInt >= Build.VERSION_CODES.R) {
-+        displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
-+    } else {
-+        displayContext
++    check(activity != null && !activity.isFinishing && !activity.isDestroyed) {
++        "No live primary Activity for screen saver"
 +    }
-+    val windows = windowContext.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-+        ?: error("WindowManager unavailable for screen saver")
-+    traceScreenSaver("window-host route=" + (if (sdkInt >= Build.VERSION_CODES.R) "createWindowContext(type)" else "displayContext") +
-+        " context=" + describeScreenSaverContext(windowContext, sdkInt) + " wm=" + describeScreenSaverWindows(windows))
-+    return ScreenSaverWindowHost(windowContext, windows)
++    val windows = activity.windowManager
++    val displayId = if (sdkInt >= Build.VERSION_CODES.R) activity.display?.displayId
++        else windows.defaultDisplay.displayId
++    check(displayId == Display.DEFAULT_DISPLAY) { "Screen saver Activity is not on the primary display: $displayId" }
++    val decor = activity.window.decorView
++    check(decor.isAttachedToWindow && decor.isShown && decor.windowVisibility == View.VISIBLE) {
++        "Screen saver Activity window is not visible"
++    }
++    check(decor.display?.displayId == Display.DEFAULT_DISPLAY) { "Screen saver parent window is not on the primary display" }
++    // TYPE_APPLICATION_PANEL 要求父 IWindow token，不是用于 2038 的 ActivityRecord application token。
++    val parentToken = checkNotNull(decor.windowToken) { "Screen saver parent window token is unavailable" }
++    traceScreenSaver("window-host route=activity-panel api=$sdkInt type=" + WindowManager.LayoutParams.TYPE_APPLICATION_PANEL +
++        " context=" + describeScreenSaverContext(activity, sdkInt) + " parentWindowToken=" + parentToken +
++        " wm=" + describeScreenSaverWindows(windows))
++    return ScreenSaverWindowHost(activity, windows, parentToken)
 +}
 +
 +/** 诊断只读取 Context/WindowManager，不改变 token 或 display；日志失败不能影响屏保。 */
@@ -309,98 +312,7 @@ diff --git a/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
 new file mode 100644
 --- /dev/null
 +++ b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverWindowHostTest.kt
-@@ -0,0 +1,86 @@
-+package com.aliothmoon.maafw.overlay.screensaver
-+
-+import android.content.Context
-+import android.hardware.display.DisplayManager
-+import android.view.Display
-+import android.view.WindowManager
-+import io.mockk.every
-+import io.mockk.mockk
-+import io.mockk.verify
-+import org.junit.Assert.assertSame
-+import org.junit.Assert.assertThrows
-+import org.junit.Test
-+
-+/** 模拟当前焦点已在游戏虚拟屏，验证屏保仍只使用默认物理屏的窗口服务。 */
-+class ScreenSaverWindowHostTest {
-+    private val original = mockk<Context>()
-+    private val displays = mockk<DisplayManager>()
-+    private val primary = mockk<Display>()
-+    private val displayContext = mockk<Context>()
-+    private val windowContext = mockk<Context>()
-+    private val primaryWindows = mockk<WindowManager>()
-+    private val virtualWindows = mockk<WindowManager>()
-+
-+    private fun prepare() {
-+        every { original.getSystemService(Context.DISPLAY_SERVICE) } returns displays
-+        // 错用 application 的 WindowManager 会拿到虚拟屏服务，不能只验证“拿到了一个管理器”。
-+        every { original.getSystemService(Context.WINDOW_SERVICE) } returns virtualWindows
-+        every { displays.getDisplay(Display.DEFAULT_DISPLAY) } returns primary
-+        every { primary.displayId } returns Display.DEFAULT_DISPLAY
-+        every { original.createDisplayContext(primary) } returns displayContext
-+        every { displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) } returns windowContext
-+        every { displayContext.display } returns primary
-+        every { windowContext.display } returns primary
-+        every { primaryWindows.defaultDisplay } returns primary
-+        every { displayContext.getSystemService(Context.WINDOW_SERVICE) } returns primaryWindows
-+        every { windowContext.getSystemService(Context.WINDOW_SERVICE) } returns primaryWindows
-+    }
-+
-+    @Test
-+    fun `Android 30 and newer use default display overlay window context`() {
-+        for (sdk in listOf(30, 32, 34)) {
-+            prepare()
-+            val host = createScreenSaverWindowHost(original, sdk)
-+
-+            assertSame(windowContext, host.context)
-+            assertSame(primaryWindows, host.windowManager)
-+        }
-+        verify(exactly = 3) { displays.getDisplay(Display.DEFAULT_DISPLAY) }
-+        verify(exactly = 3) { original.createDisplayContext(primary) }
-+        verify(exactly = 3) { displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) }
-+        verify(exactly = 0) { original.getSystemService(Context.WINDOW_SERVICE) }
-+    }
-+
-+    @Test
-+    fun `Android 29 uses default display context without calling newer window context API`() {
-+        prepare()
-+        val host = createScreenSaverWindowHost(original, 29)
-+
-+        assertSame(displayContext, host.context)
-+        assertSame(primaryWindows, host.windowManager)
-+        verify(exactly = 0) { displayContext.createWindowContext(any(), any()) }
-+        verify(exactly = 0) { original.getSystemService(Context.WINDOW_SERVICE) }
-+    }
-+
-+    @Test
-+    fun `missing default display fails without using a virtual display or application windows`() {
-+        prepare()
-+        every { displays.getDisplay(Display.DEFAULT_DISPLAY) } returns null
-+
-+        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(original, 32) }
-+
-+        verify(exactly = 0) { original.createDisplayContext(any()) }
-+        verify(exactly = 0) { original.getSystemService(Context.WINDOW_SERVICE) }
-+    }
-+
-+    @Test
-+    fun `failed window context creation does not fall back to application windows`() {
-+        prepare()
-+        every { displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) } throws IllegalArgumentException("display removed")
-+
-+        assertThrows(IllegalArgumentException::class.java) { createScreenSaverWindowHost(original, 32) }
-+
-+        verify(exactly = 0) { original.getSystemService(Context.WINDOW_SERVICE) }
-+        verify(exactly = 0) { displayContext.getSystemService(Context.WINDOW_SERVICE) }
-+    }
-+}
-diff --git a/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverActivityAnchorTest.kt b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverActivityAnchorTest.kt
-new file mode 100644
---- /dev/null
-+++ b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverActivityAnchorTest.kt
-@@ -0,0 +1,118 @@
+@@ -0,0 +1,124 @@
 +package com.aliothmoon.maafw.overlay.screensaver
 +
 +import android.app.Activity
@@ -408,6 +320,133 @@ new file mode 100644
 +import android.view.Display
 +import android.view.View
 +import android.view.Window
++import android.view.WindowManager
++import io.mockk.every
++import io.mockk.mockk
++import io.mockk.verify
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNotEquals
++import org.junit.Assert.assertSame
++import org.junit.Assert.assertThrows
++import org.junit.Test
++
++/** 子窗口必须使用父 IWindow token；2038 的 ActivityRecord token 不能混入新路径。 */
++class ScreenSaverWindowHostTest {
++    private val activity = mockk<Activity>()
++    private val primary = mockk<Display>()
++    private val window = mockk<Window>()
++    private val decor = mockk<View>()
++    private val windows = mockk<WindowManager>()
++    private val applicationParams = mockk<WindowManager.LayoutParams>()
++    private val applicationToken = mockk<IBinder>()
++    private val parentWindowToken = mockk<IBinder>()
++
++    private fun prepare() {
++        every { activity.isFinishing } returns false
++        every { activity.isDestroyed } returns false
++        every { activity.display } returns primary
++        every { activity.windowManager } returns windows
++        every { windows.defaultDisplay } returns primary
++        every { primary.displayId } returns Display.DEFAULT_DISPLAY
++        every { activity.window } returns window
++        every { window.decorView } returns decor
++        every { window.attributes } returns applicationParams
++        applicationParams.token = applicationToken
++        every { decor.isAttachedToWindow } returns true
++        every { decor.isShown } returns true
++        every { decor.windowVisibility } returns View.VISIBLE
++        every { decor.display } returns primary
++        every { decor.windowToken } returns parentWindowToken
++    }
++
++    @Test
++    fun `visible primary Activity uses panel type IWindow token and its own window manager`() {
++        prepare()
++        val host = createScreenSaverWindowHost(activity, 32)
++
++        assertSame(activity, host.context)
++        assertSame(windows, host.windowManager)
++        assertSame(parentWindowToken, host.parentWindowToken)
++        assertNotEquals(applicationToken, host.parentWindowToken)
++        assertEquals(WindowManager.LayoutParams.TYPE_APPLICATION_PANEL, host.windowType)
++        assertNotEquals(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, host.windowType)
++        verify(exactly = 0) { window.attributes }
++        verify(exactly = 0) { activity.createWindowContext(any(), any()) }
++    }
++
++    @Test
++    fun `Android 29 uses the Activity display without calling API 30 methods`() {
++        prepare()
++        val host = createScreenSaverWindowHost(activity, 29)
++
++        assertSame(parentWindowToken, host.parentWindowToken)
++        assertEquals(WindowManager.LayoutParams.TYPE_APPLICATION_PANEL, host.windowType)
++        verify(exactly = 0) { activity.display }
++        verify(exactly = 0) { activity.createWindowContext(any(), any()) }
++    }
++
++    @Test
++    fun `missing finishing or destroyed Activity is refused`() {
++        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(null, 32) }
++        prepare()
++        every { activity.isFinishing } returns true
++        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(activity, 32) }
++        every { activity.isFinishing } returns false
++        every { activity.isDestroyed } returns true
++        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(activity, 32) }
++    }
++
++    @Test
++    fun `Activity on a game display cannot supply the screen saver host`() {
++        prepare()
++        every { primary.displayId } returns 10
++
++        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(activity, 32) }
++        verify(exactly = 0) { window.decorView }
++    }
++
++    @Test
++    fun `invisible or detached Activity parent window is refused`() {
++        prepare()
++        every { decor.isShown } returns false
++        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(activity, 32) }
++        every { decor.isShown } returns true
++        every { decor.isAttachedToWindow } returns false
++        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(activity, 32) }
++        every { decor.isAttachedToWindow } returns true
++        every { decor.windowVisibility } returns View.GONE
++        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(activity, 32) }
++    }
++
++    @Test
++    fun `missing parent IWindow token does not fall back to the application token`() {
++        prepare()
++        every { decor.windowToken } returns null
++
++        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(activity, 32) }
++        verify(exactly = 0) { window.attributes }
++    }
++
++    @Test
++    fun `parent decor on a different display is refused even when context says primary`() {
++        prepare()
++        val gameDisplay = mockk<Display>()
++        every { gameDisplay.displayId } returns 10
++        every { decor.display } returns gameDisplay
++
++        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(activity, 32) }
++    }
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverActivityAnchorTest.kt b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverActivityAnchorTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverActivityAnchorTest.kt
+@@ -0,0 +1,59 @@
++package com.aliothmoon.maafw.overlay.screensaver
++
++import android.app.Activity
++import android.view.Display
++import android.view.View
 +import android.view.WindowManager
 +import io.mockk.every
 +import io.mockk.just
@@ -421,86 +460,27 @@ new file mode 100644
 +import org.junit.Test
 +
 +class ScreenSaverActivityAnchorTest {
-+    private val activity = mockk<Activity>()
-+    private val display = mockk<Display>()
-+    private val window = mockk<Window>()
-+    private val windows = mockk<WindowManager>()
-+    private val params = mockk<WindowManager.LayoutParams>()
-+    private val applicationToken = mockk<IBinder>()
-+
-+    private fun prepareActivity(displayId: Int = Display.DEFAULT_DISPLAY) {
-+        every { activity.isFinishing } returns false
-+        every { activity.isDestroyed } returns false
-+        every { activity.display } returns display
-+        every { activity.windowManager } returns windows
-+        every { windows.defaultDisplay } returns display
-+        every { display.displayId } returns displayId
-+        every { activity.window } returns window
-+        every { window.attributes } returns params
-+        params.token = applicationToken
-+    }
-+
-+    @Test
-+    fun `uses ActivityRecord application token rather than the decor IWindow token`() {
-+        prepareActivity()
-+        val anchor = ScreenSaverActivityAnchor()
-+        anchor.bind(activity)
-+
-+        assertSame(applicationToken, anchor.applicationToken(32))
-+        verify(exactly = 0) { window.decorView }
-+    }
-+
-+    @Test
-+    fun `Android 29 validates the physical Activity display through its WindowManager`() {
-+        prepareActivity()
-+
-+        assertSame(applicationToken, primaryScreenSaverApplicationToken(activity, 29))
-+        verify(exactly = 0) { activity.display }
-+    }
-+
-+    @Test
-+    fun `missing destroyed finishing or nonphysical activity safely refuses a token`() {
-+        assertNull(primaryScreenSaverApplicationToken(null, 32))
-+        prepareActivity(9)
-+        assertNull(primaryScreenSaverApplicationToken(activity, 32))
-+        verify(exactly = 0) { window.attributes }
-+
-+        prepareActivity()
-+        every { activity.isDestroyed } returns true
-+        assertNull(primaryScreenSaverApplicationToken(activity, 32))
-+        every { activity.isDestroyed } returns false
-+        every { activity.isFinishing } returns true
-+        assertNull(primaryScreenSaverApplicationToken(activity, 32))
-+    }
-+
-+    @Test
-+    fun `missing application token refuses display instead of falling back to another token`() {
-+        prepareActivity()
-+        params.token = null
-+
-+        assertNull(primaryScreenSaverApplicationToken(activity, 32))
-+        verify(exactly = 0) { window.decorView }
-+    }
-+
 +    @Test
 +    fun `disposing an old AppRoot cannot unbind the replacement Activity`() {
 +        val oldActivity = mockk<Activity>()
++        val currentActivity = mockk<Activity>()
 +        val anchor = ScreenSaverActivityAnchor()
 +        anchor.bind(oldActivity)
-+        anchor.bind(activity)
++        anchor.bind(currentActivity)
 +
 +        assertFalse(anchor.unbind(oldActivity))
-+        assertSame(activity, anchor.current())
-+        assertTrue(anchor.unbind(activity))
++        assertSame(currentActivity, anchor.current())
++        assertTrue(anchor.unbind(currentActivity))
 +        assertNull(anchor.current())
-+        assertNull(anchor.applicationToken(32))
 +    }
 +
 +    @Test
 +    fun `wrong actual display is hidden and removed immediately`() {
 +        val view = mockk<View>()
++        val display = mockk<Display>()
++        val windows = mockk<WindowManager>()
 +        every { view.display } returns display
-+        every { display.displayId } returns 9
++        every { display.displayId } returns 10
 +        every { view.visibility = View.GONE } just Runs
 +        every { windows.removeViewImmediate(view) } just Runs
 +
@@ -512,6 +492,8 @@ new file mode 100644
 +    @Test
 +    fun `correct actual display keeps the screen saver window`() {
 +        val view = mockk<View>()
++        val display = mockk<Display>()
++        val windows = mockk<WindowManager>()
 +        every { view.display } returns display
 +        every { display.displayId } returns Display.DEFAULT_DISPLAY
 +
