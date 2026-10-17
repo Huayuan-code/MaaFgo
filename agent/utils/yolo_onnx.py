@@ -61,14 +61,11 @@ class YoloOnnx:
     """onnxruntime YOLO 检测器(接口与 ultralytics.YOLO 推理用法兼容)"""
 
     def __init__(self, model_path, imgsz=640, iou=0.7):
-        import onnxruntime as ort
+        from utils.onnx_session import create_session
         self.imgsz = imgsz
         self.iou = iou
-        self.sess = ort.InferenceSession(
-            model_path, providers=["CPUExecutionProvider"]
-        )
+        self.sess = create_session(model_path)
         self.input_name = self.sess.get_inputs()[0].name
-        self.nc = self.sess.get_outputs()[0].shape[1] - 4  # 输出 (1, 4+nc, N)
 
     def detect(self, img, conf=0.5):
         """img: BGR uint8 ndarray; 返回 [(x1,y1,x2,y2,conf,cls), ...] 原图坐标"""
