@@ -14,6 +14,8 @@ python tools/apply_android_patches.py
 
 该补丁保留原安装器的提交标记和归档校验：只有完整解包成功才写版本标记，失败仍可重试。卸载应用、系统“清除数据”仍由 Android 删除全部应用数据，保留规则仅适用于资源更新/重解。
 
+`0002-bind-screen-saver-to-default-display.patch` 将后台屏保明确绑定主屏。应用 Context 在多屏运行时可能将悬浮窗加到当前游戏虚拟屏，遮住识别画面；修复后 View 和 WindowManager 共用主屏的 WindowContext，Android 10 使用 DisplayContext。主屏或 Context 不可用时明确返回失败，不回退到可能盖住游戏的应用 Context。
+
 验证补丁应用器与真实 Kotlin 安装器：
 
 ```powershell

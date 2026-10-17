@@ -76,9 +76,9 @@ jobs:
         run: python tools/build_android.py --abi "$BUILD_ABI"
       - name: Check PI with Android parser and run-plan builder
         run: python tools/check_android_interface.py
-      - name: Check resource reinstall preserves user data
+      - name: Check Android shell fixes
         working-directory: Android/MaaFwApp
-        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests 'com.aliothmoon.maafw.project.PiInstaller*'
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests 'com.aliothmoon.maafw.project.PiInstaller*' --tests 'com.aliothmoon.maafw.overlay.screensaver.ScreenSaverWindowHostTest'
       - uses: actions/upload-artifact@v7
         with:
           name: MaaFGO-android-${{ matrix.abi }}-debug

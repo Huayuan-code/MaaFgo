@@ -1,0 +1,171 @@
+diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt b/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
+--- a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
+@@ -3,7 +3,9 @@
+ import android.content.Context
+ import android.graphics.PixelFormat
+ import android.graphics.Rect
++import android.hardware.display.DisplayManager
+ import android.os.Build
++import android.view.Display
+ import android.view.Gravity
+ import android.view.WindowManager
+ import androidx.compose.runtime.collectAsState
+@@ -43,7 +45,8 @@
+     private val appSettings: AppSettingsGateway,
+ ) {
+ 
+-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
++    // 显式绑定物理主屏，不能随当前获得焦点的游戏虚拟屏漂移。
++    private val windowHost by lazy { createScreenSaverWindowHost(context) }
+     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+ 
+     /**
+@@ -112,9 +115,11 @@
+             return@withContext false
+         }
+ 
+-        val view = createView()
+-        runCatching { windowManager.addView(view, createLayoutParams()) }
+-            .onSuccess {
++        runCatching {
++            val view = createView()
++            windowHost.windowManager.addView(view, createLayoutParams())
++            view
++        }.onSuccess { view ->
+                 composeView = view
+                 viewModelOwner.start()
+                 startLogRelay()
+@@ -134,7 +139,7 @@
+         // 清掉，否则下一轮盖上的瞬间显示的是上一轮的尾句
+         latestLog.value = null
+         viewModelOwner.stop()
+-        runCatching { windowManager.removeView(view) }
++        runCatching { windowHost.windowManager.removeView(view) }
+             .onSuccess { Timber.d("Screen saver dismissed") }
+             .onFailure { Timber.e(it, "Failed to remove screen saver") }
+     }
+@@ -155,7 +160,7 @@
+         }
+     }
+ 
+-    private fun createView(): ComposeView = ComposeView(context).apply {
++    private fun createView(): ComposeView = ComposeView(windowHost.context).apply {
+         setViewTreeLifecycleOwner(viewModelOwner)
+         setViewTreeViewModelStoreOwner(viewModelOwner)
+         setViewTreeSavedStateRegistryOwner(viewModelOwner)
+@@ -212,3 +217,27 @@
+         const val GESTURE_EXCLUSION_DP = 120
+     }
+ }
++
++/** View 与 WindowManager 必须来自同一块物理主屏的窗口 Context。 */
++internal data class ScreenSaverWindowHost(val context: Context, val windowManager: WindowManager)
++
++internal fun createScreenSaverWindowHost(
++    context: Context,
++    sdkInt: Int = Build.VERSION.SDK_INT,
++): ScreenSaverWindowHost {
++    val displays = context.getSystemService(Context.DISPLAY_SERVICE) as? DisplayManager
++        ?: error("DisplayManager unavailable for screen saver")
++    val primary = displays.getDisplay(Display.DEFAULT_DISPLAY)
++        ?: error("Default display unavailable for screen saver")
++    val displayContext = context.createDisplayContext(primary)
++    // API 30 的双参数重载需先有 DisplayContext；直接传 Display 的重载要到 API 31 才存在。
++    // API 29 沿用带显式 Display 的 WindowManager；不可回退到可能指向游戏虚拟屏的 Application Context。
++    val windowContext = if (sdkInt >= Build.VERSION_CODES.R) {
++        displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
++    } else {
++        displayContext
++    }
++    val windows = windowContext.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
++        ?: error("WindowManager unavailable for screen saver")
++    return ScreenSaverWindowHost(windowContext, windows)
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverWindowHostTest.kt b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverWindowHostTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverWindowHostTest.kt
+@@ -0,0 +1,82 @@
++package com.aliothmoon.maafw.overlay.screensaver
++
++import android.content.Context
++import android.hardware.display.DisplayManager
++import android.view.Display
++import android.view.WindowManager
++import io.mockk.every
++import io.mockk.mockk
++import io.mockk.verify
++import org.junit.Assert.assertSame
++import org.junit.Assert.assertThrows
++import org.junit.Test
++
++/** 模拟当前焦点已在游戏虚拟屏，验证屏保仍只使用默认物理屏的窗口服务。 */
++class ScreenSaverWindowHostTest {
++    private val original = mockk<Context>()
++    private val displays = mockk<DisplayManager>()
++    private val primary = mockk<Display>()
++    private val displayContext = mockk<Context>()
++    private val windowContext = mockk<Context>()
++    private val primaryWindows = mockk<WindowManager>()
++    private val virtualWindows = mockk<WindowManager>()
++
++    private fun prepare() {
++        every { original.getSystemService(Context.DISPLAY_SERVICE) } returns displays
++        // 错用 application 的 WindowManager 会拿到虚拟屏服务，不能只验证“拿到了一个管理器”。
++        every { original.getSystemService(Context.WINDOW_SERVICE) } returns virtualWindows
++        every { displays.getDisplay(Display.DEFAULT_DISPLAY) } returns primary
++        every { original.createDisplayContext(primary) } returns displayContext
++        every { displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) } returns windowContext
++        every { displayContext.getSystemService(Context.WINDOW_SERVICE) } returns primaryWindows
++        every { windowContext.getSystemService(Context.WINDOW_SERVICE) } returns primaryWindows
++    }
++
++    @Test
++    fun `Android 30 and newer use default display overlay window context`() {
++        for (sdk in listOf(30, 32, 34)) {
++            prepare()
++            val host = createScreenSaverWindowHost(original, sdk)
++
++            assertSame(windowContext, host.context)
++            assertSame(primaryWindows, host.windowManager)
++        }
++        verify(exactly = 3) { displays.getDisplay(Display.DEFAULT_DISPLAY) }
++        verify(exactly = 3) { original.createDisplayContext(primary) }
++        verify(exactly = 3) { displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) }
++        verify(exactly = 0) { original.getSystemService(Context.WINDOW_SERVICE) }
++    }
++
++    @Test
++    fun `Android 29 uses default display context without calling newer window context API`() {
++        prepare()
++        val host = createScreenSaverWindowHost(original, 29)
++
++        assertSame(displayContext, host.context)
++        assertSame(primaryWindows, host.windowManager)
++        verify(exactly = 0) { displayContext.createWindowContext(any(), any()) }
++        verify(exactly = 0) { original.getSystemService(Context.WINDOW_SERVICE) }
++    }
++
++    @Test
++    fun `missing default display fails without using a virtual display or application windows`() {
++        prepare()
++        every { displays.getDisplay(Display.DEFAULT_DISPLAY) } returns null
++
++        assertThrows(IllegalStateException::class.java) { createScreenSaverWindowHost(original, 32) }
++
++        verify(exactly = 0) { original.createDisplayContext(any()) }
++        verify(exactly = 0) { original.getSystemService(Context.WINDOW_SERVICE) }
++    }
++
++    @Test
++    fun `failed window context creation does not fall back to application windows`() {
++        prepare()
++        every { displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) } throws IllegalArgumentException("display removed")
++
++        assertThrows(IllegalArgumentException::class.java) { createScreenSaverWindowHost(original, 32) }
++
++        verify(exactly = 0) { original.getSystemService(Context.WINDOW_SERVICE) }
++        verify(exactly = 0) { displayContext.getSystemService(Context.WINDOW_SERVICE) }
++    }
++}
