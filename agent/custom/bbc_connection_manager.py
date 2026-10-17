@@ -534,6 +534,12 @@ class BbcConnectionManager:
                 return False
             
             mfaalog.info("[BbcConnectionManager] 连接命令执行成功")
+            if connect_cmd == 'connect_mumu' and result.get('capture_verified'):
+                mfaalog.info(
+                    f"[BbcConnectionManager] MuMu高速截图校验通过: "
+                    f"连接处理={result.get('connection_action')}，displayid={result.get('display_id')}，"
+                    f"分辨率={result.get('resolution')}"
+                )
             time.sleep(5)
             
             # 验证连接状态

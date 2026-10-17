@@ -20,6 +20,7 @@
         "custom_action": "import_chaldea_team"
     },
     "启动bbc": {
+        "doc": "参考执行BBC任务复用已建立的连接。MuMu同实例重复连接可能返回相同SDK句柄，应复用同配置设备；切换设备时先释放旧设备并阻止其延迟析构再次断开句柄，否则后续截图会出现displayid=-1。连接成功须实际截图校验。",
         "max_hit": 1,
         "action": "Custom",
         "attach": {
@@ -36,6 +37,7 @@
         "custom_action": "start_bbc"
     },
     "执行BBC任务": {
+        "doc": "参考启动bbc完成连接后再执行。启动成功以BBC的FGObattle实际运行状态为准；顶部“请设置好阵容”是待机文案。启动接口在Tk主线程调用原有处理函数，窗口最小化也应可启动；服务就绪和弹窗关闭通知不代表战斗结束。",
         "action": "Custom",
         "attach": {
             "apple_type": "铜苹果",
