@@ -25,6 +25,41 @@ class InventoryScanTests(unittest.TestCase):
         self.frame = np.zeros((720, 1280, 3), dtype=np.uint8)
         self.hits = {"100100": (0.95, (200, 300), "face.png")}
 
+    def test_equip_custom_appearances_share_one_inventory_identity(self):
+        rng = np.random.default_rng(2173)
+        names = ["f_94083800.png", "f_94083800_1_1_1_1.png"]
+        templates = {name: rng.integers(0, 255, (56, 147, 3), dtype=np.uint8)
+                     for name in names}
+        self.scan.equip_list_dirs = []
+        self.scan._read_first_template = lambda _dirs, name: templates.get(name)
+        matrix, variants, covered, missing = self.scan._prepare_equip_features([
+            {"id": "9408380", "images": names + names},
+            {"id": "missing", "images": ["unreadable.png"]},
+        ])
+        self.assertEqual(covered, 1)
+        self.assertEqual(missing, ["missing"])
+        self.assertEqual(variants, [("9408380", name) for name in names])
+        hits = self.scan._match_cells(
+            None, matrix, variants, lambda _frame: ([matrix[1]], [(100, 200)]),
+            0.9, 0.1,
+        )
+        self.assertEqual(hits["9408380"][2], names[1])
+        self.assertEqual(len(self.scan.equip_full_templates), 2)
+
+    def test_equip_legacy_filename_fallback_without_images(self):
+        rng = np.random.default_rng(109)
+        self.scan.equip_list_dirs = []
+        image = rng.integers(0, 255, (56, 147, 3), dtype=np.uint8)
+        self.scan._read_first_template = lambda _dirs, name: (
+            image if name == "f_94010700.png" else None
+        )
+        matrix, variants, covered, missing = self.scan._prepare_equip_features([
+            {"id": "9401070"}
+        ])
+        self.assertEqual((covered, missing), (1, []))
+        self.assertEqual(variants, [("9401070", "f_94010700.png")])
+        self.assertEqual(matrix.shape[0], 1)
+
     def run_scan(self, thumb, hits=None):
         self.scan._scroll_thumb_center = lambda image: thumb
         matcher = Mock(return_value=(self.hits if hits is None else hits, self.frame))

@@ -636,26 +636,32 @@ class BuildPlayerInventory(AutoFormationFromChaldea):
         self.equip_full_templates = {}
         vectors, variants, covered, missing = [], [], 0, []
         for item in catalog:
-            name = f"f_{item['id']}0.png"
-            template = self._read_first_template(self.equip_list_dirs, name)
-            if template is None:
+            found = False
+            # 自定义礼装的多张外观仍是同一个库存身份；普通礼装保留旧文件名回退。
+            names = dict.fromkeys([
+                *(item.get("images") or []), f"f_{item['id']}0.png"
+            ])
+            for name in names:
+                template = self._read_first_template(self.equip_list_dirs, name)
+                if template is None:
+                    continue
+                if template.shape[:2] != (EQUIP_TEMPLATE_SIZE[1], EQUIP_TEMPLATE_SIZE[0]):
+                    template = cv2.resize(
+                        template, EQUIP_TEMPLATE_SIZE, interpolation=cv2.INTER_LINEAR
+                    )
+                if template.shape[0] <= EQUIP_TEMPLATE_CUT_TOP:
+                    continue
+                vector = _normalized_vector(template[EQUIP_TEMPLATE_CUT_TOP:], EQUIP_FEATURE_SIZE)
+                if vector is None:
+                    continue
+                vectors.append(vector)
+                variants.append((str(item["id"]), name))
+                self.equip_full_templates[name] = template
+                found = True
+            if not found:
                 missing.append(str(item.get("id")))
-                continue
-            if template.shape[:2] != (EQUIP_TEMPLATE_SIZE[1], EQUIP_TEMPLATE_SIZE[0]):
-                template = cv2.resize(
-                    template, EQUIP_TEMPLATE_SIZE, interpolation=cv2.INTER_LINEAR
-                )
-            if template.shape[0] <= EQUIP_TEMPLATE_CUT_TOP:
-                missing.append(str(item.get("id")))
-                continue
-            vector = _normalized_vector(template[EQUIP_TEMPLATE_CUT_TOP:], EQUIP_FEATURE_SIZE)
-            if vector is None:
-                missing.append(str(item.get("id")))
-                continue
-            vectors.append(vector)
-            variants.append((str(item["id"]), name))
-            self.equip_full_templates[name] = template
-            covered += 1
+            else:
+                covered += 1
         return (np.stack(vectors) if vectors else None), variants, covered, missing
 
     def _visible_equip_features(self, image, row_origins=None):
