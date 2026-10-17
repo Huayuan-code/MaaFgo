@@ -639,10 +639,8 @@ class AutoBattleRuntime:
                         return True
                 else:
                     map_since = None
-            # 关闭跳过时连同盲点也禁用，避免在按钮尚未识别到的切换帧误触。
-            skip_enabled = (not handle_story or
-                            (self.ctx.get_node_data("跳过剧情-点击跳过") or {}).get("enabled", True))
-            if tap_close and skip_enabled and not story_seen:
+            # 默认点击右上角推进奖励等界面；实际剧情由前面的分支按开关处理。
+            if tap_close and not story_seen:
                 self.executor.tap_top_right_close()
             time.sleep(0.5)
         mfaalog.info(f"[AutoBattle] _wait_until() timed out")
