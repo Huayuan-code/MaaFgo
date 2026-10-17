@@ -50,6 +50,8 @@ ONNX 推理复用 MaaFramework APK 已附带的 `libonnxruntime.so`，通过稳�
 
 ## 验证与实机验收
 
+本次 MuMu 安装、日服登录和一场原生战斗的具体结果与验证边界见 [TESTING.md](TESTING.md)。
+
 ```powershell
 python -m pip install numpy opencv-python-headless onnxruntime
 python -m unittest discover -s tests -p "test_android*.py" -v
