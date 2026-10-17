@@ -88,8 +88,77 @@ class AndroidInterfaceTests(unittest.TestCase):
             option = android.adapt_interface(source, assets)["option"]["native_setting"]
             self.assertEqual(option["type"], "select")
             self.assertEqual(option["default_case"], "0_空.png")
+            self.assertEqual(option["cases"][0]["label"], "不限")
+            self.assertEqual(option["cases"][1]["icon"], "resource/base/image/lizhuang/满破/礼装.png")
             self.assertEqual(option["cases"][1]["pipeline_override"]["助战action"]["attach"]["native_setting"], "礼装.png")
             self.assertNotIn("scan_dir", option)
+
+    def test_scan_default_and_mxu_attach_assignment_are_preserved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            assets = Path(tmp)
+            (assets / "images").mkdir()
+            (assets / "images/0_空.png").write_bytes(b"fixture")
+            (assets / "images/目标.png").write_bytes(b"fixture")
+            (assets / "images/目录.png").mkdir()
+            source = self.fixture()
+            source["option"]["native_setting"] = {
+                "type": "scan_select", "scan_dir": "images", "scan_filter": "*.png", "default": "目标.png",
+                "pipeline_override": {"node": {"attach": {"native_setting": "", "other": 7}}},
+            }
+            converted = android.adapt_interface(source, assets)["option"]["native_setting"]
+            self.assertEqual(converted["default_case"], "目标.png")
+            self.assertEqual(len(converted["cases"]), 2)
+            self.assertEqual(converted["cases"][1]["pipeline_override"]["node"]["attach"],
+                             {"native_setting": "目标.png", "other": 7})
+            source["option"]["native_setting"]["default"] = "已删除.png"
+            with self.assertRaisesRegex(ValueError, "默认文件不存在"):
+                android.adapt_interface(source, assets)
+
+    def test_file_button_falls_back_to_standard_text_input(self):
+        source = self.fixture()
+        source["option"]["native_setting"] = {
+            "type": "input", "inputs": [{"name": "source", "input_type": "file", "default": "12345"}],
+            "pipeline_override": {"node": {"attach": {"source": "{source}"}}},
+        }
+        converted = android.adapt_interface(source, ROOT / "assets")["option"]["native_setting"]
+        self.assertNotIn("input_type", converted["inputs"][0])
+        self.assertEqual(converted["inputs"][0]["pipeline_type"], "string")
+        self.assertEqual(converted["inputs"][0]["default"], "12345")
+        self.assertIn("手机", converted["inputs"][0]["description"])
+        self.assertEqual(converted["pipeline_override"], source["option"]["native_setting"]["pipeline_override"])
+
+    def test_mxu_task_doc_becomes_standard_task_description(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "assets").mkdir()
+            (root / "docs").mkdir()
+            (root / "docs/guide.md").write_text("# 使用说明\n正文", encoding="utf-8")
+            source = self.fixture()
+            source["task"][0].update(description="任务简介", doc="docs/guide.md")
+            converted = android.adapt_interface(source, root / "assets")
+            self.assertEqual(converted["task"][0]["description"], "任务简介\n\n# 使用说明\n正文")
+            self.assertNotIn("doc", converted["task"][0])
+
+    def test_project_extensions_are_all_converted(self):
+        source = android.load_interface(ROOT / "assets")
+        converted = android.adapt_interface(source, ROOT / "assets")
+        report = android.compatibility_report(source, converted)
+        self.assertEqual(len(report["file_lists"]), 6)
+        self.assertEqual(len(report["file_inputs_as_text"]), 1)
+        self.assertEqual(len(report["task_docs_in_description"]), 1)
+        for name, option in converted["option"].items():
+            self.assertIn(option.get("type", "select"), android.ANDROID_OPTION_TYPES)
+            if source["option"][name].get("type") != "scan_select":
+                continue
+            for case in option["cases"]:
+                self.assertTrue((ROOT / "assets" / case["icon"]).is_file())
+                self.assertEqual(case["pipeline_override"]["助战action"]["attach"][name], case["name"])
+
+    def test_unsupported_option_type_fails_instead_of_disappearing(self):
+        source = self.fixture()
+        source["option"]["native_setting"] = {"type": "desktop_extension"}
+        with self.assertRaisesRegex(ValueError, "安卓外壳不支持"):
+            android.adapt_interface(source, ROOT / "assets")
 
     def test_cyclic_import_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

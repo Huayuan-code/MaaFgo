@@ -44,6 +44,8 @@ python tools/build_android.py --abi x86_64 --skip-runtime
 
 `prepare_android.py` 从根目录 `assets/` 展开 PI imports、保留源版本号、剔除 BBC 选项与预设步骤，并将 MXU 专有 `scan_select` 转为标准 PI 图片文件选择。桌面资源和既有打包目录不被修改。
 
+MXU 扩展字段的逐项兼容方式、文件按钮退回文本输入的限制，以及安卓真实解析器检查，见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+
 Python 使用 [MaaAgentCoreAndroid](https://github.com/Aliothmoon/MaaAgentCoreAndroid) 的预构建内核。OpenCV 使用官方 4.12.0 源码和 Chaquopy CPython 3.13 目标头文件，由 NDK 编译 `core/imgproc/imgcodecs` 与 Python 绑定。构建脚本仅在下载缓存中启用 Android Python 绑定，并修复上游链接参数替换对 NDK r29 的 `--no-undefined-version` 误处理，显式指定目标 Python 和 NumPy 头文件。模块静态链接 OpenCV，只共享 NDK C++ 运行库，并随包保留第三方许可。
 
 ONNX 推理复用 MaaFramework APK 已附带的 `libonnxruntime.so`，通过稳定的 C API v17 调用；不需要 Android onnxruntime Python wheel。桌面仍使用原来的官方 Python wheel。`psutil` 和 `highspy` 不进入手机运行时；当前任务入口不使用每日任务整数规划求解器。

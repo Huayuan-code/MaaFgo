@@ -9,6 +9,7 @@ on:
       - "assets/**"
       - "tools/*android*.py"
       - "tests/test_android*.py"
+      - "tests/android/**"
       - ".github/workflows/android.yml"
   push:
     branches: ["codex/android-app"]
@@ -17,6 +18,7 @@ on:
       - "agent/**"
       - "assets/**"
       - "tools/*android*.py"
+      - "tests/android/**"
       - ".github/workflows/android.yml"
 
 permissions:
@@ -72,6 +74,8 @@ jobs:
         env:
           BUILD_ABI: ${{ matrix.abi }}
         run: python tools/build_android.py --abi "$BUILD_ABI"
+      - name: Check PI with Android parser and run-plan builder
+        run: python tools/check_android_interface.py
       - uses: actions/upload-artifact@v7
         with:
           name: MaaFGO-android-${{ matrix.abi }}-debug

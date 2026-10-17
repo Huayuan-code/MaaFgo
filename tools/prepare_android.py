@@ -10,6 +10,8 @@ import shutil
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "Android" / "assets"
+ANDROID_OPTION_TYPES = {"select", "switch", "checkbox", "input"}
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 REMOVED_TASKS = {"启动bbc", "关闭bbc", "BBC 配置转 Chaldea 本地队伍"}
 NATIVE_NEXT = [
     "[JumpBack]执行回主界面", "[JumpBack]执行队伍选择", "[JumpBack]执行章节导航",
@@ -99,6 +101,66 @@ def option_refs(value):
             yield from option_refs(child)
 
 
+def adapt_scan_select(name: str, option: dict, assets: Path):
+    folder = (assets / option.pop("scan_dir")).resolve()
+    if not folder.is_relative_to(assets.resolve()):
+        raise ValueError(f"scan_dir 越出资源目录: {folder}")
+    pattern = option.pop("scan_filter", "*.png")
+    files = sorted((p for p in folder.glob(pattern) if p.is_file()),
+                   key=lambda p: (p.name != "0_空.png", p.name))
+    if not files:
+        raise ValueError(f"选项 {name} 没有可打包的文件: {folder}")
+    override = option.pop("pipeline_override", {})
+
+    def assign(value, filename):
+        if isinstance(value, dict):
+            copied = {key: assign(child, filename) for key, child in value.items()}
+            # MXU 按 attach 键名赋值，即使原值不是 {option_name} 也会覆盖。
+            if isinstance(copied.get("attach"), dict) and name in copied["attach"]:
+                copied["attach"][name] = filename
+            return copied
+        if isinstance(value, list):
+            return [assign(child, filename) for child in value]
+        if isinstance(value, str):
+            return value.replace("{" + name + "}", filename)
+        return value
+
+    cases = []
+    for path in files:
+        if not path.resolve().is_relative_to(assets.resolve()):
+            raise ValueError(f"扫描文件越出资源目录: {path}")
+        case = {"name": path.name, "label": "不限" if path.name == "0_空.png" else path.stem,
+                "pipeline_override": assign(override, path.name)}
+        if path.suffix.lower() in IMAGE_SUFFIXES:
+            case["icon"] = path.relative_to(assets.resolve()).as_posix()
+        cases.append(case)
+    default = option.pop("default_case", None) or option.pop("default", None) or files[0].name
+    if default not in {case["name"] for case in cases}:
+        raise ValueError(f"选项 {name} 的默认文件不存在: {default}")
+    option.pop("default", None)
+    option.update(type="select", cases=cases, default_case=default)
+    option["description"] = "从当前版本内置的文件列表中选择。"
+    if any(path.name == "0_空.png" for path in files):
+        option["description"] += "「不限」表示不校验此格礼装；满破和非满破分别选择。"
+
+
+def compatibility_report(source: dict, converted: dict) -> dict:
+    """审计实际保留的选项，便于发现后续新增的 MXU 扩展。"""
+    options = converted["option"]
+    return {
+        "option_types": sorted({option.get("type", "select") for option in options.values()}),
+        "file_lists": [{"option": name, "type": option["type"], "files": len(option["cases"]),
+                        "default_case": option["default_case"]}
+                       for name, option in options.items() if source["option"][name].get("type") == "scan_select"],
+        "file_inputs_as_text": [{"option": name, "input": field["name"]}
+                                for name in options for field in source["option"][name].get("inputs", [])
+                                if field.get("input_type") == "file"],
+        "task_docs_in_description": [{"task": task["name"], "doc": task["doc"]}
+                                     for task in source["task"] if task.get("doc")
+                                     and any(t["name"] == task["name"] for t in converted["task"])],
+    }
+
+
 def adapt_interface(data: dict, assets: Path) -> dict:
     data = copy.deepcopy(data)
     data["description"] = "FGO 安卓自动化助手；使用 Shizuku 或 Root，后台画面固定为 1280×720。"
@@ -114,6 +176,12 @@ def adapt_interface(data: dict, assets: Path) -> dict:
         elif "description" in task:
             for text in ("BBC 战斗或原生自动战斗", "BBC战斗或原生自动战斗", "BBC 或原生自动战斗"):
                 task["description"] = task["description"].replace(text, "原生自动战斗")
+        # 独立 doc 按钮也是 MXU 扩展；标准安卓任务说明可直接显示 Markdown。
+        if task.get("doc"):
+            doc = (assets.parent / task.pop("doc")).resolve()
+            if not doc.is_relative_to(assets.parent.resolve()):
+                raise ValueError(f"任务说明越出工程目录: {doc}")
+            task["description"] = task.get("description", "") + "\n\n" + doc.read_text(encoding="utf-8-sig")
     for preset in data.get("preset", []):
         preset["task"] = [t for t in preset["task"] if t["name"] not in REMOVED_TASKS]
 
@@ -140,38 +208,27 @@ def adapt_interface(data: dict, assets: Path) -> dict:
 
     # MXU 分支独有 scan_select：把已打包图片枚举为标准 PI select。
     for name, option in data["option"].items():
-        if option.get("type") != "scan_select":
-            continue
-        folder = (assets / option.pop("scan_dir")).resolve()
-        if not folder.is_relative_to(assets.resolve()):
-            raise ValueError(f"scan_dir 越出资源目录: {folder}")
-        pattern = option.pop("scan_filter", "*.png")
-        files = sorted(folder.glob(pattern), key=lambda p: (not p.name.startswith("0_"), p.name))
-        if not files:
-            raise ValueError(f"选项 {name} 没有可打包的图片: {folder}")
-        override = option.pop("pipeline_override", {})
-        cases = []
-        for path in files:
-            def replace(value):
-                if isinstance(value, str):
-                    return value.replace("{" + name + "}", path.name)
-                if isinstance(value, dict):
-                    return {key: replace(child) for key, child in value.items()}
-                if isinstance(value, list):
-                    return [replace(child) for child in value]
-                return value
-            cases.append({"name": path.name, "label": path.stem, "pipeline_override": replace(override)})
-        option.update(type="select", cases=cases, default=files[0].name)
+        if option.get("type") == "scan_select":
+            adapt_scan_select(name, option, assets)
+        if option.get("type", "select") not in ANDROID_OPTION_TYPES:
+            raise ValueError(f"安卓外壳不支持选项 {name} 的类型: {option['type']}")
+        for field in option.get("inputs", []):
+            if field.get("input_type") == "file":
+                field.pop("input_type")
+                field.setdefault("pipeline_type", "string")
+                field["description"] = "可粘贴分享链接、队伍/关卡 ID，或填写手机上可读取的 JSON 路径、已缓存的队伍文件名。"
+                option["description"] = "直接输入或粘贴导入来源；本地文件使用手机路径，缓存文件可只填文件名。"
     # MXU 兼容字段 default 不被 MaaFwApp 的 PI 解析器读取。
     for option in data["option"].values():
-        if option.get("type", "select") in ("select", "switch", "checkbox", "multiselect") and "default" in option:
+        if option.get("type", "select") in ("select", "switch", "checkbox") and "default" in option:
             option.setdefault("default_case", option.pop("default"))
     return data
 
 
 def prepare(root: Path = ROOT, output: Path = OUTPUT) -> dict:
     assets = root / "assets"
-    interface = adapt_interface(load_interface(assets), assets)
+    interface_source = load_interface(assets)
+    interface = adapt_interface(interface_source, assets)
     adapt_wait_freezes(interface)
     output = output.resolve()
     # 此目录只放生成文件；不接受任意用户目录，避免清理误删其他工程文件。
@@ -186,6 +243,7 @@ def prepare(root: Path = ROOT, output: Path = OUTPUT) -> dict:
     for name, source in (("Announcement.md", root / "Android/Announcement.md"), ("LICENSE", root / "LICENSE")):
         shutil.copy2(source, output / name)
     write_json(output / "interface.json", interface)
+    write_json(output.parent / "out/interface-compatibility.json", compatibility_report(interface_source, interface))
 
     # 即便某入口未带 battle_mode 选项，也不能落回桌面默认的 BBC 调度。
     daily = output / "resource/base/pipeline/日常战斗.json"
