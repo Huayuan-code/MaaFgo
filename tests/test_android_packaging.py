@@ -13,6 +13,19 @@ spec.loader.exec_module(android)
 
 
 class AndroidInterfaceTests(unittest.TestCase):
+    def test_direct_hit_wait_has_an_explicit_area(self):
+        nodes = {
+            "navigation": {"post_wait_freezes": 1000},
+            "explicit": {"pre_wait_freezes": {"time": 500, "target": [10, 20, 30, 40]}},
+            "matched": {"recognition": {"type": "TemplateMatch"}, "post_wait_freezes": 800},
+            "disabled": {"post_wait_freezes": 0},
+        }
+        android.adapt_wait_freezes(nodes)
+        self.assertEqual(nodes["navigation"]["post_wait_freezes"], {"time": 1000, "target": [0, 0, 1280, 720]})
+        self.assertEqual(nodes["explicit"]["pre_wait_freezes"]["target"], [10, 20, 30, 40])
+        self.assertEqual(nodes["matched"]["post_wait_freezes"], 800)
+        self.assertEqual(nodes["disabled"]["post_wait_freezes"], 0)
+
     def fixture(self):
         return {
             "version": "v9.8.7", "mirrorchyan_rid": "MaaFgo", "mirrorchyan_multiplatform": True,

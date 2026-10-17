@@ -26,6 +26,25 @@ def write_json(path: Path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def adapt_wait_freezes(value):
+    """DirectHit 没有识别矩形；新版框架需显式指定等待区域。"""
+    if isinstance(value, dict):
+        recognition = value.get("recognition", "DirectHit")
+        kind = recognition.get("type", "DirectHit") if isinstance(recognition, dict) else recognition
+        if kind == "DirectHit":
+            for key in ("pre_wait_freezes", "post_wait_freezes", "repeat_wait_freezes"):
+                wait = value.get(key)
+                if isinstance(wait, (int, float)) and wait > 0:
+                    value[key] = {"time": wait, "target": [0, 0, 1280, 720]}
+                elif isinstance(wait, dict) and wait.get("target", True) is True:
+                    wait["target"] = [0, 0, 1280, 720]
+        for child in value.values():
+            adapt_wait_freezes(child)
+    elif isinstance(value, list):
+        for child in value:
+            adapt_wait_freezes(child)
+
+
 def copy_agent(source: Path, target: Path):
     def ignore(folder, names):
         patterns = ["__pycache__", "*.pyc"]
@@ -149,6 +168,7 @@ def adapt_interface(data: dict, assets: Path) -> dict:
 def prepare(root: Path = ROOT, output: Path = OUTPUT) -> dict:
     assets = root / "assets"
     interface = adapt_interface(load_interface(assets), assets)
+    adapt_wait_freezes(interface)
     output = output.resolve()
     # 此目录只放生成文件；不接受任意用户目录，避免清理误删其他工程文件。
     if output != (root / "Android" / "assets").resolve():
@@ -178,6 +198,13 @@ def prepare(root: Path = ROOT, output: Path = OUTPUT) -> dict:
         write_json(close, pipeline)
     for name in ("bbc战斗.json", "BBC配置转Chaldea本地队伍.json", "启动bbc.json", "更新bbc配置文件.json"):
         (output / "resource/base/pipeline" / name).unlink(missing_ok=True)
+
+    for path in (output / "resource").glob("*/pipeline/**/*.json"):
+        pipeline = read_json(path)
+        original = copy.deepcopy(pipeline)
+        adapt_wait_freezes(pipeline)
+        if pipeline != original:
+            write_json(path, pipeline)
 
     # OCR 模型既支持仓库现有文件，也支持干净 checkout 的 MaaCommonAssets。
     ocr = output / "resource/model/ocr"
