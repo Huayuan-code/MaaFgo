@@ -59,6 +59,7 @@
 | 项目 | 真实设备结果 |
 | --- | --- |
 | Shizuku 连接与后台冷启动 | 授权、资源、Python Agent、截屏和触摸成功；日服自动登录 1 分 27 秒。启动声明页识别后点击恢复焦点，无需人工触摸虚拟屏 |
+| Root 后台战斗 | `run_20261018_041917_2.jsonl`：登录后完整导航、关卡 YOLO 识别、首个助战、队伍识别、技能、出牌、宝具、结算；原生战斗成功 1/1，战斗任务用时 3 分 39 秒，`COMPLETED` |
 | 从者统计 | 417 个唯一 ID；47 屏、46 次下滑，确认滚动条到底，生成 `config/Inventory/player_servants.json` |
 | 礼装统计 | 默认全部四五星礼装，405 个唯一 ID；72 屏、71 次下滑，确认滚动条到底，生成 `config/Inventory/player_equips.json` |
 | 手机端读库 | APK 自带 Python 调用实际 `CompleteBondFormation._read_player_inventory`，两文件 schema、类别、唯一 ID、数量、扫描有效与到底标志全部通过，读取不改文件 |
@@ -74,3 +75,41 @@
 72098 属于 40 AP 加道具的冠位关卡，本轮未进入该关卡。原始攻击指定“本地狂呆 Arts 面卡 → 助战狂呆宝具 → 本地狂呆宝具”；现有原生转换器保留宝具顺序，面卡由原生策略重新选择，不能保证复现原策略的 Arts 起手链、伤害和 NP 回收。数据链通过不等于该攻略完整实战通过，独立自动编队和羁绊补齐的完整游戏操作仍需另测。
 
 可复用 `tools/check_android_user_data.py` 在 APK Python 环境检查两类文件、实际读库函数、Chaldea 缓存和原生计划。默认禁止 HTTP 与缓存写入；首次在线下载须显式传 `--allow-download`，可用 `--section inventory` 或 `--section chaldea` 分项检查。本轮实际手机结果为 `phone-user-data-complete.json`，持久化结果为 `persistence.after-upgrade.json`、`persistence.after-reinstall.json`。
+
+### 后台战斗与原始文件复验
+
+Root 后台战斗使用 alpha.24 / code1204，冬木 X-A、原生模式、1 场、首个助战、不使用 Chaldea 队伍、不吃苹果。APK 实际加载 `agent/utils/quest_detect.onnx`，识别到 X-A 后进入战斗，日志同时包含 `Battle 1/1 成功`、`success_count=1/1` 和完成页，消耗 3 AP。截图与原始日志为本机 `Android/out/root-background-native-battle.png`、`Android/.cache/acceptance-20261018/run_20261018_041917_2.jsonl`。本轮未改变原有队伍配置。
+
+alpha.25 / code1205 的 `run_20261018_042350_1.jsonl` 冷启动登录用时 1 分 27 秒；`run_20261018_042634_1.jsonl` 登录用时 8 秒并测试“任务自动结束时关闭目标应用”，日志完成后 FGO 进程已退出。
+
+前述 `persistence.*.json` 使用了 Windows 文本换行转换后的哈希，三次结果一致，但不能当作手机原始字节哈希。收尾另用 `subprocess` 直接接收 `adb exec-out` 字节，覆盖安装并真实点击“重新解压资源”后，三个原始文件均逐字节一致：
+
+| 手机文件 | 原始 SHA-256 |
+| --- | --- |
+| `config/Inventory/player_servants.json` | `93b68e2a37d8e6c63fb9faec8d044d222ff8f897167c34be7fb18e4345c40785` |
+| `config/Inventory/player_equips.json` | `06d637db1bd03000770653dfc9b093111092c54150a3923071667c730968086a` |
+| `config/Battle/摩阿阿_72098_94146537.json` | `0a1be41f2b0e47c58162a32bbd7b230545d55a241da384a663afa6a043ab859c` |
+
+对应证据为 `phone-raw.before-final-upgrade.json`、`phone-raw.after-final-upgrade.json`、`phone-raw.after-final-reinstall.json`。`phone-user-data-final.json` 再次使用手机 Python 的真实数据消费者检查两库、Chaldea 缓存与原生计划，全部通过，HTTP 调用为 0。
+
+## 最终后台与屏保验收
+
+最终 APK 为 **2.0.9-alpha.27 / versionCode 1207**，产品代码基于 `471fa88`，资源来自当前工作区（源 interface 版本 `v1.2.28`），原有未提交改动仍保留。两种 ABI 均已构建，MuMu 已安装 x86_64 包；后续提交只整理测试及验收记录。每包 34 项静态检查、9,172 个运行文件的资源哈希核对通过，最终 APK SHA-256 见 `Android/out/apk-sha256.json`。
+
+| 场景 | 实测结果 |
+| --- | --- |
+| Root 后台冷启动 + 手动屏保 | `run_20261018_044109_1.jsonl`，1 分 27 秒，`COMPLETED`；屏保下声明页、标题页、主界面均正常识别，完成时自动退出屏保 |
+| 同一 Activity 重复显隐 | alpha.26 中连续显示 3 次、滑动解锁 2 次均成功；该版与最终版使用相同的 Compose 屏保代码。最终版另完成上行冷启动验证 |
+| Shizuku 自动屏保 + 冷启动 | `run_20261018_044441_1.jsonl`，1 分 26 秒，`COMPLETED`；`shizuku_service` 为 UID 2000，自动显示主屏屏保，结束后退出屏保并关闭 FGO，`pidof` 确认游戏已退出 |
+| MaaFGO 退到模拟器桌面 | `run_20261018_044751_1.jsonl`，1 分 25 秒，`COMPLETED`；启动后在主屏按 Home，MaaFGO Activity 暂停、桌面可见，虚拟屏继续完成登录并自动关闭 FGO |
+| 最终包数据保留 | alpha.27 再次真实重解资源，三个手机原始文件仍与上表 SHA 完全相同；`phone-user-data-alpha27-final.json` 全项通过，网络调用为 0 |
+
+屏保使用主 Activity 现有 Compose 树，保持黑底、时钟、滑条和最新日志，不再新建窗口。显示时调低当前窗口亮度并保持屏幕唤醒，隐藏后恢复。隐藏预览只断开 monitorSurface，native 采集仍继续；仅可见主屏 Activity 能显示屏保，返回桌面时不覆盖桌面。这里验证的是应用内黑色屏保，不是按电源键后的系统真息屏。
+
+重复开关时发现旧日服标题页点击可能落在“Touch Screen”上方，漏点后原流程也不重试。最终版将点击区域移至 `[610,604,60,24]`，仅在标题页 OCR 命中时最多点击三次，未知画面不盲点；耗尽后显式失败，避免继承全局 Back 恢复而伪成功。5 个真实 SDK 组件用例验证漏点重试、弹窗返回、耗尽、未知屏幕及失败回退；v5.14.3 与 v5.10.4 均通过。最终两种后端的冷启动都已实测通过。
+
+最终回归：Python 单元三组分别运行 260、16、4 项，仅首组跳过 1 项，其余通过；目标 SDK v5.14.3 的组件 52 项全部通过。编队组件的旧替身已修正为真实请求下一帧，持续截图失败仍必须得到 `FAILED`。真实 Kotlin 选项解析/计划 6 项、资源安装器 35 项通过（Windows 下 2 项符号链接权限测试跳过）、屏保状态/亮度 8 项、运行收尾 32 项、设置更新检查 20 项通过。日志在本机 `Android/.cache/acceptance-20261018/` 与 `Android/.cache/screensaver-compose-tree-tests.log`。
+
+收尾恢复原任务配置、Root 前台模式及原分辨率（1080×1920 物理屏，横屏 1920×1080，DPI 240），原任务均未启用；保留本轮生成的两库和分享缓存。未修改桌面打包目录。ARM64 真机、连续多场、完整 Chaldea 自动编队/羁绊补齐与该攻略实战尚未验收，不能宣称所有主体功能已全部通过。
+
+在安卓任务中将“是否使用 Chaldea 队伍”设为“是”，在“Chaldea 队伍导入”直接粘贴 `https://link.chaldea.center/laplace/share?id=72098` 即可走手机端获取；独立“Chaldea 自动编队”也使用同一输入框。本地文件须填写手机可读路径。此链接的 Arts 起手限制及高成本关卡边界见前文，导入成功不代表完整攻略可原样复现。

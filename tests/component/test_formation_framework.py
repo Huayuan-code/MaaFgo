@@ -103,13 +103,20 @@ class FrameworkTests(unittest.TestCase):
             resource = Resource()
             resource.use_cpu()
             self.assertTrue(resource.post_bundle(temp).wait().succeeded)
-            observed, received_images = [], []
+            observed, received_images, later_screenshots = [], [], []
 
             class Observe(CustomAction):
                 def run(self, context, argv):
                     root, token = context_session(context)
                     observed.append(sessions.read(root, token)[0])
-                    return True
+                    # 生产采集失败会清空快照后继续通用策略，后续进本/战斗
+                    # 仍需新的截图。不能用始终成功的替身替代这个观测边界。
+                    controller = context.tasker.controller
+                    captured = controller.post_screencap().wait().succeeded
+                    image = controller.cached_image if captured else None
+                    visible = captured and image is not None and image.size > 0
+                    later_screenshots.append(bool(visible))
+                    return bool(visible)
 
             resource.register_custom_action("begin_native_formation_session", a.BeginNativeFormationSession())
             resource.register_custom_action("capture_initial_formation", f.CaptureInitialFormation())
@@ -144,15 +151,20 @@ class FrameworkTests(unittest.TestCase):
             self.assertEqual(controller.inputs, 0)
             if fail_capture:
                 self.assertEqual(received_images, [])
+                # 旧 SDK 会在截图失败时直接阻止后续动作；新 SDK 允许
+                # DirectHit 动作继续，因此替身必须自行验证下一帧并失败。
+                self.assertLessEqual(len(observed), 1)
+                self.assertEqual(later_screenshots, [False] * len(observed))
             else:
                 self.assertEqual(len(received_images), 1)
-            self.assertEqual(len(observed), int(not fail_capture))
+                self.assertEqual(len(observed), 1)
+                self.assertEqual(later_screenshots, [True])
             if page_ok and not fail_capture:
                 snapshot = observed[0]
                 self.assertEqual(snapshot.task_id, job.job_id)
                 self.assertTrue(all(slot.servant_id == "1000" for slot in snapshot.slots))
                 self.assertFalse(sessions.valid(snapshot.task_id, snapshot.session_id))
-            elif not fail_capture:
+            elif observed:
                 self.assertIsNone(observed[0])
             # Context 覆盖不得污染共享 Resource/BBC 的默认路径。
             gate = resource.get_node_data("进本-点击队伍确认")["next"]
