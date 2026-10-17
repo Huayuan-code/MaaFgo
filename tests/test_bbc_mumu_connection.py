@@ -1,8 +1,9 @@
 """MuMu SDK返回同一句柄时，重复连接/延迟析构不能使新连接失效。"""
 import os
+import posixpath
 from types import SimpleNamespace as NS
 import unittest
-from unittest.mock import Mock, mock_open
+from unittest.mock import Mock, mock_open, patch
 
 from test_bbc_startup import ROOT, load_classes
 
@@ -87,6 +88,28 @@ class MumuConnectionTests(unittest.TestCase):
             self.assertEqual(result['resolution'], [1920, 1080])
             self.page.device.snapshotDevice.snapshot()
         self.assertEqual(len(self.created), 1)
+
+    def test_windows_path_reuse_under_posix_path_rules(self):
+        old = self.install_existing()
+        # 即使在Windows本地运行，也覆盖Linux CI的路径分隔符和大小写规则。
+        with patch.object(os, 'path', posixpath):
+            for path in ('C:/MuMu', 'c:/MUMU/', r'C:\MuMu\.'):
+                with self.subTest(path=path):
+                    result = self.api.connect_mumu(path, 0, old.pkg, 0)
+                    self.assertEqual(result['connection_action'], 'reused')
+                    self.assertIs(self.page.device.snapshotDevice, old)
+        self.assertEqual(len(self.created), 1)
+        self.assertEqual(self.disconnected, [])
+
+    def test_stale_handle_repair_under_posix_path_rules(self):
+        old = self.install_existing()
+        self.active.clear()
+        with patch.object(os, 'path', posixpath):
+            result = self.connect()
+        self.assertEqual(result['connection_action'], 'reconnected')
+        self.assertIs(self.page.device.snapshotDevice, old)
+        self.assertEqual(len(self.created), 1)
+        old.snapshot()
 
     def test_stale_handle_is_repaired_without_replacing_object(self):
         old = self.install_existing()

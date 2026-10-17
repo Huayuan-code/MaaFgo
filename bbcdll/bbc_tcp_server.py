@@ -147,7 +147,7 @@ class ConnectionAPI:
         page = get_bb_page()
         if page is None:
             return {'success': False, 'error': 'BBC window not ready'}
-        import os, json
+        import os, json, ntpath
         if not path:
             if os.path.exists("MuMuInstallPath.txt"):
                 with open("MuMuInstallPath.txt", "r", encoding="utf8") as f:
@@ -171,7 +171,8 @@ class ConnectionAPI:
                         old_devices.append(old)
             device = next((old for old in old_devices
                            if not isinstance(old.nemu, _RetiredMumuApi)
-                           and os.path.normcase(os.path.normpath(old.mumuPath)) == os.path.normcase(os.path.normpath(path))
+                           # MuMu安装目录始终是Windows路径，不依赖执行测试的宿主系统。
+                           and ntpath.normcase(ntpath.normpath(old.mumuPath)) == ntpath.normcase(ntpath.normpath(path))
                            and old.emulatorIndex == index and old.appIndex == app_index and old.pkg == pkg_name), None)
             connection_action = 'new'
             if device is not None:
