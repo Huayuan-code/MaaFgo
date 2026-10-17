@@ -77,7 +77,10 @@ def _find_cache_file(quest_id, team_id) -> Optional[str]:
             # 新命名: 从者首字_{team_id}_{quest_id}, 从者部分任意
             patterns.append(("regex", rf"^.+_{team_id}_\d+$"))
         if quest_id is not None:
-            patterns.append(("prefix", f"chaldea_quest_{quest_id}"))
+            quest_key = re.escape(str(quest_id))
+            patterns.append(("regex", rf"^chaldea_quest_{quest_key}(?:_.+)?$"))
+            # 新缓存名也用于关卡搜索；队伍编号部分可为数字或 top 等旧标记。
+            patterns.append(("regex", rf"^.+_[^_]+_{quest_key}$"))
         if not patterns:
             return None
 
@@ -89,7 +92,15 @@ def _find_cache_file(quest_id, team_id) -> Optional[str]:
                 if (mode == "exact" and stem == pat) or (
                     mode == "prefix" and stem.startswith(pat)
                 ) or (mode == "regex" and re.match(pat, stem)):
-                    return os.path.join(CACHE_DIR, fname)
+                    path = os.path.join(CACHE_DIR, fname)
+                    if quest_id is not None:
+                        # 文件名只用于筛选候选。缓存被误命名/覆盖时不能加载
+                        # 其他关卡的队伍，也不能让损坏的首个文件挡住有效缓存。
+                        data = _load_cache_file(path)
+                        quest = data.get("quest") if isinstance(data, dict) else None
+                        if not isinstance(quest, dict) or str(quest.get("id")) != str(quest_id):
+                            continue
+                    return path
     except Exception as e:
         logger.warning(f"[Chaldea] 扫描缓存目录失败: {e}")
     return None
@@ -225,7 +236,7 @@ def fetch_share_data(source: str):
             team_id = "cached"
         else:
             mfaalog.info(f"[Chaldea] 按 quest_id={quest_id} 搜索队伍...")
-            teams = fetch_teams_by_quest(quest_id, 3, 10)
+            teams = fetch_teams_by_quest(quest_id, phase=None, limit=10)
             mfaalog.info(f"[Chaldea] 获取到 {len(teams)} 个队伍")
             best = select_best_team(teams)
             if best and "content" in best:

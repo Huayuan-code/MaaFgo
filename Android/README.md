@@ -19,6 +19,8 @@ python tools/build_android.py --abi x86_64
 
 SDK Manager 使用 command-line tools 19.0（13114758）；CI 固定同一版本。依赖版本记录在 `versions.json`：MaaFramework 与 Python 内核中的 maafw 版本必须一致。
 
+常规构建自动应用 `patches/` 中的外壳补丁，重复运行会跳过已应用的补丁。直接运行子模块 Gradle 前须先执行 `python tools/apply_android_patches.py`；补丁冲突会明确报错，具体行为和测试见 [patches/README.md](patches/README.md)。子模块保留公开的上游提交，定制改动由可重放补丁记录。
+
 产物：`Android/out/MaaFGO-android-<abi>-debug.apk`。默认 debug 包已经由 Android 调试证书签名，可直接安装。不同电脑的调试证书不同，跨机器升级可能需要先卸载，卸载会清除应用数据。
 
 后续只改任务、图片或 Python 代码时：
@@ -66,7 +68,7 @@ python tools/run_tests.py --suite all
 
 MuMu 12 使用 Root、前台模式和 1280×720。前台任务从悬浮球面板开始：在首页点“打开操作面板”，点屏幕边缘的悬浮球，再点“开始任务”。应用内任务页的开始按钮仅用于后台模式。后台虚拟屏在当前 MuMu 的 FGO 测试中出现空画面，不能视为已经通过后台运行验收。
 
-开发期间在同一个 Git 提交上反复构建，APK 的 versionCode 相同。覆盖安装后需在“设置 → 项目资源 → 重新解压资源”手动刷新 PI；仅更新 APK 不会刷新已解压的旧资源。运行配置与应用日志会保留，资源目录内的 Agent 记录会重置。
+开发期间在同一个 Git 提交上反复构建，APK 的 versionCode 相同。覆盖安装后需在“设置 → 项目资源 → 重新解压资源”手动刷新 PI；仅更新 APK 不会刷新已解压的旧资源。运行配置、应用日志及 `pi/config/` 内的库存、队伍缓存和羁绊进度会保留，PI 内其他临时记录会重置。
 
 ## 与桌面版的差异
 

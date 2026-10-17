@@ -8,6 +8,7 @@ import re
 import base64
 import gzip
 import urllib.request
+import urllib.parse
 import logging
 from typing import Optional, List, Tuple
 
@@ -50,7 +51,7 @@ def _normalize_team(team: dict) -> dict:
     return normalized
 
 
-def fetch_teams_by_quest(quest_id: int, phase: int = 3, limit: int = 5) -> List[dict]:
+def fetch_teams_by_quest(quest_id: int, phase: Optional[int] = None, limit: int = 5) -> List[dict]:
     """
     从 Chaldea API 按关卡搜索队伍
 
@@ -61,10 +62,12 @@ def fetch_teams_by_quest(quest_id: int, phase: int = 3, limit: int = 5) -> List[
         logger.error(f"[Chaldea] 无效的 quest_id: {quest_id}")
         return []
 
-    url = (
-        f"{CHALDEA_API}/teams/?questId={quest_id}&phase={phase}"
-        f"&sort=upvotes&limit={limit}&offset=0"
-    )
+    # 活动/冠位关卡通常是 phase=1，Free 本通常是 phase=3。
+    # 未指定时由接口按整个关卡搜索，避免把有效队伍过滤掉。
+    query = {"questId": quest_id, "sort": "upvotes", "limit": limit, "offset": 0}
+    if phase is not None:
+        query["phase"] = phase
+    url = f"{CHALDEA_API}/teams/?{urllib.parse.urlencode(query)}"
     logger.info(f"[Chaldea] 请求关卡队伍排行榜: {url}")
 
     try:
@@ -161,8 +164,8 @@ def parse_import_source(source: str) -> Tuple[Optional[int], Optional[int], Opti
     支持格式:
     - 纯数字 (<=6位): team_id
     - 纯数字 (>6位): quest_id
-    - URL 含 data= 参数: 离线压缩数据
-    - URL 含 id= 参数: team_id
+    - Chaldea URL / 查询串的 data 参数，或裸压缩串: 离线数据
+    - Chaldea URL / 查询串的 id 参数: team_id
 
     返回:
         (quest_id, team_id, direct_data)
@@ -174,8 +177,10 @@ def parse_import_source(source: str) -> Tuple[Optional[int], Optional[int], Opti
     source = source.strip()
     mfaalog.info(f"[Chaldea] parse_import_source: 原始输入={source[:120]}")
 
-    if source.isdigit():
+    if re.fullmatch(r"[0-9]+", source):
         num = int(source)
+        if num <= 0:
+            return None, None, None
         if len(source) <= 6:
             mfaalog.info(f"[Chaldea] 解析为 team_id={num}")
             return None, num, None  # team_id
@@ -183,17 +188,48 @@ def parse_import_source(source: str) -> Tuple[Optional[int], Optional[int], Opti
             mfaalog.info(f"[Chaldea] 解析为 quest_id={num}")
             return num, None, None  # quest_id
 
-    match_data = re.search(r'data=([A-Za-z0-9\-_]+)', source)
-    if match_data:
-        data_val = match_data.group(1)
-        mfaalog.info(f"[Chaldea] 解析为 data= 离线数据, 长度={len(data_val)}")
-        return None, None, data_val
+    def compressed_data(value):
+        return ((value.startswith("G") or value.startswith("H4s"))
+                and re.fullmatch(r"[A-Za-z0-9_+/\-]+={0,2}", value))
 
-    match_id = re.search(r'id=(\d+)', source)
-    if match_id:
-        id_val = int(match_id.group(1))
-        mfaalog.info(f"[Chaldea] 解析URL中 id={id_val}")
-        return None, id_val, None
+    # 直接粘贴压缩串时同样允许 URL 百分号编码。
+    direct = urllib.parse.unquote(source)
+    if compressed_data(direct):
+        return None, None, direct
+
+    try:
+        parsed = urllib.parse.urlsplit(source)
+        if parsed.scheme or parsed.netloc:
+            host = (parsed.hostname or "").lower()
+            if (parsed.scheme.lower() not in {"http", "https"}
+                    or not (host == "chaldea.center" or host.endswith(".chaldea.center"))):
+                return None, None, None
+            query = parsed.query
+        elif source.startswith("?"):
+            query = parsed.query
+        elif source.startswith(("data=", "id=")):
+            query = source
+        else:
+            return None, None, None
+
+        # 旧版 base64 分享数据的 + 是内容，不是表单的空格；仍由标准
+        # URL 解析器处理分隔符、百分号转义与完整参数名。
+        params = urllib.parse.parse_qs(query.replace("+", "%2B"), keep_blank_values=True)
+        if "data" in params:
+            values = params["data"]
+            if len(values) == 1 and compressed_data(values[0]):
+                data_val = values[0]
+                mfaalog.info(f"[Chaldea] 解析为 data= 离线数据, 长度={len(data_val)}")
+                return None, None, data_val
+            # 链接包含 data 时优先使用完整数据，错误数据不能退回另一个 ID。
+            return None, None, None
+        ids = params.get("id", [])
+        if len(ids) == 1 and re.fullmatch(r"[0-9]+", ids[0]) and int(ids[0]) > 0:
+            id_val = int(ids[0])
+            mfaalog.info(f"[Chaldea] 解析URL中 id={id_val}")
+            return None, id_val, None
+    except ValueError:
+        pass
 
     mfaalog.warning(f"[Chaldea] 无法解析输入来源: {source[:120]}")
     return None, None, None
