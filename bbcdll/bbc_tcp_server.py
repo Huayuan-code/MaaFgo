@@ -122,7 +122,25 @@ def ensure_imports():
 
 # ==================== API 实现类 ====================
 
+class _RetiredMumuApi:
+    """旧设备已释放；防止BBC的__del__再次断开被SDK复用的句柄。"""
+
+    def nemu_disconnect(self, handle):
+        return None
+
+
 class ConnectionAPI:
+    @staticmethod
+    def _retire_mumu_device(device, keep_handle=None):
+        if not isinstance(device, Mumudevice):
+            return
+        api, handle = device.nemu, device.handle
+        # 即使其他地方仍持有旧设备，晚到的析构函数也不能影响新连接。
+        device.nemu = _RetiredMumuApi()
+        device.handle = 0
+        if handle and handle != keep_handle:
+            api.nemu_disconnect(handle)
+
     @staticmethod
     def connect_mumu(path=None, index=0, pkg=None, app_index=0):
         ensure_imports()
@@ -137,21 +155,58 @@ class ConnectionAPI:
         if not path:
             return {'success': False, 'error': 'MuMu path not specified'}
         try:
+            if page.device.running:
+                return {'success': False, 'error': 'BBC任务运行中，请先停止任务再连接MuMu'}
             path = Mumudevice.check_mumuInstallPath(path)
             with open("MuMuInstallPath.txt", "w", encoding="utf8") as f:
                 f.write(path)
             Mumudevice.mumuPath = path
             emulator_name = f"MuMu模拟器12-{index}" if index > 0 else "MuMu模拟器12"
             pkg_name = pkg if pkg else "com.bilibili.fatego"
-            device = Mumudevice(path, index, app_index, pkg_name, use_manager=True)
+            old_devices = []
+            for owner in (page, page.device):
+                for name in ('snapshotDevice', 'operateDevice'):
+                    old = getattr(owner, name, None)
+                    if isinstance(old, Mumudevice) and all(old is not item for item in old_devices):
+                        old_devices.append(old)
+            device = next((old for old in old_devices
+                           if not isinstance(old.nemu, _RetiredMumuApi)
+                           and os.path.normcase(os.path.normpath(old.mumuPath)) == os.path.normcase(os.path.normpath(path))
+                           and old.emulatorIndex == index and old.appIndex == app_index and old.pkg == pkg_name), None)
+            connection_action = 'new'
+            if device is not None:
+                try:
+                    device.snapshot()
+                    connection_action = 'reused'
+                except Exception:
+                    # 只修复SDK连接，不调用BBC.reconnect()，避免额外启动游戏。
+                    device.nemu.nemu_disconnect(device.handle)
+                    device.handle = device.nemu.nemu_connect(path, index)
+                    if device.handle <= 0:
+                        raise ConnectionError('MuMu高速接口重连失败，请检查实例是否仍在运行')
+                    device.get_ready()
+                    connection_action = 'reconnected'
+                for old in old_devices:
+                    if old is not device:
+                        ConnectionAPI._retire_mumu_device(old, keep_handle=device.handle)
+            else:
+                # SDK可能为同一实例返回同一handle；必须先释放旧设备，再创建新设备。
+                for old in old_devices:
+                    ConnectionAPI._retire_mumu_device(old)
+                device = Mumudevice(path, index, app_index, pkg_name, use_manager=True)
             serialno = {'name': emulator_name, 'pkg': pkg_name, 'appIndex': app_index}
             device.set_serialno(json.dumps(serialno, ensure_ascii=False))
-            device.snapshot()
+            image = device.snapshot()
+            if image is None or len(image.shape) < 2 or not image.shape[0] or not image.shape[1]:
+                raise RuntimeError('MuMu高速截图返回空图像')
             page.snapshotDevice = page.operateDevice = page.device.snapshotDevice = page.device.operateDevice = device
             _bb_window_global.pagebar.tags[page.idx].createText(True)
             _bb_window_global.updateConnectLst(page.idx)
-            _log('info', f'[Connection] MuMu connected: {emulator_name}')
-            return {'success': True}
+            details = {'success': True, 'connection_action': connection_action,
+                       'capture_verified': True, 'display_id': device.displayid,
+                       'resolution': [int(image.shape[1]), int(image.shape[0])]}
+            _log('info', f'[Connection] MuMu connected: {emulator_name}, {details}')
+            return details
         except Exception as e:
             _log('error', f'[Connection] MuMu connect failed: {e}')
             return {'success': False, 'error': str(e)}
@@ -342,6 +397,7 @@ class ConfigAPI:
             SS["snapshotDevice"] = page.SS.get("snapshotDevice", None)
             SS["operateDevice"] = page.SS.get("operateDevice", None)
             page.SS = SS
+            page._maa_battle_start = {}
             page.reset()
             _bb_window_global.saveJsons()
             _log('info', f'[Config] Loaded: {filename}')
@@ -466,15 +522,52 @@ class BattleControlAPI:
         if Battle is None:
             return {'success': False, 'error': 'Battle module not available'}
         try:
+            details = StatusAPI.get_ui_status()
+            if not details.get('success'):
+                return details
+            if details['device_running']:
+                if details['task_name'] != 'FGObattle':
+                    return dict(details, success=False, error='BBC设备正在执行其他任务', retryable=False)
+                return dict(details, success=True, start_method='already_running')
             for i in range(3):
                 if not page.servantGroup[i].exist:
-                    return {'success': False, 'error': f'Servant slot {i} is empty'}
-            btn_x = page.start.winfo_width() // 2
-            btn_y = page.start.winfo_height() // 2
-            page.start.event_generate("<Button-1>", x=btn_x, y=btn_y)
-            _log('info', '[Battle] Battle started')
-            return {'success': True}
+                    return dict(details, success=False, error='BBC第{}位出战从者为空'.format(i + 1), retryable=False)
+            if details['setting_on']:
+                return dict(details, success=False, error='BBC正在编辑操作序列，请先完成设置', retryable=False)
+            if details['long_effect_on']:
+                return dict(details, success=False, error='BBC界面动画尚未结束', retryable=True)
+            if details['start_status'] == 'scheduled' or details['start_dialogs']:
+                return dict(details, success=True, start_method='direct_start_script')
+
+            attempt = {'status': 'scheduled', 'error': '', 'cancelled': False}
+            page._maa_battle_start = attempt
+
+            def invoke_start():
+                # 不依赖窗口是否展开、控件是否映射；仍保留BBC原有的启动检查和确认窗口。
+                if attempt['cancelled'] or getattr(page, '_maa_battle_start', None) is not attempt:
+                    return
+                try:
+                    if CT.LongEffectOn or CT.SettingOn:
+                        raise RuntimeError('BBC界面正在动画或编辑操作序列，启动已取消')
+                    from types import SimpleNamespace
+                    center = int(50 * CT.Scale)
+                    page.start.startScript(SimpleNamespace(x=center, y=center))
+                    attempt['status'] = 'dispatched'
+                    _log('info', '[Battle] Start callback dispatched; waiting for device.running')
+                except Exception as e:
+                    attempt['status'] = 'failed'
+                    attempt['error'] = str(e)
+                    _log('error', '[Battle] Start callback failed: {}'.format(e))
+
+            # TCP在工作线程中；通过after在Tk主线程调用按钮处理函数。
+            page.after(0, invoke_start)
+            _log('info', '[Battle] Start scheduled via direct_start_script')
+            return dict(details, success=True, start_method='direct_start_script', start_status='scheduled')
         except Exception as e:
+            attempt = getattr(page, '_maa_battle_start', {})
+            if attempt.get('status') == 'scheduled':
+                attempt['status'] = 'failed'
+                attempt['error'] = str(e)
             _log('error', f'[Battle] Start failed: {e}')
             return {'success': False, 'error': str(e)}
 
@@ -484,6 +577,19 @@ class BattleControlAPI:
         if page is None:
             return {'success': False, 'error': 'BBC window not ready'}
         try:
+            attempt = getattr(page, '_maa_battle_start', {})
+            attempt['cancelled'] = True
+            attempt['status'] = 'cancelled'
+            def close_start_dialogs():
+                for button in (page.start, getattr(page.start, 'cache', None)):
+                    for name in ('tips4closesubWin', 'assistReportWin'):
+                        dialog = getattr(button, name, None)
+                        if dialog is not None:
+                            # destroy不触发“关闭后继续启动”的WM_DELETE_WINDOW回调。
+                            if dialog.winfo_exists():
+                                dialog.destroy()
+                            delattr(button, name)
+            page.after(0, close_start_dialogs)
             if page.device.running:
                 page.device.stop()
             _log('info', '[Battle] Battle stopped')
@@ -619,7 +725,8 @@ class StatusAPI:
         page = get_bb_page()
         if page is None:
             return {
-                'success': True,
+                'success': False,
+                'error': 'BBC window not ready',
                 'top_label': '',
                 'device_running': False,
                 'battle_running': False
@@ -634,16 +741,36 @@ class StatusAPI:
                     pass
             
             device_running = bool(getattr(page.device, 'running', False))
+            attempt = getattr(page, '_maa_battle_start', {})
+            dialogs = []
+            for button in (page.start, getattr(page.start, 'cache', None)):
+                for name, title in (('tips4closesubWin', '关闭游戏字幕提示'),
+                                    ('assistReportWin', '助战设置及刷本类型确认')):
+                    dialog = getattr(button, name, None)
+                    if dialog is not None and dialog.winfo_exists() and title not in dialogs:
+                        dialogs.append(title)
+            try:
+                window_state = page.winfo_toplevel().state()
+            except Exception:
+                window_state = 'unknown'
             
             return {
                 'success': True,
                 'top_label': top_label_text,
                 'device_running': device_running,
-                'battle_running': device_running  # BBC中device.running即表示战斗运行中
+                'battle_running': device_running and str(getattr(page.device, 'taskName', '')) == 'FGObattle',
+                'task_name': str(getattr(page.device, 'taskName', '')),
+                'window_state': window_state,
+                'servant_slots': [bool(page.servantGroup[i].exist) for i in range(3)],
+                'long_effect_on': bool(getattr(CT, 'LongEffectOn', False)),
+                'setting_on': bool(getattr(CT, 'SettingOn', False)),
+                'start_status': attempt.get('status', ''),
+                'start_error': attempt.get('error', ''),
+                'start_dialogs': dialogs,
             }
         except Exception as e:
             return {
-                'success': True,
+                'success': False,
                 'top_label': '',
                 'device_running': False,
                 'battle_running': False,
