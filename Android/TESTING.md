@@ -7,7 +7,7 @@
 - MuMu Player 12，Android 12 / API 32，x86_64，Root 授权。
 - 前台模式，主屏 1280×720、DPI 240，从悬浮球面板启动任务。
 - 日服包名 `com.aniplex.fategrandorder`，游戏版本 2.139.5。
-- 最终 APK：2.0.9-alpha.15 / versionCode 1195，代码提交 `b6abc5c`。
+- 首轮收尾 APK：2.0.9-alpha.15 / versionCode 1195，代码提交 `b6abc5c`；后续兼容版本见文末。
 - 本地输出 `Android/out/MaaFGO-android-x86_64-debug.apk` 与 `MaaFGO-android-arm64-v8a-debug.apk`；SHA-256 见同目录 `apk-sha256.json`。
 
 ## 已验证结果
@@ -41,3 +41,13 @@
 - 尚未配置安卓正式签名与 Release / Mirror酱更新源。安装包为本地调试版。
 
 同一 versionCode 调试覆盖安装不会自动刷新已解压 PI。请用“设置 → 项目资源 → 重新解压资源”，必要时重启服务；详见 README。发布新版本时须递增 APK versionCode，保留资源 interface.json 的既有版本同步约定。
+
+## MXU 兼容性补充验收
+
+- 安装版本：2.0.9-alpha.18 / versionCode 1198，提交 `44e378f`；x86_64 与 ARM64 APK 均已重新构建，模拟器安装并启动成功。
+- Python 打包专项 14 项通过；安卓真实 ProjectLoader / RunPlanBuilder 的 Kotlin 检查 2 项通过，其中覆盖普通/冠位 1 号/冠位 2 号的满破与非满破共 6 条礼装参数路径。
+- 新生成的 Pipeline 与 interface schema 校验通过。6 个动态扫描选项均转为标准 select，每个含 47 个文件选项、图标与默认“不限”。
+- MuMu 实际打开普通助战的满破礼装列表，选择“迦勒底午茶时光”，确认配置中持久化的是 `迦勒底午茶时光.png`。截图在本机 `Android/out/mumu-compat-ce-list.png`。
+- Chaldea 文件按钮按文本输入回退，链接/ID/手机路径的参数替换和编队说明加载通过 Kotlin 检查；本轮未运行游戏编队。
+- UI 检查没有启动战斗、没有消耗 AP。检查后恢复之前的任务配置，SHA-256 校验一致。
+- 详细转换方式与保留的限制见 [COMPATIBILITY.md](COMPATIBILITY.md)；构建审计结果在 `Android/out/interface-compatibility.json`。
