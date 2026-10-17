@@ -1,7 +1,7 @@
 diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt b/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
 --- a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
 +++ b/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
-@@ -3,7 +3,9 @@
+@@ -3,8 +3,11 @@
  import android.content.Context
  import android.graphics.PixelFormat
  import android.graphics.Rect
@@ -9,9 +9,19 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
  import android.os.Build
 +import android.view.Display
  import android.view.Gravity
++import android.view.View
  import android.view.WindowManager
  import androidx.compose.runtime.collectAsState
-@@ -43,7 +45,8 @@
+ import androidx.compose.runtime.getValue
+@@ -21,6 +24,7 @@
+ import com.aliothmoon.maafw.runner.toLogText
+ import com.aliothmoon.maafw.settings.AppSettingsGateway
+ import com.aliothmoon.maafw.theme.MaaFwTheme
++import com.aliothmoon.maafw.third.Ln
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.Job
+@@ -43,7 +47,8 @@
      private val appSettings: AppSettingsGateway,
  ) {
  
@@ -21,7 +31,7 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
      private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
  
      /**
-@@ -112,9 +115,11 @@
+@@ -112,9 +117,17 @@
              return@withContext false
          }
  
@@ -30,13 +40,19 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
 -            .onSuccess {
 +        runCatching {
 +            val view = createView()
-+            windowHost.windowManager.addView(view, createLayoutParams())
++            val params = createLayoutParams()
++            traceScreenSaver("before-add " + describeScreenSaverContext(windowHost.context) +
++                " wm=" + describeScreenSaverWindows(windowHost.windowManager) +
++                " params=" + describeScreenSaverParams(params))
++            windowHost.windowManager.addView(view, params)
++            traceScreenSaver("after-add params=" + describeScreenSaverParams(params) +
++                " attached=" + view.isAttachedToWindow + " display=" + view.display?.displayId)
 +            view
 +        }.onSuccess { view ->
                  composeView = view
                  viewModelOwner.start()
                  startLogRelay()
-@@ -134,7 +139,7 @@
+@@ -134,7 +147,7 @@
          // 清掉，否则下一轮盖上的瞬间显示的是上一轮的尾句
          latestLog.value = null
          viewModelOwner.stop()
@@ -45,16 +61,40 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
              .onSuccess { Timber.d("Screen saver dismissed") }
              .onFailure { Timber.e(it, "Failed to remove screen saver") }
      }
-@@ -155,7 +160,7 @@
+@@ -155,7 +168,23 @@
          }
      }
  
 -    private fun createView(): ComposeView = ComposeView(context).apply {
 +    private fun createView(): ComposeView = ComposeView(windowHost.context).apply {
++        addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
++            override fun onViewAttachedToWindow(view: View) {
++                traceScreenSaver("view-attached display=" + view.display?.displayId +
++                    " windowToken=" + view.windowToken + " applicationWindowToken=" + view.applicationWindowToken +
++                    " context=" + describeScreenSaverContext(view.context) +
++                    " wm=" + describeScreenSaverWindows(windowHost.windowManager))
++                view.post {
++                    traceScreenSaver("view-after-traversal display=" + view.display?.displayId +
++                        " attached=" + view.isAttachedToWindow + " context=" + describeScreenSaverContext(view.context))
++                }
++            }
++
++            override fun onViewDetachedFromWindow(view: View) {
++                traceScreenSaver("view-detached display=" + view.display?.displayId)
++            }
++        })
          setViewTreeLifecycleOwner(viewModelOwner)
          setViewTreeViewModelStoreOwner(viewModelOwner)
          setViewTreeSavedStateRegistryOwner(viewModelOwner)
-@@ -212,3 +217,27 @@
+@@ -197,6 +226,7 @@
+             flags,
+             PixelFormat.TRANSLUCENT,
+         ).apply {
++            title = "MaaFGO ScreenSaver"
+             gravity = Gravity.CENTER
+             screenBrightness = MIN_BRIGHTNESS
+             layoutInDisplayCutoutMode =
+@@ -212,3 +242,75 @@
          const val GESTURE_EXCLUSION_DP = 120
      }
  }
@@ -70,7 +110,10 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
 +        ?: error("DisplayManager unavailable for screen saver")
 +    val primary = displays.getDisplay(Display.DEFAULT_DISPLAY)
 +        ?: error("Default display unavailable for screen saver")
++    traceScreenSaver("host-request api=$sdkInt requestedDisplay=" + Display.DEFAULT_DISPLAY +
++        " actualDisplay=" + primary.displayId + " original=" + describeScreenSaverContext(context, sdkInt))
 +    val displayContext = context.createDisplayContext(primary)
++    traceScreenSaver("display-context " + describeScreenSaverContext(displayContext, sdkInt))
 +    // API 30 的双参数重载需先有 DisplayContext；直接传 Display 的重载要到 API 31 才存在。
 +    // API 29 沿用带显式 Display 的 WindowManager；不可回退到可能指向游戏虚拟屏的 Application Context。
 +    val windowContext = if (sdkInt >= Build.VERSION_CODES.R) {
@@ -80,13 +123,58 @@ diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSa
 +    }
 +    val windows = windowContext.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
 +        ?: error("WindowManager unavailable for screen saver")
++    traceScreenSaver("window-host route=" + (if (sdkInt >= Build.VERSION_CODES.R) "createWindowContext(type)" else "displayContext") +
++        " context=" + describeScreenSaverContext(windowContext, sdkInt) + " wm=" + describeScreenSaverWindows(windows))
 +    return ScreenSaverWindowHost(windowContext, windows)
++}
++
++/** 诊断只读取 Context/WindowManager，不改变 token 或 display；日志失败不能影响屏保。 */
++private fun traceScreenSaver(message: String) {
++    runCatching { Ln.i("ScreenSaverDisplay: $message") }
++    runCatching { Timber.i("ScreenSaverDisplay: %s", message) }
++}
++
++private fun describeScreenSaverContext(context: Context, sdkInt: Int = Build.VERSION.SDK_INT): String {
++    val display = if (sdkInt >= Build.VERSION_CODES.R) {
++        screenSaverValue { context.display?.displayId }
++    } else "api<30"
++    val token = screenSaverValue { context.javaClass.getMethod("getWindowContextToken").invoke(context) }
++    return context.javaClass.name + " display=" + display + " contextToken=" + token
++}
++
++@Suppress("DEPRECATION")
++private fun describeScreenSaverWindows(windows: WindowManager): String =
++    windows.javaClass.name + " defaultDisplay=" + screenSaverValue { windows.defaultDisplay.displayId } +
++        " mContext=" + screenSaverField(windows, "mContext") +
++        " mDefaultToken=" + screenSaverField(windows, "mDefaultToken") +
++        " mWindowContextToken=" + screenSaverField(windows, "mWindowContextToken") +
++        " mParentWindow=" + screenSaverField(windows, "mParentWindow")
++
++private fun describeScreenSaverParams(params: WindowManager.LayoutParams): String =
++    "type=" + params.type + " token=" + params.token +
++        " windowContextToken=" + screenSaverField(params, "mWindowContextToken")
++
++private inline fun screenSaverValue(read: () -> Any?): String = try {
++    read()?.toString() ?: "null"
++} catch (error: Throwable) {
++    "unavailable:" + error.javaClass.simpleName
++}
++
++private fun screenSaverField(instance: Any, name: String): String = screenSaverValue {
++    var type: Class<*>? = instance.javaClass
++    var field: java.lang.reflect.Field? = null
++    while (type != null && field == null) {
++        val candidate = type
++        field = runCatching { candidate.getDeclaredField(name) }.getOrNull()
++        type = candidate.superclass
++    }
++    if (field == null) "no-field" else field.also { it.isAccessible = true }.get(instance)
 +}
 diff --git a/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverWindowHostTest.kt b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverWindowHostTest.kt
 new file mode 100644
 --- /dev/null
 +++ b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverWindowHostTest.kt
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,86 @@
 +package com.aliothmoon.maafw.overlay.screensaver
 +
 +import android.content.Context
@@ -115,8 +203,12 @@ new file mode 100644
 +        // 错用 application 的 WindowManager 会拿到虚拟屏服务，不能只验证“拿到了一个管理器”。
 +        every { original.getSystemService(Context.WINDOW_SERVICE) } returns virtualWindows
 +        every { displays.getDisplay(Display.DEFAULT_DISPLAY) } returns primary
++        every { primary.displayId } returns Display.DEFAULT_DISPLAY
 +        every { original.createDisplayContext(primary) } returns displayContext
 +        every { displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null) } returns windowContext
++        every { displayContext.display } returns primary
++        every { windowContext.display } returns primary
++        every { primaryWindows.defaultDisplay } returns primary
 +        every { displayContext.getSystemService(Context.WINDOW_SERVICE) } returns primaryWindows
 +        every { windowContext.getSystemService(Context.WINDOW_SERVICE) } returns primaryWindows
 +    }
