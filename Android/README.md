@@ -2,11 +2,33 @@
 
 分支：`codex/android-app`。参考 [MaaEnd Android 接入](https://github.com/MaaEnd/MaaEnd/tree/v2/Android)，使用固定提交的 [MaaFwApp](https://github.com/Aliothmoon/MaaFwApp) 子模块。桌面 MXU 继续使用原来的工程和打包流程。
 
-首版面向 Android 10+ 的 arm64-v8a 手机和 x86_64 模拟器，提供 Shizuku / Root 两种授权方式，支持前台模式和 1280×720、240 DPI 的后台虚拟屏。模拟器后台黑屏时使用前台模式，并将模拟器分辨率设为 1280×720。原生自动战斗、Chaldea 编队、助战筛选和日常任务复用现有 Python Agent。移除 BBC 的任务入口、选项、进程监听和 DLL 依赖。
+首版面向 Android 10+ 的 arm64-v8a 手机和 x86_64 模拟器，提供 Shizuku / Root 两种授权方式，支持前台模式和 1280×720、240 DPI 的后台虚拟屏。后台依赖设备的虚拟屏能力，受限时可改用前台并调整为 16:9。原生自动战斗、Chaldea 编队、助战筛选和日常任务复用现有 Python Agent，实际验收范围见 [TESTING.md](TESTING.md)。移除 BBC 的任务入口、选项、进程监听和 DLL 依赖。
+
+## 从 MXU 移植时的必要适配
+
+采用“共享任务与 Agent，打包时生成安卓资源副本”的方式维护两个平台。MXU 的界面扩展需要转换成 MaaFwApp 支持的标准 PI；运行环境、设备控制和本地路径则按 Android 处理。
+
+| 层面 | 本次适配及维护要点 |
+| --- | --- |
+| 界面与选项 | 展开 `interface.json` 的 imports；将 `scan_select` 转成标准图片文件列表，保留完整文件名、默认项和 attach 参数；`default` 转 `default_case`；Chaldea 文件按钮退回文本输入，任务说明并入 description。细节见 [COMPATIBILITY.md](COMPATIBILITY.md) |
+| Windows 依赖 | 安卓仅保留原生自动战斗，移除 BBC 入口、路径选项、DLL 和进程监听；安卓 Agent 不导入 BBC/psutil。公共 Chaldea 解析依赖仍保留 |
+| Python 与原生库 | APK 自带 CPython、NumPy、maafw 和 NDK 编译的 cv2；MaaFramework 与 Python 内核的 maafw 版本必须匹配。启动时配置 Python 路径及原生库路径，不能直接复用 Windows wheel |
+| YOLO 与 OCR | 保留 `support_det.onnx`、`quest_detect.onnx` 及 OCR 模型；安卓通过 APK 的 `libonnxruntime.so` C API v17 推理，桌面继续使用官方 Python wheel。当前安卓桥用于单输入 float32 图像模型、CPU 推理 |
+| 控制与后台 | 使用 Shizuku/Root 服务采集和注入触摸；后台把游戏启动到独立虚拟屏。修复日服声明页焦点、标题点击位置与有限重试，并为 DirectHit 的稳定等待补齐明确区域 |
+| 分辨率与生命周期 | 后台固定 1280×720 / DPI 240，前台要求 16:9；任务间尺寸改变后重建 controller/tasker。屏保放在主 Activity 的 Compose 树中，恢复亮度与唤醒标记，避免遮挡虚拟屏；运行中改尺寸/旋转仍需先停止 |
+| 数据与文件输入 | Agent 工作目录对齐手机 PI 根目录；库存、Chaldea 缓存和羁绊进度放在 `pi/config/`。升级及手动重解保留整个 config；文件输入使用手机可读路径，`content://` 不会自动转换。库存失败须明确报错，已有有效数据不能被不完整结果覆盖 |
+| Chaldea 数据链 | 复用编队与缓存业务，修复分享链接/Base64 解析、phase 默认过滤和缓存关卡匹配。支持手机直接获取链接；当前原生策略不能保证复现分享中的指定 Arts 面卡顺序 |
+| 构建与更新 | 固定公开上游子模块，定制保存为可重放的 [0001–0004 补丁](patches/README.md)；分别构建 ARM64/x86_64，递增 APK versionCode。安卓更新源和签名独立配置，源 interface 版本保留，桌面打包版同步仍遵守原版本保护约定 |
+
+后续新增 MXU 专属字段时，应同步补充 `tools/prepare_android.py` 的转换、打包回归和真实 Kotlin PI/执行计划检查。修改安卓生成目录会在下次生成时被覆盖，应修改源文件或转换器。新增外壳定制应更新补丁，而非只留下本机子模块修改。
+
+当前已完成 APK 构建、MuMu 授权连接、登录、原生单场战斗、后台/屏保、库存落盘与读取、Chaldea 下载缓存，以及超宽逻辑主屏测试。ARM64 真机、完整自定义助战/自动编队/羁绊补齐、连续战斗和异常恢复仍需独立验收；正式签名与发布更新源尚未配置。具体日志、版本及边界以 [TESTING.md](TESTING.md) 为准。
 
 ## 构建
 
-需要 JDK 17+、Python 3.12+、Android SDK。标准环境变量为 `JAVA_HOME`、`ANDROID_HOME`（或 `ANDROID_SDK_ROOT`），NDK 默认从 SDK 下寻找，也可设置 `ANDROID_NDK_ROOT`。
+需要完整 JDK 17+（含 `javac`、`jlink`，本机实测 JDK 21）、Python 3.12+、Android SDK。标准环境变量为 `JAVA_HOME`、`ANDROID_HOME`（或 `ANDROID_SDK_ROOT`），NDK 默认从 SDK 下寻找，也可设置 `ANDROID_NDK_ROOT`。
+
+外壳 APK 安装下限为 API 28 / Android 9，后台模式要求 API 29 / Android 10 以上；当前支持目标为 Android 10+，实测设备为 MuMu Android 12 / API 32。安装下限不代表对应系统已验收。
 
 ```powershell
 git submodule update --init Android/MaaFwApp assets/MaaCommonAssets
