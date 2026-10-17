@@ -162,6 +162,10 @@ def adapt_interface(data: dict, assets: Path) -> dict:
                 return value
             cases.append({"name": path.name, "label": path.stem, "pipeline_override": replace(override)})
         option.update(type="select", cases=cases, default=files[0].name)
+    # MXU 兼容字段 default 不被 MaaFwApp 的 PI 解析器读取。
+    for option in data["option"].values():
+        if option.get("type", "select") in ("select", "switch", "checkbox", "multiselect") and "default" in option:
+            option.setdefault("default_case", option.pop("default"))
     return data
 
 

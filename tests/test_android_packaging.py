@@ -13,6 +13,17 @@ spec.loader.exec_module(android)
 
 
 class AndroidInterfaceTests(unittest.TestCase):
+    def test_mxu_defaults_become_pi_default_case(self):
+        source = self.fixture()
+        source["option"]["native_setting"] = {
+            "type": "select", "default": "first_support",
+            "cases": [{"name": "custom_support"}, {"name": "first_support"}],
+        }
+        converted = android.adapt_interface(source, ROOT / "assets")["option"]["native_setting"]
+        self.assertEqual(converted["default_case"], "first_support")
+        self.assertNotIn("default", converted)
+        self.assertEqual(source["option"]["native_setting"]["default"], "first_support")
+
     def test_direct_hit_wait_has_an_explicit_area(self):
         nodes = {
             "navigation": {"post_wait_freezes": 1000},
@@ -53,7 +64,7 @@ class AndroidInterfaceTests(unittest.TestCase):
         self.assertEqual([t["name"] for t in result["preset"][0]["task"]], ["登录", "战斗"])
         self.assertNotIn("windows_path", result["option"])
         self.assertNotIn("mirrorchyan_rid", result)
-        self.assertEqual(result["option"]["battle_mode"]["default"], "native")
+        self.assertEqual(result["option"]["battle_mode"]["default_case"], "native")
         self.assertEqual([c["name"] for c in result["option"]["battle_mode"]["cases"]], ["native"])
 
     def test_missing_option_fails_build(self):
@@ -76,7 +87,7 @@ class AndroidInterfaceTests(unittest.TestCase):
             }
             option = android.adapt_interface(source, assets)["option"]["native_setting"]
             self.assertEqual(option["type"], "select")
-            self.assertEqual(option["default"], "0_空.png")
+            self.assertEqual(option["default_case"], "0_空.png")
             self.assertEqual(option["cases"][1]["pipeline_override"]["助战action"]["attach"]["native_setting"], "礼装.png")
             self.assertNotIn("scan_dir", option)
 
