@@ -33,8 +33,8 @@
 
 ## 验证边界
 
-- 当前 MuMu 的后台虚拟屏出现空画面，后台模式未通过；前台模式已完成上述流程。
-- Shizuku、ARM64 真机、连续多场、Chaldea 编队与复杂关卡未做本轮端到端验收。
+- 首轮 MuMu 后台虚拟屏未通过；后续已定位启动焦点问题并继续实测，最新结果见文末。
+- 首轮未测 Shizuku；后续结果见文末。ARM64 真机、连续多场、完整 Chaldea 编队与复杂关卡仍需独立验收。
 - 原生战斗部分指令卡的颜色 / 归属识别置信度不足时使用现有容错出牌；本轮普通 X-A 成功，不能据此认定精确指令卡策略已全部验证。
 - 国服日常导航在早期测试中未通过，本轮转为日服后未复验国服战斗。
 - Agent 详细输出会触发面板限流提示，完整信息可从日志导出；该提示不是战斗失败。
@@ -51,3 +51,26 @@
 - Chaldea 文件按钮按文本输入回退，链接/ID/手机路径的参数替换和编队说明加载通过 Kotlin 检查；本轮未运行游戏编队。
 - UI 检查没有启动战斗、没有消耗 AP。检查后恢复之前的任务配置，SHA-256 校验一致。
 - 详细转换方式与保留的限制见 [COMPATIBILITY.md](COMPATIBILITY.md)；构建审计结果在 `Android/out/interface-compatibility.json`。
+
+## 后台与本地数据续验
+
+同日继续使用 MuMu Android 12 / API 32、日服 2.139.5。安装官方 Shizuku 13.6.0，通过其 APK 显示的 ADB 指令启动，服务与 Agent 的运行 UID 为 2000；本轮 Shizuku 验收不使用 Root 启动服务。
+
+| 项目 | 真实设备结果 |
+| --- | --- |
+| Shizuku 连接与后台冷启动 | 授权、资源、Python Agent、截屏和触摸成功；日服自动登录 1 分 27 秒。启动声明页识别后点击恢复焦点，无需人工触摸虚拟屏 |
+| 从者统计 | 417 个唯一 ID；47 屏、46 次下滑，确认滚动条到底，生成 `config/Inventory/player_servants.json` |
+| 礼装统计 | 默认全部四五星礼装，405 个唯一 ID；72 屏、71 次下滑，确认滚动条到底，生成 `config/Inventory/player_equips.json` |
+| 手机端读库 | APK 自带 Python 调用实际 `CompleteBondFormation._read_player_inventory`，两文件 schema、类别、唯一 ID、数量、扫描有效与到底标志全部通过，读取不改文件 |
+| 持久化 | 重启、递增 versionCode 覆盖安装、真实点击“重新解压资源”后，两份库存和 Chaldea 缓存三个文件 SHA-256 全部不变；已在主机另行备份 |
+| 失败与停止 | 扫描受遮挡时未写入不完整礼装库，已保存的从者库保留；新版真实运行记录 `COMPLETED_WITH_FAILURES`。主动停止日志为 `CANCELLED` |
+| Chaldea 72098 | 手机端真实下载、解码、缓存落盘；阻断网络函数后，短链、关卡 ID、缓存文件名及手机绝对路径四种输入读取相同内容，网络调用为 0 |
+| Chaldea 原生参数 | 实际转换器输出 1 回合、9 个从者技能、1 个御主技能、宝具顺序 3→2；冠位助战为狂呆，来自 NFF 的爱和名侦探芙尔摩斯均要求满破，所需头像和礼装模板在 APK 中存在 |
+
+从者统计来自 `run_20261018_032913_2.jsonl`，礼装完整统计来自 `run_20261018_035329_2.jsonl`（只重扫礼装，用时 5 分 34 秒），失败呈现来自 `run_20261018_034920_2.jsonl`，停止来自 `run_20261018_034059_2.jsonl`。设备日志与手机数据检查结果保存在本机 `Android/.cache/acceptance-20261018/`。
+
+两份库存的 `scan_complete`、`catalog_complete`、`scan.bottom_confirmed`、`scan.recognition_valid` 都为 true，`bottom_detection` 为 `scrollbar`。未匹配格累计计数分别为 176、741，含重复屏及同屏重复卡片，不能解释为未识别的唯一卡片数，也不能把 417/405 宣称为账号所有卡片的精确总数。库存只保存唯一 ID，不记录持有张数；默认礼装范围不含一至三星。当前库存不按区服或账号隔离，切换后应重新构建。
+
+72098 属于 40 AP 加道具的冠位关卡，本轮未进入该关卡。原始攻击指定“本地狂呆 Arts 面卡 → 助战狂呆宝具 → 本地狂呆宝具”；现有原生转换器保留宝具顺序，面卡由原生策略重新选择，不能保证复现原策略的 Arts 起手链、伤害和 NP 回收。数据链通过不等于该攻略完整实战通过，独立自动编队和羁绊补齐的完整游戏操作仍需另测。
+
+可复用 `tools/check_android_user_data.py` 在 APK Python 环境检查两类文件、实际读库函数、Chaldea 缓存和原生计划。默认禁止 HTTP 与缓存写入；首次在线下载须显式传 `--allow-download`，可用 `--section inventory` 或 `--section chaldea` 分项检查。本轮实际手机结果为 `phone-user-data-complete.json`，持久化结果为 `persistence.after-upgrade.json`、`persistence.after-reinstall.json`。

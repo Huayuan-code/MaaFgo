@@ -22,7 +22,7 @@ agent:
         LD_LIBRARY_PATH: "{bundle}/prefix/lib:{bundle}/site-packages/chaquopy/lib:{nativeLibs}"
         MAAFW_BINARY_PATH: "{nativeLibs}"
 display:
-  # MuMu 等模拟器的虚拟屏可能无法渲染 FGO，允许切换前台模式。
+  # 保留主屏运行入口，兼容虚拟屏能力受限的设备。
   foreground: true
   presets:
     - label: 720P

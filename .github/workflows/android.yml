@@ -78,7 +78,7 @@ jobs:
         run: python tools/check_android_interface.py
       - name: Check Android shell fixes
         working-directory: Android/MaaFwApp
-        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests 'com.aliothmoon.maafw.project.PiInstaller*' --tests 'com.aliothmoon.maafw.overlay.screensaver.ScreenSaverWindowHostTest'
+        run: ./gradlew --no-daemon :app:testDebugUnitTest --tests 'com.aliothmoon.maafw.project.PiInstaller*' --tests 'com.aliothmoon.maafw.overlay.screensaver.ScreenSaver*Test'
       - uses: actions/upload-artifact@v7
         with:
           name: MaaFGO-android-${{ matrix.abi }}-debug

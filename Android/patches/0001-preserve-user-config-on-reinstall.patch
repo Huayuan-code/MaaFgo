@@ -325,3 +325,27 @@ new file mode 100644
 +        assertEquals("config", File(outside, "keep.txt").readText())
 +    }
 +}
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -734,7 +734,7 @@
+     <string name="pi_reinstall_title">重新解压资源</string>
+     <string name="pi_reinstall_desc">从安装包重新解压项目资源</string>
+     <string name="dialog_reinstall_pi_title">重新解压项目资源</string>
+-    <string name="dialog_reinstall_pi_message">确定要重新解压项目资源吗？\n\n这将删除设备上已解压的项目资源并重新解压，请勿在此期间退出应用。Agent 写在资源目录下的记录与日志会一并清除，运行配置与应用日志不受影响。</string>
++    <string name="dialog_reinstall_pi_message">确定要重新解压项目资源吗？\n\n项目资源及临时记录会重新生成。config 中的本地库存、队伍缓存和羁绊进度会保留，运行配置与应用日志不受影响。请勿在此期间退出应用。</string>
+ 
+     <!-- 前台模式：主屏分辨率与操作面板 -->
+     <string name="foreground_resolution_title">屏幕分辨率</string>
+diff --git a/app/src/main/res/values-en/strings.xml b/app/src/main/res/values-en/strings.xml
+--- a/app/src/main/res/values-en/strings.xml
++++ b/app/src/main/res/values-en/strings.xml
+@@ -745,7 +745,7 @@
+     <string name="pi_reinstall_title">Extract resources again</string>
+     <string name="pi_reinstall_desc">Extract the project resources again from the APK</string>
+     <string name="dialog_reinstall_pi_title">Extract project resources again</string>
+-    <string name="dialog_reinstall_pi_message">Extract the project resources again?\n\nThe copy on this device will be deleted and extracted again. Please do not leave the app while this runs. Records and logs the agents wrote into the resource directory are cleared too; run configurations and app logs are unaffected.</string>
++    <string name="dialog_reinstall_pi_message">Extract the project resources again?\n\nProject resources and temporary records will be refreshed. Local inventories, team caches, and bond progress in config will be kept. Run configurations and app logs are unaffected. Please do not leave the app while this runs.</string>
+ 
+     <!-- Foreground mode: primary display size and control panel -->
+     <string name="foreground_resolution_title">Screen resolution</string>
