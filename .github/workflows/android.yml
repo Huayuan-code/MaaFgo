@@ -129,13 +129,12 @@ jobs:
           fi
           python tools/check_android_release.py "Android/out/MaaFGO-android-${BUILD_ABI}-release.apk" "${args[@]}"
       - name: Check PI with Android parser and run-plan builder
-        run: python tools/check_android_interface.py --build-type "$APK_BUILD_TYPE"
+        # 上游只提供 debug JVM 测试；实际 Release APK 已在上一步单独校验。
+        run: python tools/check_android_interface.py
       - name: Check Android shell fixes
         working-directory: Android/MaaFwApp
-        env:
-          ANDROID_TEST_TASK: ${{ env.APK_BUILD_TYPE == 'release' && ':app:testReleaseUnitTest' || ':app:testDebugUnitTest' }}
         run: >-
-          ./gradlew --no-daemon "$ANDROID_TEST_TASK"
+          ./gradlew --no-daemon :app:testDebugUnitTest
           --tests 'com.aliothmoon.maafw.project.PiInstaller*'
           --tests 'com.aliothmoon.maafw.overlay.screensaver.ScreenSaver*Test'
           --tests 'com.aliothmoon.maafw.settings.SettingsViewModelTest'
