@@ -12,7 +12,7 @@ spec.loader.exec_module(release)
 class ReleaseVerificationTests(unittest.TestCase):
     def setUp(self):
         self.digest = release.certificate_digest(release.CERTIFICATE)
-        self.signers = f"Verifies\nSigner #1 certificate SHA-256 digest: {self.digest}\n"
+        self.signers = f"Verifies\nNumber of signers: 1\nV2 Signer: certificate SHA-256 digest: {self.digest}\n"
         self.badging = ("package: name='com.aliothmoon.maafw.maafgo' versionCode='1200' "
                         "versionName='2.0.11-beta.2' platformBuildVersionName='16'\n"
                         "native-code: 'arm64-v8a'\n")
@@ -32,12 +32,20 @@ class ReleaseVerificationTests(unittest.TestCase):
         self.assertEqual(self.validate(signers=self.signers.replace(self.digest, formatted))["certificate_sha256"],
                          self.digest)
 
+    def test_old_and_multi_scheme_signer_formats_are_supported(self):
+        legacy = self.signers.replace("V2 Signer:", "Signer #1")
+        self.assertEqual(self.validate(signers=legacy)["certificate_sha256"], self.digest)
+        multiple_schemes = self.signers + f"V3 Signer: certificate SHA-256 digest: {self.digest}\n"
+        self.assertEqual(self.validate(signers=multiple_schemes)["certificate_sha256"], self.digest)
+
     def test_unrelated_signer_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "正式证书"):
             self.validate(signers=self.signers.replace(self.digest, "0" * 64))
 
     def test_missing_and_additional_signers_are_rejected(self):
-        for signers in ("Verifies\n", self.signers + f"Signer #2 certificate SHA-256 digest: {self.digest}\n"):
+        multiple = self.signers.replace("Number of signers: 1", "Number of signers: 2")
+        multiple += f"Signer #2 certificate SHA-256 digest: {self.digest}\n"
+        for signers in ("Verifies\n", multiple, self.signers.replace("Number of signers: 1\n", "")):
             with self.subTest(signers=signers), self.assertRaisesRegex(ValueError, "正式证书"):
                 self.validate(signers=signers)
 

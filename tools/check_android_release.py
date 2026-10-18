@@ -20,10 +20,12 @@ def certificate_digest(path: Path) -> str:
 
 
 def validate_metadata(signers: str, badging: str, expected_digest: str, abi: str, tag: str | None = None) -> dict:
-    fingerprints = re.findall(r"^Signer #\d+ certificate SHA-256 digest:\s*([0-9a-fA-F:]+)\s*$", signers, re.M)
+    # SDK 37 使用 V2/V3 Signer 标签；同一证书可在多个签名方案中重复出现。
+    signer_counts = re.findall(r"^Number of signers:[ \t]*(\d+)[ \t]*$", signers, re.M)
+    fingerprints = re.findall(r"^[^\r\n]*certificate SHA-256 digest:[ \t]*([0-9a-fA-F:]+)[ \t]*$", signers, re.M)
     fingerprints = [digest.replace(":", "").lower() for digest in fingerprints]
-    if fingerprints != [expected_digest.lower()]:
-        raise ValueError("APK 必须仅由仓库记录的正式证书签名")
+    if signer_counts != ["1"] or set(fingerprints) != {expected_digest.lower()}:
+        raise ValueError(f"APK 必须仅由仓库记录的正式证书签名：signers={signer_counts}, SHA256={fingerprints}")
     if re.search(r"^\s*application-debuggable(?:\s|:|$)", badging, re.M):
         raise ValueError("Release APK 不得启用 debuggable")
     native = re.search(r"^native-code:\s*(.*)$", badging, re.M)
