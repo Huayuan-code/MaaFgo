@@ -94,6 +94,8 @@ MuMu 12 的前台任务从悬浮球面板开始：在首页点“打开操作面
 
 本机现已通过 Root 后台单场原生战斗、Shizuku 后台冷启动与仓库统计、屏保重复显隐/自动收尾，以及退回模拟器桌面后继续运行。屏保为应用内黑底与最低亮度，需要 MaaFGO 界面可见；任务仍在虚拟屏服务中执行。ARM64 真机与完整 Chaldea 编队实战仍需另测。
 
+ARM64 包在本机 x86_64 MuMu 上的转译验收未通过：可以安装并打开界面，但 Root/Shizuku 特权服务由 x86_64 的系统 `app_process` 启动，无法加载 ARM64 的 `libbridge.so`；独立 MaaFramework/ONNX 探针也出现崩溃。MuMu 使用已验收的 x86_64 包，ARM64 完整流程须在真正的 ARM64 设备继续验证，详细分层结果见 [TESTING.md](TESTING.md)。
+
 “构建个人从者礼装库”会将两库保存到应用外部文件目录的 `pi/config/Inventory/`。Chaldea 分享链接可直接粘贴到“Chaldea 队伍导入”，手机下载并缓存到 `pi/config/Battle/`，无需桌面预先下载 JSON。
 
 开发期间在同一个 Git 提交上反复构建，APK 的 versionCode 相同。覆盖安装后需在“设置 → 项目资源 → 重新解压资源”手动刷新 PI；仅更新 APK 不会刷新已解压的旧资源。运行配置、应用日志及 `pi/config/` 内的库存、队伍缓存和羁绊进度会保留，PI 内其他临时记录会重置。

@@ -150,3 +150,26 @@ alpha.25 / code1205 的 `run_20261018_042350_1.jsonl` 冷启动登录用时 1 �
 | 中 | Shizuku/Agent 中断、网络超时或失效分享、不可读/损坏文件、存储不足及中文/空格路径；确认明确失败、可重试且不覆盖已有有效数据 |
 
 国服登录/种树已有前述记录，国服完整导航战斗、复杂关卡及剧情中断应单独复验。当前结果不能概括为全部功能与全部手机均已通过。
+
+## ARM64 包在 x86_64 MuMu 上的转译验收（未通过）
+
+2026-10-18 使用 GitHub Actions `39095664791` / 提交 `d97b3b3` 的 ARM64 构建，实际版本为 `1.1.48-beta.2.692 / code1212`。设备仍为 MuMu Android 12 / API 32，宿主安卓 ABI 首选 x86_64，同时声明支持 arm64-v8a；这不是 ARM64 真机验收。
+
+CI 调试证书与本机已安装包不同，直接覆盖返回 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。本轮用原安装包的本地调试证书重新签名，未卸载或清数据；签名前后 1,163 个非签名 ZIP 条目内容逐一比对一致，原生库仍仅含 arm64-v8a、ELF machine=183，没有混入 x86_64 库。原 CI 包 SHA-256 为 `b21eb4aaf716e265508b8e59d12aca1bc68914bb4f3a78a43d14dbc24d2cafbe`，实际测试的换签名包为 `850b231b97024c875eb8ac82bb46d17a6ad9b10dbc47a31ce1e7f9ef2a93c71e`。
+
+| 层级 | 结果 |
+| --- | --- |
+| 安装与界面 | 通过，`primaryCpuAbi=arm64-v8a`，主界面及选项可显示 |
+| Root 前台特权服务 | 未通过；launcher 能启动，但其后执行系统 x86_64 `app_process`，加载 ARM64 `libbridge.so` 报 `EM_AARCH64 (183) instead of EM_X86_64 (62)`，服务退出 |
+| Shizuku 前台特权服务 | 未通过，同样的原生库架构不匹配 |
+| Shizuku 后台日服登录 | 未执行，`run_20261018_123351_1.jsonl` 在服务启动阶段出现 `DeadObjectException`，最终为 `NOT_RUN`；尚未进入游戏任务 |
+| 独立 ARM64 Python / 基础库 | 从该 APK 将运行时解压到本轮独立临时目录：Python 3.13.15 启动、ctypes 64 位指针、NumPy 2.3.2 点积、OpenCV 4.12.0 PNG 编解码及缩放均通过 |
+| 独立 MaaFramework 加载 | 进程在 `ctypes.CDLL(libMaaFramework.so)` 返回前触发 SIGSEGV / exit139，未创建控制器 |
+| 两个 YOLO 模型 | 包内助战和关卡模型均存在，哈希与源文件相同；助战模型的独立初始化探针触发 SIGSEGV / exit139，未完成一次推理，随后关卡模型推理未执行 |
+| 战斗、库存扫描与编队 | 受服务与原生运行时阻断，未执行；本轮未启动 FGO、未消耗 AP 或进行召唤 |
+
+以上独立 Python 探针与 APK 的特权服务任务是分层测试，基础库通过不代表整套 Agent 能完成任务。MuMu 对普通 ARM64 应用的转译能力没有自动覆盖独立 `app_process` 特权服务和所有 native 调用；这些失败也不能据此判定 ARM64 真机必然失败。当前应在该 MuMu 使用 x86_64 包，并继续保留 ARM64 真机未验收的边界。
+
+测试前备份原始设置、任务配置和整个 `pi/config/`；结束后无卸载覆盖恢复原 x86_64 alpha.29 / code1209，安装 APK 哈希与测试前完全一致，Root 服务重新显示“就绪”。原任务勾选和设置逐字节恢复，三个 config 文件及完整目录内容哈希不变，分辨率与 DPI 未修改；本轮独立运行时和暂存文件已清理。
+
+报告为本机 `Android/out/arm64-acceptance.json`，原始日志、配置备份、探针及恢复校验在 `Android/.cache/arm64-acceptance-20261018-122851/`。这份结果仅说明本次 MuMu 转译环境未通过完整 ARM64 验收。
