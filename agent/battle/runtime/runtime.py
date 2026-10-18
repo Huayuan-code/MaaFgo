@@ -188,6 +188,12 @@ class AutoBattleRuntime:
                     # 攻击点击被残留覆盖层吞掉。确认仍在主界面后重试点击。
                     img = self.controller.post_screencap().wait().get()
                     scene = perception.detect_scene(self.ctx, img)
+                    # 慢速 OCR 可能跨过等待截止时间；最终复核已进入选卡时
+                    # 应继续战斗，不能把非主界面一律当作确认失败。
+                    if scene is Scene.COMMAND_SELECTION and not self.ctx.tasker.stopping:
+                        mfaalog.info("[AutoBattle] command selection confirmed on final recheck")
+                        opened = True
+                        break
                     mfaalog.info(
                         f"[AutoBattle] attack click not confirmed "
                         f"(attempt {attempt}/{_OPEN_CARDS_RETRY}, scene={scene.name}); retrying"
