@@ -8,7 +8,7 @@
 python tools/apply_android_patches.py
 ```
 
-应用器先执行 `git apply --check`，已应用的补丁通过反向检查确认后跳过，因此重复构建不会叠加修改。遇到上游升级或本地修改冲突时明确失败并保留现有文件；应检查差异并重新生成补丁，勿自动重置子模块。补丁修改后的子模块工作区显示为脏状态是预期行为，主工程只提交补丁文件和应用器。
+应用器先用独立临时 Git 索引逆序验证已应用的补丁前缀，支持后续补丁修改先前新增的文件，不更改真实索引、文件或时间戳。剩余补丁执行 `git apply --check`，单个已应用补丁也通过反向检查跳过，因此重复构建不会叠加修改。遇到上游升级或本地修改冲突时明确失败并保留现有文件；应检查差异并重新生成补丁，勿自动重置子模块。补丁修改后的子模块工作区显示为脏状态是预期行为，主工程只提交补丁文件和应用器。
 
 `0001-preserve-user-config-on-reinstall.patch` 修复手动“重新解压资源”清空本地数据的问题。它保留完整的 `pi/config/`，包括 `Inventory`、`Battle`、`BondCompletion`，其余 PI 资源和临时记录仍重新生成。`config` 不被遍历或搬运；清理其他条目时不跟随符号链接。旧版本的 `pi.roots` 即使误列了 `config`，升级和失败重试也会保留它。APK 内禁止带 `config` 根条目，避免今后误改配方覆盖用户库存；当前 `profile.yaml` 本就不打包该目录。
 
@@ -29,6 +29,10 @@ python tools/apply_android_patches.py
 华为 ELE-AL00 / Android 10 ARM64 的 Shizuku 实测确认：修正 `stackId` 后迁回虚拟屏可生效，但 B 服经 `.EmptyClass` 启动壳跳到主屏后，迁回时的 DPI 408→240 变化仍可能触发游戏 `onDestroy` 及自行 SIG9 退出，不能只靠 watchdog 拉回。Android 资源转换器另将 B 服启动动作改为直接进入已导出的 `.UnityPlayerNativeActivity`；配合补丁的独立验收包完成登录 1 分 19 秒，Unity 在 83.69 秒的 104 次采样中均位于虚拟屏。SDK 的 AutoLogin / Welcome 活动仍曾在主屏创建独立任务，此结果不代表全部 SDK 窗口或真机战斗均已通过。详见 [TESTING.md](../TESTING.md)。
 
 本轮 Kotlin 目标回归 30 项通过；与 CI 一致的完整外壳检查共 95 项，无失败，Windows 上两项符号链接测试因权限跳过。取消保护使用单调轮次与目标 token，慢查询和迁移在 watchdog 锁外执行；停止即令 token 失效，旧回调无法清理新轮目标。真机在启动稳定校验中停止，502ms 后明确返回取消，任务为 CANCELLED，未继续移栈或重新启动。0001–0005 在干净公开上游顺序重放成功，25 个修改文件与工作区一致。
+
+`0006-drain-capture-images-before-reader-close.patch` 修复前台回桌面旋转时 ImageReader 仍持有图像导致的原生 SIGABRT。采集生命周期串行化，回调以 generation 拒绝过期 reader；关闭 reader 前先等待在途回调、预览队列和渲染线程持有的 AImage 释放，NDK 关闭时不持回调锁或渲染锁，避免等待 callback looper 时死锁。主屏采集 start/stop/restart 和显示变化处理共用同步入口。华为 Android 10 实测连续 8 轮横竖切换服务保持存活，每次重建新尺寸采集器；NDK 仍可能打印已排队的关闭通知警告，本轮未再出现旧的 parent ImageReader 释放 Fatal。
+
+`0007-guard-foreground-orientation-and-input.patch` 要求前台 Start 已处于横屏 16:9，并在实际 Runner 准备入口再次检查；首页改分辨率和打开面板仍可在竖屏完成。运行期间在主屏输入前检查实际采集尺寸，尺寸变化或采集不可用时拒绝继续输入，以独立停止执行器和运行 generation 请求结束本轮，反馈明确的尺寸变化失败；恢复横屏后可重新开始。取消主屏触摸使用 ACTION_CANCEL，按键使用取消标记，按 display 隔离触点，不向新出现的应用补发点击，也不清除后台虚拟屏的手势。该保护不将整个系统旋转或折叠变化自动适配为可继续运行。
 
 验证补丁应用器与外壳 Kotlin 回归：
 

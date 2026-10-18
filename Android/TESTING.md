@@ -244,3 +244,55 @@ CI 调试证书与本机已安装包不同，直接覆盖返回 `INSTALL_FAILED_
 - 原 CI 安装与 7 项任务勾选保留；“MaaFGO后台验收”是独立测试安装，用户原包不会因测试包登录成功而自动获得修复。
 
 原始证据保存在本机 `Android/.cache/phone-background-20261018-142144/`：`repro-timeline.json`、`verify-timeline.json`、`unity-game-logcat.txt`、`direct-unity-timeline.json` 记录复现及启动对照，`final-run.jsonl`、`final-timeline.json`、`final-screen.png`、`final-preview-*.png` 记录最终登录和窗口状态，`before-user-configuration.json` 与 `original-configuration-restored.json` 保存配置及恢复校验依据；`cancel-*.txt/jsonl` 与 `home-*.png/jsonl/json` 保存最终增量复验。报告为本机 `Android/out/phone-background-acceptance.json`，包哈希为 `Android/out/apk-sha256.json`。
+
+## 华为 ARM64 真机：前台尺寸、采集与本地数据
+
+2026-10-18 继续使用同一华为 ELE-AL00 / Android 10 / ARM64 手机、Shizuku 和独立的 `com.aliothmoon.maafw.maafgo.bgtest` 验收安装。前台测试将主屏从原始 **1080×2340** 调整为 **1080×1920**，保留原有 DPI override **408**，并在游戏横屏后启动任务。物理 DPI 为 480，不能将 `wm density reset` 当作恢复用户原设置。本节数据与截图保存在本机 `Android/.cache/phone-foreground-20261018-151211/`。
+
+### 前台登录与本轮修复
+
+- alpha.35 / code1215 稳定横屏的 `landscape-run.jsonl` 仅执行登录，任务显示 **42 秒**，最终 `COMPLETED`；开始游戏、关闭公告与主界面模板分别为 0.9978、0.9755、0.9931，均超过各自阈值。该结果证明稳定横屏下可以识别和操作，不能覆盖随后旋转的情况。
+- 旧包回桌面转竖屏后，`after-warm-system-logcat.txt` 在 15:18:26 记录 `parent AImageReader closed without releasing image`，`shizuku_service` 的 ImageReader 线程触发 **SIGABRT**。这是原生采集释放顺序问题，不能归因为 Shizuku 未授权或 ARM64 库未打包。
+- `0006-drain-capture-images-before-reader-close.patch` 为采集生命周期和回调加同步，使用代际标记拒绝过期回调，在关闭 ImageReader 前等待采集回调及预览持有的图像释放；主屏采集 start/stop/restart 与显示变化处理也串行化。
+- `0007-guard-foreground-orientation-and-input.patch` 补充前台横屏启动和运行尺寸保护：前台启动须处于符合要求的横屏，运行中尺寸改变应停止任务并明确说明，避免继续使用原触摸尺寸。稳定横屏、启动拒绝与实际旋转恢复是不同检查，下面分别记录。
+- 验收安装覆盖更新至 **alpha.36 / code1216**。`new-portrait-start-rejected.*` 记录竖屏点击开始后明确拒绝；与 `new-portrait-before-runs.txt` 比较，没有新建运行日志。该结果证明启动保护；采集旋转压力检查另列如下。
+- 新包 `final-landscape-run.jsonl` 再次仅执行登录，任务显示 **1 分 4 秒**，最终 `COMPLETED`；关闭公告 0.9755 / 0.7、主界面 0.9931 / 0.8。
+- 新包主屏采集连续 **8 轮、16 次横竖切换**，前后及各次采样特权服务 PID 均为 **8789**；`rotation-stress-results.json` 保存各次尺寸和截图哈希，`rotation-stress-logcat.txt` 每次均记录图像排空后释放、随后以新尺寸 `InitFrameBuffers: Success`。本轮没有 SIGABRT 或 Fatal，采集在 1080×1920 与 1920×1080 间继续更新。
+- 旋转日志仍有 `W NdkImageReader: A frame is available after AImageReader closed!` 排队通知；它没有伴随旧版的 `parent AImageReader closed without releasing image` 致命错误，后续采集初始化与画面更新正常。该结果不表示系统不再产生关闭后的通知；任务运行中改变尺寸的停止另用最终代码复验。
+- 最终代码的 `runtime-rotate-run.jsonl` 在登录运行中按 Home，从 **1920×1080** 转为 **1080×1920** 后拒绝下一次输入，约 **11 秒**结束；明确输出“前台运行中屏幕尺寸发生变化，任务已停止”，footer 为 **`FAILED`**，前后服务 PID 均为 **14834**。底层 `Tasker.Task.Succeeded` 仍会先产生一次“任务完成”日志，应以随后尺寸变化 Error 和整轮 `FAILED` 为准；这不是登录成功。
+- 恢复横屏后，同一 PID **14834** 的 `final-recovery-run.jsonl` 登录 **46 秒**、footer **`COMPLETED`**，主界面模板 0.9931 / 0.8，说明采集及下一轮任务可以恢复，没有因排空等待而卡死。
+- `front-manual-stop-run.jsonl` 从前台悬浮面板点击停止，footer 为 **`CANCELLED`**，服务 PID **14834** 未改变。恢复原生 **1080×2340** 后，已有悬浮面板点击开始也明确拒绝、没有新建 run，截图为 `final-native-ratio-start-rejected.png`。手机实际“恢复分辨率”按钮与 DPI override **408** 已核对。
+- 恢复主屏 **1080×2340** 后切回后台，最终 `run_20261018_155203_1.jsonl`（保存为 `final-background-run.jsonl`）仅登录 **1 分 29 秒**、footer **`COMPLETED`**，主界面模板 0.9938 / 0.8。服务 PID 仍为 **14834**；`final-background-timeline.json` 连续观测约 **93.9 秒**，观测到的 Unity 游戏窗口始终在虚拟屏 **display 8**，主屏保持原始尺寸。启动阶段曾提示画面 15 / 30 FPS，登录仍完成；该轮没有战斗，不能据此验证低帧率下的战斗时机。
+
+### 仓库扫描、Chaldea 与模型
+
+| 项目 | 真机结果与边界 |
+| --- | --- |
+| 从者统计 | alpha.35 的 `run_20261018_152558_2.jsonl` 先登录，再执行“仅从者”；统计任务 **4 分 16 秒**，整轮 `COMPLETED`。扫描 **15 屏、14 次下滑**，通过滚动条确认到底，写入 **91 个唯一 ID** |
+| 库文件有效性 | `scan_complete`、`catalog_complete`、`scan.bottom_confirmed`、`scan.recognition_valid` 均为 true，`missing_template_ids=[]`；真实 `CompleteBondFormation._read_player_inventory` 消费者读取 91 个 ID，读取前后文件哈希不变 |
+| Chaldea 在线获取 | 手机端真实下载分享 72098 并转换原生计划，写入中文名 `config/Battle/摩阿阿_72098_94146537.json`，大小 **10,078 字节**；没有进入该攻略的关卡 |
+| Chaldea 离线四入口 | 分享链接、关卡 ID、缓存文件名、手机绝对路径均读取相同队伍；禁用 HTTP 后网络调用为 **0**，缓存无新增或改写。见 `chaldea-download.json`、`chaldea-offline.json` |
+| MXU 文件列表兼容 | 手机实际打开普通助战的满破礼装列表并选择“万华镜”；`support-file-selection-config.json` 保存 `普通助战-礼装-满破={"type":"single","case":"万华镜.png"}`，日常战斗仍为 disabled。仅验证列表、选择与参数保存，没有执行实际助战筛选 |
+| ARM64 助战模型 | 手机 APK 的实际 `NativeOrtSession` 加载 `support_det.onnx`，输入 `[1,3,384,640]`、输出 `[1,5,5040]`，推理结果均为有限数 |
+| ARM64 关卡模型 | 同一实际后端加载 `quest_detect.onnx`，输入 `[1,3,192,256]`、输出 `[1,6,1008]`，推理结果均为有限数 |
+
+从者统计的 `unmatched_candidate_cells=170` 是跨屏累计的候选格计数，包含重复屏和同屏重复卡片，不能解释成漏识别的唯一从者数量。91 是本次去重后的识别结果，尚未逐一与账号实际持有核对；`catalog_complete` 和缺失模板为 0 表示模板目录覆盖检查通过，不能据此宣称全账号识别准确。真机本轮只扫描从者，没有执行礼装统计；库存不记录持有张数，也未按账号或区服隔离。
+
+模型原始结果为 `inventory-models-phone.stdout.jsonl`，脚本为 `inventory-models-phone.py`。两次推理使用全零输入，用于验证模型、ARM64 原生推理后端和输出张量能够工作；没有验证实际助战头像、指定礼装、满破筛选或关卡识别准确率，不能替代游戏实屏识别验收。
+
+### 覆盖更新与保留边界
+
+alpha.36 覆盖安装后，任务配置、应用设置及两份既有本地文件保持不变，资源标记更新为 `pi.version=1216`。随后在手机实际点击“设置 → 重新解压资源 → 确定”，界面完成状态见 `after-reextract-screen.png`；`config-before-upgrade-sha256.json`、`config-after-overwrite-sha256.json` 与 `config-after-reextract-sha256.json` 比较原始字节，两次均不变：
+
+| 文件 | 大小 | 覆盖前后相同的 SHA-256 |
+| --- | --- | --- |
+| `Inventory/player_servants.json` | 52,961 字节 | `f4562c505b4f35daec9e00929a4009040da45d8d7819cb79c8c84308580286fb` |
+| `Battle/摩阿阿_72098_94146537.json` | 10,078 字节 | `0a1be41f2b0e47c58162a32bbd7b230545d55a241da384a663afa6a043ab859c` |
+
+最终目标代码回归 **66 项**全部通过；与 CI 相同筛选条件的完整外壳检查共 **131 项，0 失败、0 错误、2 跳过**，跳过项为 Windows 符号链接权限；Python 安卓专项 **28 项**全部通过。两种正常 ABI 的 alpha.36 / code1216 APK 均已重新构建，通过 APK 校验和实际 PI 解析检查，包内 PI 哈希一致。
+
+结束时重新读取用户原 CI 安装的任务配置和应用设置，与上一轮测试前备份的原始 SHA-256 均完全一致，证据为 `original-user-app-unchanged.json`；原 CI 包没有因独立验收包运行而获得修复或改变所选任务。
+
+本轮没有执行战斗、召唤、完整 Chaldea 自动编队或消耗 AP。系统真息屏、长时间运行、其他 ROM 与完整账号识别准确率仍未验收，独立验收包的结果不自动更新用户原 CI 安装。
+
+本轮结束后，独立验收包自身的初始任务配置与设置也已逐字节恢复，仅“登录”启用；新生成的从者库与队伍缓存保留。`restored-state.json` 确认主屏恢复 1080×2340、无 size override、DPI override 408、自动旋转 1、user_rotation 0，`force_resizable_activities=null`。没有重启手机、关闭 Shizuku 或覆盖原 CI 安装。

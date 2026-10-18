@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 import subprocess
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SHELL = ROOT / "Android/MaaFwApp"
@@ -17,6 +19,60 @@ def git_apply(shell: Path, patch: Path, *options: str) -> subprocess.CompletedPr
     )
 
 
+def applied_prefix(shell: Path, patches: list[Path]) -> int:
+    """Later patches may edit files or hunks introduced by earlier ones; verify the chain together."""
+    if len(patches) < 2:
+        return 0
+    paths = set()
+    for patch in patches:
+        stat = subprocess.run(
+            ["git", "-C", str(shell), "apply", "--numstat", "-z", str(patch.resolve())],
+            capture_output=True,
+        )
+        if stat.returncode:
+            return 0  # Preserve the ordinary per-patch failure diagnostic.
+        records = iter(stat.stdout.split(b"\0"))
+        for record in records:
+            if not record:
+                continue
+            path = record.split(b"\t", 2)[2]
+            # Rename records have an empty path followed by the old and new names.
+            paths.update([os.fsdecode(path)] if path else [os.fsdecode(next(records)), os.fsdecode(next(records))])
+    with tempfile.TemporaryDirectory(prefix="maafgo-patch-index-") as temporary:
+        env = dict(os.environ, GIT_INDEX_FILE=str(Path(temporary) / "index"))
+
+        def scratch(*args, data=None):
+            return subprocess.run(
+                ["git", "-C", str(shell), *args], env=env, capture_output=True, input=data,
+            )
+
+        if scratch("read-tree", "--empty").returncode:
+            return 0
+        present = [path for path in sorted(paths) if (shell / path).exists() or (shell / path).is_symlink()]
+        if present and scratch("add", "-f", "--", *present).returncode:
+            return 0
+        tree = scratch("write-tree")
+        if tree.returncode:
+            return 0
+        # Only the temporary index is reversed. User files, their mtimes, and the real index stay intact.
+        for count in range(len(patches), 1, -1):
+            if scratch("read-tree", tree.stdout.strip().decode("ascii")).returncode:
+                return 0
+            for patch in reversed(patches[:count]):
+                if scratch("apply", "--cached", "--reverse", str(patch.resolve())).returncode:
+                    # Windows text-mode writers may produce CRLF patches while git add
+                    # normalizes the index to LF. Retry only that transport conversion;
+                    # do not ignore arbitrary whitespace in a developer's local edits.
+                    raw = patch.read_bytes()
+                    if b"\r\n" not in raw or scratch(
+                        "apply", "--cached", "--reverse", "-", data=raw.replace(b"\r\n", b"\n"),
+                    ).returncode:
+                        break
+            else:
+                return count
+    return 0
+
+
 def apply_patches(shell: Path = SHELL, patches: Path = PATCHES) -> list[tuple[str, str]]:
     """保留不冲突的本地改动；补丁既不能应用也不能反向验证时明确失败。"""
     if not (shell / "app/src/main").is_dir():
@@ -27,7 +83,11 @@ def apply_patches(shell: Path = SHELL, patches: Path = PATCHES) -> list[tuple[st
     patch_files = sorted(patches.glob("*.patch"))
     if not patch_files:
         raise RuntimeError(f"安卓外壳补丁目录为空: {patches}")
-    for patch in patch_files:
+    prefix = applied_prefix(shell, patch_files)
+    for index, patch in enumerate(patch_files):
+        if index < prefix:
+            result.append((patch.name, "already applied"))
+            continue
         check = git_apply(shell, patch, "--check")
         if check.returncode == 0:
             applied = git_apply(shell, patch)

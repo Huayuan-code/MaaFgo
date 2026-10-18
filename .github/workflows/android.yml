@@ -91,6 +91,11 @@ jobs:
           --tests 'com.aliothmoon.maafw.remote.internal.AppWatchdogTargetTest'
           --tests 'com.aliothmoon.maafw.remote.internal.DisplayPinStabilityTest'
           --tests 'com.aliothmoon.maafw.remote.internal.TaskDisplayMoveTargetTest'
+          --tests 'com.aliothmoon.maafw.runner.ForegroundDisplayPrecheckTest'
+          --tests 'com.aliothmoon.maafw.remote.internal.PrimaryInputGuardTest'
+          --tests 'com.aliothmoon.maafw.bridge.DriverPrimaryInputGuardTest'
+          --tests 'com.aliothmoon.maafw.bridge.InputControlGestureDisplayTest'
+          --tests 'com.aliothmoon.maafw.runner.MaaFrameworkRunnerPortTest'
       - uses: actions/upload-artifact@v7
         with:
           name: MaaFGO-android-${{ matrix.abi }}-debug
