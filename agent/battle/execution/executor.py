@@ -10,6 +10,7 @@ from __future__ import annotations
 from . import coords
 
 import time
+from platform_waits import is_android
 
 
 # 两步点击之间的固定间隔；配合 controller 时序保证点击生效
@@ -26,16 +27,29 @@ class Executor:
 
     def open_command_cards(self) -> bool:
         """主界面点攻击钮。"""
+        if is_android():
+            return self._android_battle_tap("战斗_安卓点击攻击")
         self._click(coords.ATTACK_BTN)
         return True
 
     def select_card(self, ui_slot: int) -> bool:
+        if is_android():
+            return self._android_battle_tap(f"战斗_安卓选择指令卡{ui_slot}")
         self._click(coords.center(coords.CARD_ROI[ui_slot]))
         return True
 
     def select_np(self, servant_slot: int) -> bool:
+        if is_android():
+            return self._android_battle_tap(f"战斗_安卓选择宝具{servant_slot}")
         self._click(coords.NP_CLICK[servant_slot])
         return True
+
+    def _android_battle_tap(self, entry: str) -> bool:
+        """安卓战斗按钮采用经真机对照的按住时长，参数在 Pipeline 维护。"""
+        if self.ctx.tasker.stopping:
+            return False
+        detail = self.ctx.run_task(entry)
+        return bool(detail and detail.status.succeeded and not self.ctx.tasker.stopping)
 
     def select_enemy(self, slot: int) -> bool:
         self._click(coords.ENEMY_POINT[slot])

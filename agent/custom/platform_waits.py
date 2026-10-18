@@ -3,5 +3,9 @@ import os
 import sys
 
 
+def is_android() -> bool:
+    return sys.platform == "android" or os.environ.get("MAAFGO_PLATFORM") == "android"
+
+
 def platform_timeout(desktop: float, android: float) -> float:
-    return android if sys.platform == "android" or os.environ.get("MAAFGO_PLATFORM") == "android" else desktop
+    return android if is_android() else desktop
