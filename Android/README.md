@@ -14,7 +14,7 @@
 | Windows 依赖 | 安卓仅保留原生自动战斗，移除 BBC 入口、路径选项、DLL 和进程监听；安卓 Agent 不导入 BBC/psutil。公共 Chaldea 解析依赖仍保留 |
 | Python 与原生库 | APK 自带 CPython、NumPy、maafw 和 NDK 编译的 cv2；MaaFramework 与 Python 内核的 maafw 版本必须匹配。启动时配置 Python 路径及原生库路径，不能直接复用 Windows wheel |
 | YOLO 与 OCR | 保留 `support_det.onnx`、`quest_detect.onnx` 及 OCR 模型；安卓通过 APK 的 `libonnxruntime.so` C API v17 推理，桌面继续使用官方 Python wheel。当前安卓桥用于单输入 float32 图像模型、CPU 推理 |
-| 控制与后台 | 使用 Shizuku/Root 服务采集和注入触摸；后台把游戏启动到独立虚拟屏。修复日服声明页焦点、标题点击位置与有限重试，并为 DirectHit 的稳定等待补齐明确区域 |
+| 控制与后台 | 使用 Shizuku/Root 服务采集和注入触摸；后台把游戏启动到独立虚拟屏。修复日服声明页焦点、标题点击位置与有限重试，并为 DirectHit 的稳定等待补齐明确区域。共享 Pipeline 还需检查零尺寸点击区域、转场确认及失败传播；白纸化地球 19 个副本已补齐相关保护 |
 | 分辨率与生命周期 | 后台固定 1280×720 / DPI 240，前台要求 16:9；任务间尺寸改变后重建 controller/tasker。屏保放在主 Activity 的 Compose 树中，恢复亮度与唤醒标记，避免遮挡虚拟屏；运行中改尺寸/旋转仍需先停止 |
 | 数据与文件输入 | Agent 工作目录对齐手机 PI 根目录；库存、Chaldea 缓存和羁绊进度放在 `pi/config/`。升级及手动重解保留整个 config；文件输入使用手机可读路径，`content://` 不会自动转换。库存失败须明确报错，已有有效数据不能被不完整结果覆盖 |
 | Chaldea 数据链 | 复用编队与缓存业务，修复分享链接/Base64 解析、phase 默认过滤和缓存关卡匹配。支持手机直接获取链接；当前原生策略不能保证复现分享中的指定 Arts 面卡顺序 |
