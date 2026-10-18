@@ -18,13 +18,16 @@ from maa.toolkit import Toolkit
 
 # 导入自定义 Action (从 custom 目录)
 import mfaalog
-import bbc_action
-import bbc_start
-import bbc_stop
-import bbc_stop_listener
+# MaaFwApp 的 Python 运行时不安装 Windows BBC / psutil 依赖。
+IS_ANDROID = sys.platform == "android" or os.environ.get("MAAFGO_PLATFORM") == "android"
+if not IS_ANDROID:
+    import bbc_action
+    import bbc_start
+    import bbc_stop
+    import bbc_stop_listener
+    import chaldea_import_action
+    import bbc_to_chaldea_action
 import box_action
-import chaldea_import_action
-import bbc_to_chaldea_action
 import formation_action
 import bond_completion_action
 import current_bond_completion_action

@@ -22,6 +22,7 @@
         },
         "post_delay": 3000,
         "next": [
+            "[JumpBack]登录-启动页恢复焦点",
             "自动登录",
             "自动登录_蓝屏检测继续",
             "[JumpBack]是否要更新",
@@ -30,7 +31,27 @@
             "自动登录2",
             "[JumpBack]登录-断网重连",
             "[JumpBack]等待更新完成"
-        ]
+        ],
+        "on_error": []
+    },
+    "登录-启动页恢复焦点": {
+        "recognition": {
+            "type": "OCR",
+            "param": {
+                "roi": [0, 600, 1280, 120],
+                "expected": ["このアプリは無料"]
+            }
+        },
+        "action": {
+            "type": "Click",
+            "param": {
+                "target": [630, 350, 20, 20]
+            }
+        },
+        "post_delay": 2000,
+        "focus": {
+            "Node.Action.Starting": "日服启动声明页：恢复游戏窗口焦点"
+        }
     },
     "直到达到主界面": {
         "recognition": {
@@ -51,6 +72,8 @@
         ]
     },
     "自动登录": {
+        "doc": "日服角色介绍页的提示会闪烁，后台单次点击可能未推进。限定提示文字命中后点击中央，最多三次；参考自动登录2的有限重试与空on_error，耗尽后停止，避免全局返回键恢复空转。",
+        "max_hit": 3,
         "recognition": {
             "type": "OCR",
             "param": {
@@ -66,15 +89,24 @@
             }
         },
         "action": {
-            "type": "Click"
+            "type": "Click",
+            "param": {
+                "target": [610, 665, 60, 20]
+            }
         },
         "post_delay": 5000,
         "focus": {
             "Node.Recognition.Failed": "尚未检测到登录成功"
         },
         "next": [
+            "直到达到主界面",
+            "[JumpBack]关闭主界面弹窗",
+            "[JumpBack]关闭主界面弹窗2",
+            "[JumpBack]如果要关闭",
+            "自动登录",
             "自动登录2"
-        ]
+        ],
+        "on_error": []
     },
     "如果要SKIP": {
         "recognition": {
@@ -128,6 +160,7 @@
         ]
     },
     "自动登录2": {
+        "max_hit": 3,
         "recognition": {
             "type": "OCR",
             "param": {
@@ -142,18 +175,22 @@
             "type": "Click",
             "param": {
                 "target": [
-                    462,
-                    421,
-                    396,
-                    163
+                    610,
+                    604,
+                    60,
+                    24
                 ]
             }
         },
         "post_delay": 15000,
         "next": [
             "直到达到主界面",
-            "[JumpBack]如果要关闭"
-        ]
+            "[JumpBack]关闭主界面弹窗",
+            "[JumpBack]关闭主界面弹窗2",
+            "[JumpBack]如果要关闭",
+            "自动登录2"
+        ],
+        "on_error": []
     },
     "关闭主界面弹窗": {
         "recognition": {

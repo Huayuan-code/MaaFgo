@@ -1,0 +1,298 @@
+# 安卓验收记录
+
+日期：2026-10-18。开发分支：`codex/android-app`。
+
+## 环境与产物
+
+- MuMu Player 12，Android 12 / API 32，x86_64，Root 授权。
+- 前台模式，主屏 1280×720、DPI 240，从悬浮球面板启动任务。
+- 日服包名 `com.aniplex.fategrandorder`，游戏版本 2.139.5。
+- 首轮收尾 APK：2.0.9-alpha.15 / versionCode 1195，代码提交 `b6abc5c`；后续兼容版本见文末。
+- 本地输出 `Android/out/MaaFGO-android-x86_64-debug.apk` 与 `MaaFGO-android-arm64-v8a-debug.apk`；SHA-256 见同目录 `apk-sha256.json`。
+
+## 已验证结果
+
+| 项目 | 结果与证据 |
+| --- | --- |
+| APK 安装、Root 服务、资源与 Python Agent | 成功；最终 APK 覆盖安装后服务状态“就绪”，资源标记 1195 |
+| 安卓 Python / OpenCV / NumPy / ONNX | CPython 3.13.15、OpenCV 4.12、NumPy 2.3.2；两个模型推理与 Agent 完整导入成功 |
+| 日服自动启动与登录 | `run_20261018_012514_1.jsonl`：COMPLETED，1 分 45 秒 |
+| 日服日常战斗 | `run_20261018_020044_1.jsonl`：COMPLETED，3 分 54 秒，原生战斗成功 1/1 |
+| 日服完整战斗链 | 自动回主界面 → 主线记录 1 → 冬木 → X-A（宅邸残迹）→ 首个助战 → 队伍识别 → 进入关卡 → 出牌 / 宝具 → 结算；未使用苹果 |
+| 国服自动登录 | `run_20261018_011624_1.jsonl`：COMPLETED，59 秒 |
+| 国服种树 | `run_20261018_011849_1.jsonl`：COMPLETED，5 秒；识别到可转换材料为 0，因此未实际转换 AP |
+| 自动检查 | Android 专项 12 项通过；既有回归套件 274 项通过、1 项跳过；生成资源与 interface schema 校验通过 |
+
+战斗运行使用 alpha.14，在面板中明确选择“不食用苹果 / 1 次 / 首个助战 / 不使用 Chaldea 队伍”。最终 alpha.15 只补充选项默认值格式转换，覆盖安装和资源刷新已复验；未重复消耗 AP。成功日志及面板截图保存在本机 `Android/out/mumu-jp-battle-passed.jsonl`、`mumu-jp-battle-passed.png`。
+
+## 本轮修复
+
+- DirectHit 节点没有识别矩形，MaaFramework 5.14.3 的等待稳定动作会报错。安卓资源生成时为此类节点补充显式画面区域。
+- 日服主线记录标题与国服不同：新增正式模板到 `resource/base/image/OoTTemple/主线记录1-jp.png`，由日服 pipeline 引用；第一部章节选项不再覆盖区服标题模板。
+- MXU 的 `default` 兼容字段不被安卓外壳读取：生成时转换成标准 PI `default_case`，避免“首个助战”误选为“自定义助战”。
+
+## 验证边界
+
+- 首轮 MuMu 后台虚拟屏未通过；后续已定位启动焦点问题并继续实测，最新结果见文末。
+- 首轮未测 Shizuku；后续结果见文末。ARM64 真机、连续多场、完整 Chaldea 编队与复杂关卡仍需独立验收。
+- 原生战斗部分指令卡的颜色 / 归属识别置信度不足时使用现有容错出牌；本轮普通 X-A 成功，不能据此认定精确指令卡策略已全部验证。
+- 国服日常导航在早期测试中未通过，本轮转为日服后未复验国服战斗。
+- Agent 详细输出会触发面板限流提示，完整信息可从日志导出；该提示不是战斗失败。
+- 尚未配置安卓正式签名与 Release / Mirror酱更新源。安装包为本地调试版。
+
+同一 versionCode 调试覆盖安装不会自动刷新已解压 PI。请用“设置 → 项目资源 → 重新解压资源”，必要时重启服务；详见 README。发布新版本时须递增 APK versionCode，保留资源 interface.json 的既有版本同步约定。
+
+## MXU 兼容性补充验收
+
+- 安装版本：2.0.9-alpha.18 / versionCode 1198，提交 `44e378f`；x86_64 与 ARM64 APK 均已重新构建，模拟器安装并启动成功。
+- Python 打包专项 14 项通过；安卓真实 ProjectLoader / RunPlanBuilder 的 Kotlin 检查 2 项通过，其中覆盖普通/冠位 1 号/冠位 2 号的满破与非满破共 6 条礼装参数路径。
+- 新生成的 Pipeline 与 interface schema 校验通过。6 个动态扫描选项均转为标准 select，每个含 47 个文件选项、图标与默认“不限”。
+- MuMu 实际打开普通助战的满破礼装列表，选择“迦勒底午茶时光”，确认配置中持久化的是 `迦勒底午茶时光.png`。截图在本机 `Android/out/mumu-compat-ce-list.png`。
+- Chaldea 文件按钮按文本输入回退，链接/ID/手机路径的参数替换和编队说明加载通过 Kotlin 检查；本轮未运行游戏编队。
+- UI 检查没有启动战斗、没有消耗 AP。检查后恢复之前的任务配置，SHA-256 校验一致。
+- 详细转换方式与保留的限制见 [COMPATIBILITY.md](COMPATIBILITY.md)；构建审计结果在 `Android/out/interface-compatibility.json`。
+
+## 后台与本地数据续验
+
+同日继续使用 MuMu Android 12 / API 32、日服 2.139.5。安装官方 Shizuku 13.6.0，通过其 APK 显示的 ADB 指令启动，服务与 Agent 的运行 UID 为 2000；本轮 Shizuku 验收不使用 Root 启动服务。
+
+| 项目 | 真实设备结果 |
+| --- | --- |
+| Shizuku 连接与后台冷启动 | 授权、资源、Python Agent、截屏和触摸成功；日服自动登录 1 分 27 秒。启动声明页识别后点击恢复焦点，无需人工触摸虚拟屏 |
+| Root 后台战斗 | `run_20261018_041917_2.jsonl`：登录后完整导航、关卡 YOLO 识别、首个助战、队伍识别、技能、出牌、宝具、结算；原生战斗成功 1/1，战斗任务用时 3 分 39 秒，`COMPLETED` |
+| 从者统计 | 417 个唯一 ID；47 屏、46 次下滑，确认滚动条到底，生成 `config/Inventory/player_servants.json` |
+| 礼装统计 | 默认全部四五星礼装，405 个唯一 ID；72 屏、71 次下滑，确认滚动条到底，生成 `config/Inventory/player_equips.json` |
+| 手机端读库 | APK 自带 Python 调用实际 `CompleteBondFormation._read_player_inventory`，两文件 schema、类别、唯一 ID、数量、扫描有效与到底标志全部通过，读取不改文件 |
+| 持久化 | 重启、递增 versionCode 覆盖安装、真实点击“重新解压资源”后，两份库存和 Chaldea 缓存三个文件 SHA-256 全部不变；已在主机另行备份 |
+| 失败与停止 | 扫描受遮挡时未写入不完整礼装库，已保存的从者库保留；新版真实运行记录 `COMPLETED_WITH_FAILURES`。主动停止日志为 `CANCELLED` |
+| Chaldea 72098 | 手机端真实下载、解码、缓存落盘；阻断网络函数后，短链、关卡 ID、缓存文件名及手机绝对路径四种输入读取相同内容，网络调用为 0 |
+| Chaldea 原生参数 | 实际转换器输出 1 回合、9 个从者技能、1 个御主技能、宝具顺序 3→2；冠位助战为狂呆，来自 NFF 的爱和名侦探芙尔摩斯均要求满破，所需头像和礼装模板在 APK 中存在 |
+
+从者统计来自 `run_20261018_032913_2.jsonl`，礼装完整统计来自 `run_20261018_035329_2.jsonl`（只重扫礼装，用时 5 分 34 秒），失败呈现来自 `run_20261018_034920_2.jsonl`，停止来自 `run_20261018_034059_2.jsonl`。设备日志与手机数据检查结果保存在本机 `Android/.cache/acceptance-20261018/`。
+
+两份库存的 `scan_complete`、`catalog_complete`、`scan.bottom_confirmed`、`scan.recognition_valid` 都为 true，`bottom_detection` 为 `scrollbar`。未匹配格累计计数分别为 176、741，含重复屏及同屏重复卡片，不能解释为未识别的唯一卡片数，也不能把 417/405 宣称为账号所有卡片的精确总数。库存只保存唯一 ID，不记录持有张数；默认礼装范围不含一至三星。当前库存不按区服或账号隔离，切换后应重新构建。
+
+72098 属于 40 AP 加道具的冠位关卡，本轮未进入该关卡。原始攻击指定“本地狂呆 Arts 面卡 → 助战狂呆宝具 → 本地狂呆宝具”；现有原生转换器保留宝具顺序，面卡由原生策略重新选择，不能保证复现原策略的 Arts 起手链、伤害和 NP 回收。数据链通过不等于该攻略完整实战通过，独立自动编队和羁绊补齐的完整游戏操作仍需另测。
+
+可复用 `tools/check_android_user_data.py` 在 APK Python 环境检查两类文件、实际读库函数、Chaldea 缓存和原生计划。默认禁止 HTTP 与缓存写入；首次在线下载须显式传 `--allow-download`，可用 `--section inventory` 或 `--section chaldea` 分项检查。本轮实际手机结果为 `phone-user-data-complete.json`，持久化结果为 `persistence.after-upgrade.json`、`persistence.after-reinstall.json`。
+
+### 后台战斗与原始文件复验
+
+Root 后台战斗使用 alpha.24 / code1204，冬木 X-A、原生模式、1 场、首个助战、不使用 Chaldea 队伍、不吃苹果。APK 实际加载 `agent/utils/quest_detect.onnx`，识别到 X-A 后进入战斗，日志同时包含 `Battle 1/1 成功`、`success_count=1/1` 和完成页，消耗 3 AP。截图与原始日志为本机 `Android/out/root-background-native-battle.png`、`Android/.cache/acceptance-20261018/run_20261018_041917_2.jsonl`。本轮未改变原有队伍配置。
+
+alpha.25 / code1205 的 `run_20261018_042350_1.jsonl` 冷启动登录用时 1 分 27 秒；`run_20261018_042634_1.jsonl` 登录用时 8 秒并测试“任务自动结束时关闭目标应用”，日志完成后 FGO 进程已退出。
+
+前述 `persistence.*.json` 使用了 Windows 文本换行转换后的哈希，三次结果一致，但不能当作手机原始字节哈希。收尾另用 `subprocess` 直接接收 `adb exec-out` 字节，覆盖安装并真实点击“重新解压资源”后，三个原始文件均逐字节一致：
+
+| 手机文件 | 原始 SHA-256 |
+| --- | --- |
+| `config/Inventory/player_servants.json` | `93b68e2a37d8e6c63fb9faec8d044d222ff8f897167c34be7fb18e4345c40785` |
+| `config/Inventory/player_equips.json` | `06d637db1bd03000770653dfc9b093111092c54150a3923071667c730968086a` |
+| `config/Battle/摩阿阿_72098_94146537.json` | `0a1be41f2b0e47c58162a32bbd7b230545d55a241da384a663afa6a043ab859c` |
+
+对应证据为 `phone-raw.before-final-upgrade.json`、`phone-raw.after-final-upgrade.json`、`phone-raw.after-final-reinstall.json`。`phone-user-data-final.json` 再次使用手机 Python 的真实数据消费者检查两库、Chaldea 缓存与原生计划，全部通过，HTTP 调用为 0。
+
+## alpha.27 后台与屏保验收
+
+该轮 APK 为 **2.0.9-alpha.27 / versionCode 1207**，产品代码基于 `471fa88`，资源来自当前工作区（源 interface 版本 `v1.2.28`），原有未提交改动仍保留。两种 ABI 均已构建，MuMu 已安装 x86_64 包；后续提交只整理测试及验收记录。每包 34 项静态检查、9,172 个运行文件的资源哈希核对通过。最新分辨率补测及安装包版本见下文。
+
+| 场景 | 实测结果 |
+| --- | --- |
+| Root 后台冷启动 + 手动屏保 | `run_20261018_044109_1.jsonl`，1 分 27 秒，`COMPLETED`；屏保下声明页、标题页、主界面均正常识别，完成时自动退出屏保 |
+| 同一 Activity 重复显隐 | alpha.26 中连续显示 3 次、滑动解锁 2 次均成功；该版与最终版使用相同的 Compose 屏保代码。最终版另完成上行冷启动验证 |
+| Shizuku 自动屏保 + 冷启动 | `run_20261018_044441_1.jsonl`，1 分 26 秒，`COMPLETED`；`shizuku_service` 为 UID 2000，自动显示主屏屏保，结束后退出屏保并关闭 FGO，`pidof` 确认游戏已退出 |
+| MaaFGO 退到模拟器桌面 | `run_20261018_044751_1.jsonl`，1 分 25 秒，`COMPLETED`；启动后在主屏按 Home，MaaFGO Activity 暂停、桌面可见，虚拟屏继续完成登录并自动关闭 FGO |
+| 最终包数据保留 | alpha.27 再次真实重解资源，三个手机原始文件仍与上表 SHA 完全相同；`phone-user-data-alpha27-final.json` 全项通过，网络调用为 0 |
+
+屏保使用主 Activity 现有 Compose 树，保持黑底、时钟、滑条和最新日志，不再新建窗口。显示时调低当前窗口亮度并保持屏幕唤醒，隐藏后恢复。隐藏预览只断开 monitorSurface，native 采集仍继续；仅可见主屏 Activity 能显示屏保，返回桌面时不覆盖桌面。这里验证的是应用内黑色屏保，不是按电源键后的系统真息屏。
+
+重复开关时发现旧日服标题页点击可能落在“Touch Screen”上方，漏点后原流程也不重试。最终版将点击区域移至 `[610,604,60,24]`，仅在标题页 OCR 命中时最多点击三次，未知画面不盲点；耗尽后显式失败，避免继承全局 Back 恢复而伪成功。5 个真实 SDK 组件用例验证漏点重试、弹窗返回、耗尽、未知屏幕及失败回退；v5.14.3 与 v5.10.4 均通过。最终两种后端的冷启动都已实测通过。
+
+最终回归：Python 单元三组分别运行 260、16、4 项，仅首组跳过 1 项，其余通过；目标 SDK v5.14.3 的组件 52 项全部通过。编队组件的旧替身已修正为真实请求下一帧，持续截图失败仍必须得到 `FAILED`。真实 Kotlin 选项解析/计划 6 项、资源安装器 35 项通过（Windows 下 2 项符号链接权限测试跳过）、屏保状态/亮度 8 项、运行收尾 32 项、设置更新检查 20 项通过。日志在本机 `Android/.cache/acceptance-20261018/` 与 `Android/.cache/screensaver-compose-tree-tests.log`。
+
+收尾恢复原任务配置、Root 前台模式及原分辨率（1080×1920 物理屏，横屏 1920×1080，DPI 240），原任务均未启用；保留本轮生成的两库和分享缓存。未修改桌面打包目录。ARM64 真机、连续多场、完整 Chaldea 自动编队/羁绊补齐与该攻略实战尚未验收，不能宣称所有主体功能已全部通过。
+
+在安卓任务中将“是否使用 Chaldea 队伍”设为“是”，在“Chaldea 队伍导入”直接粘贴 `https://link.chaldea.center/laplace/share?id=72098` 即可走手机端获取；独立“Chaldea 自动编队”也使用同一输入框。本地文件须填写手机可读路径。此链接的 Arts 起手限制及高成本关卡边界见前文，导入成功不代表完整攻略可原样复现。
+
+## 2160×720 分辨率续验
+
+2026-10-18 继续在同一 MuMu Android 12 / API 32 测试。主屏通过 `wm size` 设置为横屏 **2160×720**，DPI 保持 240；硬件显示模式仍为 1920×1080，因此这是超宽逻辑主屏模拟，不是 2160×720 的 ARM64 真机。Shizuku 服务实际 UID 为 2000。
+
+结论：**超宽主屏可使用后台模式；原生超宽前台仍不支持，需要先调整为 16:9。** 后台独立创建 1280×720 虚拟屏，主屏大小不会拉伸游戏截图。前台 MaaFramework 默认按短边 720 等比例缩放，不会自动裁掉黑边或补偿横向偏移；真实 SDK v5.14.3 内存控制器确认 1920×1080 输入变为 1280×720，而 2160×720 输入仍为 2160×720。现有战斗坐标、识别 ROI 和编队读取依赖 16:9，不能仅移除比例检查。
+
+本轮新包为 **2.0.9-alpha.29 / versionCode 1209**，产品提交 `257a019`，两种 ABI 已构建，MuMu 覆盖安装 x86_64；资源仍来自当前工作区，既有未提交改动保留。
+
+| 场景 | 真实结果 |
+| --- | --- |
+| 超宽后台冷启动、截图与屏保 | alpha.27 的 `run_20261018_050106_2.jsonl`（本轮证据目录保存为 `background-run.jsonl`）：`COMPLETED`，登录 1 分 59 秒；实际主屏 PNG 为 2160×720，游戏截图 PNG 为 1280×720。主屏屏保滑动解锁、重新显示、按 Home 后继续执行均正常 |
+| 新版超宽主屏下的后台完整战斗 | alpha.29 的 `run_20261018_051924_2.jsonl`：冷登录 1 分 26 秒，日常战斗 3 分 37 秒，整轮 `COMPLETED`。Shizuku 后台虚拟屏 1280×720，冬木 X-A 原生 1/1、首个助战、不使用 Chaldea、不吃苹果，消耗 3 AP；含导航、关卡 YOLO、队伍读取、技能、出牌、宝具和结算。主屏按 Home 后，桌面可见，虚拟屏继续运行至完成 |
+| 同一服务切换前台尺寸 | alpha.29：先在 1280×720 运行截图，再改为 1920×1080；`run_20261018_051537_2.jsonl` 登录及截图 `COMPLETED`，登录 1 分 24 秒。服务 PID 29095 保持不变，native controller 配置从 1280×720 更新为 1920×1080，真实触摸可到达 y=999 |
+| 已打开悬浮窗后改为超宽 | alpha.29 的 `run_20261018_051802_2.jsonl`：按预期 `FAILED`，明确报告当前 2160×720 需要 16:9；没有启动 FGO，没有执行任务点击 |
+| 不重启服务的失败恢复 | 改回 1280×720，`run_20261018_051830_1.jsonl` 截图 `COMPLETED`，服务 PID 29095 未变 |
+| 新包本地数据读取 | 手机 Python 真实消费者读取 417 个从者 ID、405 个礼装 ID，Chaldea 72098 的四种缓存输入和原生计划均通过，HTTP 调用为 0；本轮没有重新扫描库存或执行该高成本攻略 |
+
+旧 alpha.27 在同一服务换尺寸后只比较 display ID，会继续复用 1280×720 触摸边界。实测 native 请求 `(954,933)`，实际驱动注入 `(954,719)`，登录后重复漏点公告关闭按钮；测试主动停止，日志为 `CANCELLED`，不是完成。新增便携补丁 `0004-refresh-controller-for-capture-size.patch` 将尺寸纳入缓存键，在下一次任务准备时重建控制器，并补充 prepare 入口的比例检查。它不保证任务执行中或准备期间任意旋转、折叠展开和改尺寸；请先停止，再调整和重开。
+
+首页“修改分辨率”基于硬件 `Display.Mode` 计算 16:9，不基于 `wm size` 覆盖值。本次 MuMu 点击后恢复硬件对应的 1920×1080，不能宣称该按钮在模拟器自动算出了 1280×720。另直接加载已编译 `ScreenSize.class` 调用确认：真实物理输入 2160×720 的换算结果为 1280×720，竖屏 720×2160 则为 720×1280；真机上的系统修改权限、异形屏和横竖屏切换仍需实测。
+
+新版 Kotlin 控制器 8 项、运行收尾 32 项和 Python 补丁应用器 4 项通过，无跳过。两包各 37 项静态检查及 9,172 个运行资源哈希核对通过；DEX 定义检查与 JVM 替身测试不代替真机触摸。SHA 清单为 `Android/out/apk-sha256.json`，本轮设备证据、原始配置备份与测试结果在本机 `Android/.cache/resolution-2160x720-20261018-050036/`。
+
+本轮单场仍出现既有 `cards_not_confident`，由容错策略完成选择；通过不代表精确面卡策略全部正确。收尾恢复原逻辑分辨率（横屏 1920×1080）、DPI 240、Root 前台模式和原始任务配置，任务均未启用；两份库存与 Chaldea 缓存三个原始文件 SHA-256 与测试前一致。最新 APK 已留在 MuMu，未同步桌面打包目录。
+
+### 仍需独立验收的内容
+
+| 优先级 | 内容及通过条件 |
+| --- | --- |
+| 高 | ARM64 手机：常见 20:9、异形屏和不同安卓版本；Shizuku 授权、厂商省电限制、前台改分辨率/恢复、横竖切换、系统真息屏。应用内黑色屏保不等于系统熄屏 |
+| 高 | 自定义助战：头像 YOLO、指定礼装、满破/非满破、宝具等级、好友筛选、滚动刷新及无匹配时停止；已有文件列表和参数链验收不能替代实际筛选 |
+| 高 | 完整 Chaldea 自动编队、换人及羁绊补齐：实际游戏操作后逐槽核对角色/礼装/位置，并核对原攻略的指令卡限制。库存读取和分享缓存通过不等于编队/攻略实战通过 |
+| 中 | 连续多场、跨 Wave、退出与恢复、AP 不足/不吃苹果、长时间运行和存储增长；目前一场 X-A 不能覆盖这些场景 |
+| 中 | Shizuku/Agent 中断、网络超时或失效分享、不可读/损坏文件、存储不足及中文/空格路径；确认明确失败、可重试且不覆盖已有有效数据 |
+
+国服登录/种树已有前述记录，国服完整导航战斗、复杂关卡及剧情中断应单独复验。当前结果不能概括为全部功能与全部手机均已通过。
+
+## ARM64 包在 x86_64 MuMu 上的转译验收（未通过）
+
+2026-10-18 使用 GitHub Actions `39095664791` / 提交 `d97b3b3` 的 ARM64 构建，实际版本为 `1.1.48-beta.2.692 / code1212`。设备仍为 MuMu Android 12 / API 32，宿主安卓 ABI 首选 x86_64，同时声明支持 arm64-v8a；这不是 ARM64 真机验收。
+
+CI 调试证书与本机已安装包不同，直接覆盖返回 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。本轮用原安装包的本地调试证书重新签名，未卸载或清数据；签名前后 1,163 个非签名 ZIP 条目内容逐一比对一致，原生库仍仅含 arm64-v8a、ELF machine=183，没有混入 x86_64 库。原 CI 包 SHA-256 为 `b21eb4aaf716e265508b8e59d12aca1bc68914bb4f3a78a43d14dbc24d2cafbe`，实际测试的换签名包为 `850b231b97024c875eb8ac82bb46d17a6ad9b10dbc47a31ce1e7f9ef2a93c71e`。
+
+| 层级 | 结果 |
+| --- | --- |
+| 安装与界面 | 通过，`primaryCpuAbi=arm64-v8a`，主界面及选项可显示 |
+| Root 前台特权服务 | 未通过；launcher 能启动，但其后执行系统 x86_64 `app_process`，加载 ARM64 `libbridge.so` 报 `EM_AARCH64 (183) instead of EM_X86_64 (62)`，服务退出 |
+| Shizuku 前台特权服务 | 未通过，同样的原生库架构不匹配 |
+| Shizuku 后台日服登录 | 未执行，`run_20261018_123351_1.jsonl` 在服务启动阶段出现 `DeadObjectException`，最终为 `NOT_RUN`；尚未进入游戏任务 |
+| 独立 ARM64 Python / 基础库 | 从该 APK 将运行时解压到本轮独立临时目录：Python 3.13.15 启动、ctypes 64 位指针、NumPy 2.3.2 点积、OpenCV 4.12.0 PNG 编解码及缩放均通过 |
+| 独立 MaaFramework 加载 | 进程在 `ctypes.CDLL(libMaaFramework.so)` 返回前触发 SIGSEGV / exit139，未创建控制器 |
+| 两个 YOLO 模型 | 包内助战和关卡模型均存在，哈希与源文件相同；助战模型的独立初始化探针触发 SIGSEGV / exit139，未完成一次推理，随后关卡模型推理未执行 |
+| 战斗、库存扫描与编队 | 受服务与原生运行时阻断，未执行；本轮未启动 FGO、未消耗 AP 或进行召唤 |
+
+以上独立 Python 探针与 APK 的特权服务任务是分层测试，基础库通过不代表整套 Agent 能完成任务。MuMu 对普通 ARM64 应用的转译能力没有自动覆盖独立 `app_process` 特权服务和所有 native 调用；这些失败也不能据此判定 ARM64 真机必然失败。当前应在该 MuMu 使用 x86_64 包，并继续保留 ARM64 真机未验收的边界。
+
+测试前备份原始设置、任务配置和整个 `pi/config/`；结束后无卸载覆盖恢复原 x86_64 alpha.29 / code1209，安装 APK 哈希与测试前完全一致，Root 服务重新显示“就绪”。原任务勾选和设置逐字节恢复，三个 config 文件及完整目录内容哈希不变，分辨率与 DPI 未修改；本轮独立运行时和暂存文件已清理。
+
+报告为本机 `Android/out/arm64-acceptance.json`，原始日志、配置备份、探针及恢复校验在 `Android/.cache/arm64-acceptance-20261018-122851/`。这份结果仅说明本次 MuMu 转译环境未通过完整 ARM64 验收。
+
+## 日服后台登录漏点续修
+
+2026-10-18 用户反馈后台有操作但游戏不响应。现场为 x86_64 alpha.29 / code1209，主屏 1920×1080、后台虚拟屏 1280×720。`run_20261018_130452_1.jsonl` 中角色介绍页 OCR 已命中，点击落在 `(758,651)`，但画面仍停在「画面をタッチしてください」；后续只等待标题页，超时后进入全局恢复，反复发送 111 / ESC。游戏与注入均在 display 2，窗口输入通道正常，不能将这次问题归因为 ARM64 转译或点击发到主屏。
+
+修复将提示页点击限定在中央 `[610,665,60,20]`，只在提示文字命中时最多尝试三次；提示页及启动阶段显式禁用全局错误恢复，耗尽后报告失败。提示页与标题页的后继列表复用已有 OCR / 模板关弹窗节点，允许在主界面确认前处理友情点等中途弹窗。
+
+- 第一轮修复实测已越过角色介绍页，但遇到友情点弹窗，`run_20261018_131407_1.jsonl` 明确为 `COMPLETED_WITH_FAILURES`，没有继续发送 ESC。
+- 补齐弹窗后，`run_20261018_131717_1.jsonl` 日服后台冷登录用时 **1 分 37 秒**，`最终确认抵达主界面` 模板得分 0.9821，最终 `COMPLETED`。本轮只勾选登录，没有进入战斗或消耗 AP。
+- 成功轮未再次出现友情点弹窗；用上一轮原始失败 PNG 离线执行真实 v5.14.3 OCR，现有关弹窗节点命中「閉じる」，框 `[221,596,99,47]`、置信度 0.999958；无设备输入。内存控制器另外验证中途弹窗关闭后 JumpBack 回到主界面检查，不能据此宣称已再次实机覆盖该弹窗。
+- 日服登录回归共 9 项、v5.14.3 组件套件 56 项、安卓打包单测 21 项通过；maa-tools 资源检查和 JSON Schema 检查通过。
+- 两种 ABI 的 APK 均更新，版本为本地 `2.0.9-alpha.33 / code1213`。模拟器覆盖安装最终 x86_64 包；任务勾选、设置及 `pi/config/` 保留，APK 内与手机中的日服登录 Pipeline 字节一致。ARM64 真机未在本轮验收。
+
+原始截图、日志、同步前备份和校验保存在本机 `Android/.cache/background-input-20261018-130718/`，两包哈希在 `Android/out/apk-sha256.json`。
+
+## 白纸化地球 19 个副本的导航修复
+
+`run_20261018_132528_1.jsonl` 在日服「冻土的试炼」识别成功后点击 `(1104,178)`，仍停在关卡卡片；`任务开始-空节点` 超时后继承全局恢复，回到主界面又开始尝试战斗，最终由用户取消，记录为 `CANCELLED`。
+
+这是共享资源中的既有问题：`main` / `origin/main` 的点击区域原本就是 `[929,177,0,2]`，并非安卓适配新增。零宽表示延伸至屏幕边界；在 Windows 主机的 MaaFramework v5.10.4 内存控制器也复现到 `(1104,178)`，未连接设备。修复在公共 `base/pipeline/ordeal call.json` 中，同时适用于当前工程的桌面与安卓资源。
+
+逐一检查 19 项关卡选项及其导航链后，统一调整：
+
+- 将「冻土的试炼」点击区域改为 `[929,177,1,2]`；其余副本的显式点击区域宽高均为正，原坐标保留。
+- 19 个副本的关卡卡片均只在对应模板命中时最多点击三次，优先处理已出现的任务开始按钮或体力不足弹窗；未知画面不盲点其他关卡。
+- 共用的任务开始按钮最多点击三次，之后必须正向识别助战页，才返回战斗调度；确认节点只识别、不选择助战。模板、ROI 和阈值与 `进本-选择助战` 一致。
+- 导航链显式禁用全局错误恢复，防止导航失败被改写为成功；寻找入口的滑动最多十次。
+
+首轮仅修正「冻土的试炼」时，`run_20261018_133608_1.jsonl` 已实测点击 `(929,178)`、任务开始模板 0.9724，并到达助战页，诊断任务 `COMPLETED`，没有开战。该轮并未包含后来补充的 19 副本统一确认逻辑，不能作为全部副本的实机验收。
+
+统一逻辑的 11 项真实框架回归覆盖 19 项选项的可达性/正尺寸检查、全部 19 个副本的漏点重试和耗尽失败、任务开始按钮重试、助战正向确认、未知画面拒绝和十次滑动上限；v5.10.4 与 APK 对齐的 v5.14.3 均验证通过。完整 v5.14.3 组件套件 67 项、maa-tools 资源检查和 JSON Schema 检查通过。
+
+两种 ABI 的本地包为 `2.0.9-alpha.34 / code1214`。电脑意外关机后重新校验 APK 和内嵌 PI ZIP 的 CRC 均完整，库存/队伍等 `pi/config/` 文件哈希与关机前相同；`run_20261018_134316_1.jsonl` 无完整结束记录且有未刷盘字节，不计成功。恢复后的 `run_20261018_135009_1.jsonl` 在登录白屏处明确失败，未进入副本，另行保留现场并重启同一 MuMu 实例。
+
+重启后统一版的 `run_20261018_135414_1.jsonl` 完成日服冷登录、白纸化地球导航、关卡卡片点击、任务开始与助战页确认，用时 **2 分 43 秒**，最终 `COMPLETED`。关卡模板 0.9535、任务开始模板 0.9724，新增的 `OrdealCall-已到助战` 与最终验收检查点均为 0.9623 / 阈值 0.8。该轮临时禁用实际战斗入口，仅在助战页停止，日志无自动战斗执行；不把此结果表述为完成一场战斗。
+
+收尾已删除手机上的临时诊断 Pipeline，并重启特权服务清除诊断缓存；正常资源的 `run_20261018_135834_1.jsonl` 仅执行登录并成功，随后恢复原本仅勾选日常战斗的配置，任务配置及设置原始字节完全一致。游戏保留在日服主界面、没有任务运行；全部 `pi/config/` 文件哈希不变，手机 APK 与本机 x86_64 产物哈希相同，实际登录/进本资源来自正常安装包。报告为本机 `Android/out/ordeal-navigation-acceptance.json`。
+
+测试脚本、原始日志、截图及备份保存在本机 `Android/.cache/earth-entry-20261018-133218/`，恢复续验材料在其 `resume-20261018-135005/` 子目录。其他 18 个副本的实机逐一导航、完整战斗及 ARM64 真机不在本轮已通过范围。
+
+## 华为 ARM64 真机：B 服后台窗口与登录
+
+2026-10-18 在华为 **ELE-AL00 / Android 10 / API 29 / ARM64** 手机上使用 Shizuku 验证。用户原安装为 CI 包 `com.aliothmoon.maafw.maafgo / code1212`；保留该安装及原本勾选的 7 个任务，测试前备份配置、结束后逐字节恢复。此次修复安装到独立包 **`com.aliothmoon.maafw.maafgo.bgtest`**，标签为“**MaaFGO后台验收**”，版本 **alpha.35 / code1215**，仅勾选“登录”，没有覆盖原包或运行原包的全部已选任务。
+
+| 阶段 | 真实结果 |
+| --- | --- |
+| 原 CI 包复现 | B 服默认 `.EmptyClass` 启动路径在第 7.88 秒观测到 Unity 游戏窗口从虚拟屏迁到主屏 display 0；游戏横屏弹出，与用户描述一致 |
+| 首轮外壳修复复测 | 使用同一默认启动路径，第 8.12 秒仍观测到 Unity 迁往主屏。修正 Android 10 的 `stackId` 后，手动迁回可生效，但不能消除后续游戏退出 |
+| 显示配置变化 | 从主屏迁回虚拟屏会将游戏 DPI 从 408 改为 240；游戏日志出现 `onDestroy` 和自行发送 SIG9。仅补任务迁移不足以保持游戏运行，不能将“拉回成功”等同于“后台任务成功” |
+| 直接 Unity 入口 | 冷启动 `com.bilibili.fatego/.UnityPlayerNativeActivity` 后，初步连续约 22 秒均处于虚拟屏；确认该 Activity 已导出，随后将转换限定加入 Android 生成资源，桌面源不变 |
+| 最终登录任务 | `run_20261018_144823_1.jsonl`：北京时间 14:48:23.847 开始，14:49:43.788 结束，任务显示 **1 分 19 秒**，最终 **`COMPLETED`** |
+| 窗口持续观测 | `final-timeline.json` 共 104 次采样、持续 83.69 秒；所有观测到的 Unity 游戏窗口均位于 **display 5**，没有迁到主屏；主屏截图保持 **1080×2340 竖屏**，MaaFGO 顶部预览中的游戏画面为 **1280×720** |
+| 正向识别 | “开始游戏”模板 0.9908 / 阈值 0.7，“关闭公告”0.9744 / 0.7，“主界面判断-main-ui”0.9938 / 0.8；日志包含登录任务完成及 `COMPLETED` footer |
+
+实现同时包含 `0005-fix-legacy-background-task-placement.patch` 的旧系统栈 ID 解析、后台目标提前登记和启动异常失败传播，以及 Android 生成资源中的 B 服 Unity 入口转换。Pipeline 与选项 override 的重复启动均转换；StopApp 的包名、日服和其他 Activity 保持原样，源文件逐字节保护由转换回归覆盖。
+
+本轮 Python 安卓专项 **23 项**、真实 PI 解析检查及最终 Kotlin 目标回归 **30 项**通过；与 CI 相同的完整外壳测试共 **95 项**，无失败，Windows 上两项符号链接测试因权限跳过。最终 0001–0005 在干净公开上游顺序重放成功，25 个修改文件与工作区一致。
+
+最终增量另做了两项真机复验：
+
+- 启动中停止：`run_20261018_150106_1.jsonl` 在初始稳定校验内点击停止，`ensureAppOnDisplay` 502ms 后返回 `reason=cancelled`；任务 footer 为 `CANCELLED`，后续未执行移栈或 Launcher 兜底。
+- 切回桌面：`run_20261018_150134_1.jsonl` 在约第 8 秒回到桌面、第 30 秒返回 MaaFGO；登录最终 `COMPLETED`，任务显示 **1 分 26 秒**。114 次采样、持续 94.66 秒，Unity 始终在 display 6；不是仅把游戏移回而停止任务。两种正常 ABI APK 已重新生成并校验，均为 alpha.35 / code1215，B 服入口为 Unity，APK 不携带用户 config 根。
+
+边界及现场保留：
+
+- SDK 的 `com.gsc.auto_login.AutoLoginActivity` 与 `com.gsc.welcome.WelcomeActivity` 曾短暂在 display 0 创建独立任务，采样截图主屏仍为 MaaFGO 与顶部预览。因此本轮确认的是 Unity 游戏窗口不再横屏占据主屏，不能宣称所有 SDK 窗口永不出现在主屏，首次登录或授权弹窗仍需另测。
+- `force_resizable_activities` 曾临时设为 1 诊断，未改善现象；其原值为 `null`，已恢复，未重启手机。不能据此保证排除了 resizeability 或 ROM 设置缓存的影响。
+- 本轮没有执行战斗、召唤或消耗 AP，也未在真机验证仓库统计、Chaldea 编队、长期运行、系统息屏或其他机型；先前 MuMu 的相应成功结果不自动扩展到该手机。
+- 原 CI 安装与 7 项任务勾选保留；“MaaFGO后台验收”是独立测试安装，用户原包不会因测试包登录成功而自动获得修复。
+
+原始证据保存在本机 `Android/.cache/phone-background-20261018-142144/`：`repro-timeline.json`、`verify-timeline.json`、`unity-game-logcat.txt`、`direct-unity-timeline.json` 记录复现及启动对照，`final-run.jsonl`、`final-timeline.json`、`final-screen.png`、`final-preview-*.png` 记录最终登录和窗口状态，`before-user-configuration.json` 与 `original-configuration-restored.json` 保存配置及恢复校验依据；`cancel-*.txt/jsonl` 与 `home-*.png/jsonl/json` 保存最终增量复验。报告为本机 `Android/out/phone-background-acceptance.json`，包哈希为 `Android/out/apk-sha256.json`。
+
+## 华为 ARM64 真机：前台尺寸、采集与本地数据
+
+2026-10-18 继续使用同一华为 ELE-AL00 / Android 10 / ARM64 手机、Shizuku 和独立的 `com.aliothmoon.maafw.maafgo.bgtest` 验收安装。前台测试将主屏从原始 **1080×2340** 调整为 **1080×1920**，保留原有 DPI override **408**，并在游戏横屏后启动任务。物理 DPI 为 480，不能将 `wm density reset` 当作恢复用户原设置。本节数据与截图保存在本机 `Android/.cache/phone-foreground-20261018-151211/`。
+
+### 前台登录与本轮修复
+
+- alpha.35 / code1215 稳定横屏的 `landscape-run.jsonl` 仅执行登录，任务显示 **42 秒**，最终 `COMPLETED`；开始游戏、关闭公告与主界面模板分别为 0.9978、0.9755、0.9931，均超过各自阈值。该结果证明稳定横屏下可以识别和操作，不能覆盖随后旋转的情况。
+- 旧包回桌面转竖屏后，`after-warm-system-logcat.txt` 在 15:18:26 记录 `parent AImageReader closed without releasing image`，`shizuku_service` 的 ImageReader 线程触发 **SIGABRT**。这是原生采集释放顺序问题，不能归因为 Shizuku 未授权或 ARM64 库未打包。
+- `0006-drain-capture-images-before-reader-close.patch` 为采集生命周期和回调加同步，使用代际标记拒绝过期回调，在关闭 ImageReader 前等待采集回调及预览持有的图像释放；主屏采集 start/stop/restart 与显示变化处理也串行化。
+- `0007-guard-foreground-orientation-and-input.patch` 补充前台横屏启动和运行尺寸保护：前台启动须处于符合要求的横屏，运行中尺寸改变应停止任务并明确说明，避免继续使用原触摸尺寸。稳定横屏、启动拒绝与实际旋转恢复是不同检查，下面分别记录。
+- 验收安装覆盖更新至 **alpha.36 / code1216**。`new-portrait-start-rejected.*` 记录竖屏点击开始后明确拒绝；与 `new-portrait-before-runs.txt` 比较，没有新建运行日志。该结果证明启动保护；采集旋转压力检查另列如下。
+- 新包 `final-landscape-run.jsonl` 再次仅执行登录，任务显示 **1 分 4 秒**，最终 `COMPLETED`；关闭公告 0.9755 / 0.7、主界面 0.9931 / 0.8。
+- 新包主屏采集连续 **8 轮、16 次横竖切换**，前后及各次采样特权服务 PID 均为 **8789**；`rotation-stress-results.json` 保存各次尺寸和截图哈希，`rotation-stress-logcat.txt` 每次均记录图像排空后释放、随后以新尺寸 `InitFrameBuffers: Success`。本轮没有 SIGABRT 或 Fatal，采集在 1080×1920 与 1920×1080 间继续更新。
+- 旋转日志仍有 `W NdkImageReader: A frame is available after AImageReader closed!` 排队通知；它没有伴随旧版的 `parent AImageReader closed without releasing image` 致命错误，后续采集初始化与画面更新正常。该结果不表示系统不再产生关闭后的通知；任务运行中改变尺寸的停止另用最终代码复验。
+- 最终代码的 `runtime-rotate-run.jsonl` 在登录运行中按 Home，从 **1920×1080** 转为 **1080×1920** 后拒绝下一次输入，约 **11 秒**结束；明确输出“前台运行中屏幕尺寸发生变化，任务已停止”，footer 为 **`FAILED`**，前后服务 PID 均为 **14834**。底层 `Tasker.Task.Succeeded` 仍会先产生一次“任务完成”日志，应以随后尺寸变化 Error 和整轮 `FAILED` 为准；这不是登录成功。
+- 恢复横屏后，同一 PID **14834** 的 `final-recovery-run.jsonl` 登录 **46 秒**、footer **`COMPLETED`**，主界面模板 0.9931 / 0.8，说明采集及下一轮任务可以恢复，没有因排空等待而卡死。
+- `front-manual-stop-run.jsonl` 从前台悬浮面板点击停止，footer 为 **`CANCELLED`**，服务 PID **14834** 未改变。恢复原生 **1080×2340** 后，已有悬浮面板点击开始也明确拒绝、没有新建 run，截图为 `final-native-ratio-start-rejected.png`。手机实际“恢复分辨率”按钮与 DPI override **408** 已核对。
+- 恢复主屏 **1080×2340** 后切回后台，最终 `run_20261018_155203_1.jsonl`（保存为 `final-background-run.jsonl`）仅登录 **1 分 29 秒**、footer **`COMPLETED`**，主界面模板 0.9938 / 0.8。服务 PID 仍为 **14834**；`final-background-timeline.json` 连续观测约 **93.9 秒**，观测到的 Unity 游戏窗口始终在虚拟屏 **display 8**，主屏保持原始尺寸。启动阶段曾提示画面 15 / 30 FPS，登录仍完成；该轮没有战斗，不能据此验证低帧率下的战斗时机。
+
+### 仓库扫描、Chaldea 与模型
+
+| 项目 | 真机结果与边界 |
+| --- | --- |
+| 从者统计 | alpha.35 的 `run_20261018_152558_2.jsonl` 先登录，再执行“仅从者”；统计任务 **4 分 16 秒**，整轮 `COMPLETED`。扫描 **15 屏、14 次下滑**，通过滚动条确认到底，写入 **91 个唯一 ID** |
+| 库文件有效性 | `scan_complete`、`catalog_complete`、`scan.bottom_confirmed`、`scan.recognition_valid` 均为 true，`missing_template_ids=[]`；真实 `CompleteBondFormation._read_player_inventory` 消费者读取 91 个 ID，读取前后文件哈希不变 |
+| Chaldea 在线获取 | 手机端真实下载分享 72098 并转换原生计划，写入中文名 `config/Battle/摩阿阿_72098_94146537.json`，大小 **10,078 字节**；没有进入该攻略的关卡 |
+| Chaldea 离线四入口 | 分享链接、关卡 ID、缓存文件名、手机绝对路径均读取相同队伍；禁用 HTTP 后网络调用为 **0**，缓存无新增或改写。见 `chaldea-download.json`、`chaldea-offline.json` |
+| MXU 文件列表兼容 | 手机实际打开普通助战的满破礼装列表并选择“万华镜”；`support-file-selection-config.json` 保存 `普通助战-礼装-满破={"type":"single","case":"万华镜.png"}`，日常战斗仍为 disabled。仅验证列表、选择与参数保存，没有执行实际助战筛选 |
+| ARM64 助战模型 | 手机 APK 的实际 `NativeOrtSession` 加载 `support_det.onnx`，输入 `[1,3,384,640]`、输出 `[1,5,5040]`，推理结果均为有限数 |
+| ARM64 关卡模型 | 同一实际后端加载 `quest_detect.onnx`，输入 `[1,3,192,256]`、输出 `[1,6,1008]`，推理结果均为有限数 |
+
+从者统计的 `unmatched_candidate_cells=170` 是跨屏累计的候选格计数，包含重复屏和同屏重复卡片，不能解释成漏识别的唯一从者数量。91 是本次去重后的识别结果，尚未逐一与账号实际持有核对；`catalog_complete` 和缺失模板为 0 表示模板目录覆盖检查通过，不能据此宣称全账号识别准确。真机本轮只扫描从者，没有执行礼装统计；库存不记录持有张数，也未按账号或区服隔离。
+
+模型原始结果为 `inventory-models-phone.stdout.jsonl`，脚本为 `inventory-models-phone.py`。两次推理使用全零输入，用于验证模型、ARM64 原生推理后端和输出张量能够工作；没有验证实际助战头像、指定礼装、满破筛选或关卡识别准确率，不能替代游戏实屏识别验收。
+
+### 覆盖更新与保留边界
+
+alpha.36 覆盖安装后，任务配置、应用设置及两份既有本地文件保持不变，资源标记更新为 `pi.version=1216`。随后在手机实际点击“设置 → 重新解压资源 → 确定”，界面完成状态见 `after-reextract-screen.png`；`config-before-upgrade-sha256.json`、`config-after-overwrite-sha256.json` 与 `config-after-reextract-sha256.json` 比较原始字节，两次均不变：
+
+| 文件 | 大小 | 覆盖前后相同的 SHA-256 |
+| --- | --- | --- |
+| `Inventory/player_servants.json` | 52,961 字节 | `f4562c505b4f35daec9e00929a4009040da45d8d7819cb79c8c84308580286fb` |
+| `Battle/摩阿阿_72098_94146537.json` | 10,078 字节 | `0a1be41f2b0e47c58162a32bbd7b230545d55a241da384a663afa6a043ab859c` |
+
+最终目标代码回归 **66 项**全部通过；与 CI 相同筛选条件的完整外壳检查共 **131 项，0 失败、0 错误、2 跳过**，跳过项为 Windows 符号链接权限；Python 安卓专项 **28 项**全部通过。两种正常 ABI 的 alpha.36 / code1216 APK 均已重新构建，通过 APK 校验和实际 PI 解析检查，包内 PI 哈希一致。
+
+结束时重新读取用户原 CI 安装的任务配置和应用设置，与上一轮测试前备份的原始 SHA-256 均完全一致，证据为 `original-user-app-unchanged.json`；原 CI 包没有因独立验收包运行而获得修复或改变所选任务。
+
+本轮没有执行战斗、召唤、完整 Chaldea 自动编队或消耗 AP。系统真息屏、长时间运行、其他 ROM 与完整账号识别准确率仍未验收，独立验收包的结果不自动更新用户原 CI 安装。
+
+本轮结束后，独立验收包自身的初始任务配置与设置也已逐字节恢复，仅“登录”启用；新生成的从者库与队伍缓存保留。`restored-state.json` 确认主屏恢复 1080×2340、无 size override、DPI override 408、自动旋转 1、user_rotation 0，`force_resizable_activities=null`。没有重启手机、关闭 Shizuku 或覆盖原 CI 安装。

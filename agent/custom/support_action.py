@@ -514,8 +514,8 @@ class SupportAction(CustomAction):
         if SupportAction._ocr_sess is not None:
             return SupportAction._ocr_sess or None, SupportAction._ocr_keys
         try:
-            import onnxruntime as ort
-            sess = ort.InferenceSession(OCR_REC_ONNX, providers=["CPUExecutionProvider"])
+            from utils.onnx_session import create_session
+            sess = create_session(OCR_REC_ONNX)
             with open(OCR_REC_KEYS, "r", encoding="utf-8") as f:
                 keys = [ln.strip("\n") for ln in f.readlines()]
             SupportAction._ocr_sess, SupportAction._ocr_keys = sess, keys

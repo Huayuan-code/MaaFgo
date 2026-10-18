@@ -1,0 +1,11 @@
+{
+    "进入主线记录": {
+        "recognition": {
+            "type": "TemplateMatch",
+            "param": {
+                "roi": [807, 0, 473, 90],
+                "template": "OoTTemple/主线记录1-jp.png"
+            }
+        }
+    }
+}

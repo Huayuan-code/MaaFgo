@@ -1,0 +1,35 @@
+# 路径相对本文件；先运行 tools/prepare_android.py 生成安卓专用资源。
+assets: assets
+include:
+  - interface.json
+  - resource/**
+  - i18n/**
+  - agent/**
+  - Announcement.md
+  - LICENSE
+agent:
+  sourceDir: agent-dist
+  abi: ["${MAAFGO_ANDROID_ABI:-arm64-v8a}"]
+  runtimes:
+    - location: bundle
+      executable: bin/python3
+      name: MaaFGO Python
+      args: [-u, agent/main.py]
+      env:
+        MAAFGO_PLATFORM: android
+        PYTHONHOME: "{bundle}/prefix"
+        PYTHONPATH: "{bundle}/site-packages/pure.zip:{bundle}/site-packages"
+        LD_LIBRARY_PATH: "{bundle}/prefix/lib:{bundle}/site-packages/chaquopy/lib:{nativeLibs}"
+        MAAFW_BINARY_PATH: "{nativeLibs}"
+display:
+  # 保留主屏运行入口，兼容虚拟屏能力受限的设备。
+  foreground: true
+  presets:
+    - label: 720P
+      width: 1280
+      height: 720
+      dpi: 240
+app:
+  id: maafgo
+  label: MaaFGO
+  icon: ../assets/resource/icon.png
