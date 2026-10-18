@@ -5,7 +5,7 @@
 
 # MaaFgo
 
-基于图像识别的 FGO 自动化助手，覆盖关卡导航、战斗、日常养成与智能编队。<br>
+基于图像识别的 FGO 自动化助手，覆盖关卡导航、战斗、日常养成与智能编队，提供 Windows 桌面版与 Android APK。<br>
 由 [MaaFramework](https://github.com/MaaXYZ/MaaFramework) 强力驱动。<br>
 <a href="https://github.com/xlxyvergil/MaaFgo" target="_blank" style="font-weight: bold;">🔗 项目仓库</a><br>
 🌟 觉得好用就在仓库右上角点个 Star 吧 🌟
@@ -14,7 +14,7 @@
 
 <p align="center">
   <img alt="Python" src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white">
-  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Android%20Emulator-blueviolet">
+  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20Android-blueviolet">
   <img alt="license" src="https://img.shields.io/github/license/xlxyvergil/MaaFgo">
   <br>
   <img alt="commit" src="https://img.shields.io/github/commit-activity/m/xlxyvergil/MaaFgo">
@@ -23,7 +23,20 @@
 
 ---
 
+## 下载与版本选择
+
+| 客户端 | 适用场景 | 下载与说明 |
+| --- | --- | --- |
+| Windows / MXU | 在电脑上通过 ADB 操作模拟器；可选 BBC 或原生自动战斗 | [桌面版 Releases](https://github.com/xlxyvergil/MaaFgo/releases)，下载 `MXU.zip` |
+| Android / APK（测试版） | 直接在手机或模拟器内运行；使用 Shizuku / Root，支持前台与后台模式 | [本仓库 APK 构建](https://github.com/dingi8528/MaaFgo_NEW/actions/workflows/android.yml)，操作步骤见下方及 [安卓使用说明](./Android/README.md) |
+
+安卓手机通常选择 **`arm64-v8a`**，MuMu 12 选择 **`x86_64`**。安卓包已包含 Python、识别模型和原生战斗运行环境，无需另装 BBC 或电脑端 Python。当前 APK 通过 GitHub Actions 附件提供，尚未接入正式 Release 或 Mirror酱 更新。
+
+---
+
 ## 功能概览
+
+以下为共享任务资源的功能范围，各设备上的实际验证进度见 [安卓验收记录](./Android/TESTING.md)。BBC 相关功能仅供 Windows 版使用。
 
 ### ⚔️ 关卡与战斗
 
@@ -33,7 +46,7 @@
 | 迦勒底之门 | 种火、修炼场、QP 本等日替副本 |
 | 冠位戴冠战 | 支持职阶和难度选择，含国服枪冠位 |
 | 大活动 / 小活动 | 适配有独立地图或无地图的活动，支持自动寻找副本与次数检测 |
-| 直接 BBC 战斗 | 跳过地图导航，从助战或编队界面直接交给 BBchannel 战斗 |
+| 直接 BBC 战斗（Windows） | 跳过地图导航，从助战或编队界面直接交给 BBchannel 战斗 |
 | 芥学姐代打（测试） | 原生自动战斗，可从助战、编队或战斗界面启动；支持单次、连续出击、跳过剧情以及幕间物语 / 强化任务 |
 
 ### 🧩 编队与羁绊优化
@@ -45,7 +58,7 @@
 | 当前编队羁绊最大化 | 从编队确认页识别当前队伍，保留已有从者，在 COST 上限内补空位并优化羁绊礼装 |
 | 构建个人从者礼装库 | 从灵基一览扫描本账号持有的从者和礼装，供两种羁绊补齐流程快速规划 |
 
-羁绊补齐默认使用实时扫描。先运行“构建个人从者礼装库”，再分别开启“使用本地从者库”和“使用本地礼装库”，可显著减少仓库扫描时间。库存文件缺失、损坏或扫描未完成时会自动回退到实时模式；召唤、出售或礼装状态变化后建议重新构建。
+羁绊补齐默认使用实时扫描。先运行“构建个人从者礼装库”，再分别开启“使用本地从者库”和“使用本地礼装库”，可显著减少仓库扫描时间。库存文件缺失、损坏或扫描未完成时会自动回退到实时模式；召唤、出售或礼装状态变化后建议重新构建，切换账号或区服后应重新构建。
 
 > “当前编队羁绊最大化”只允许从**编队确认页**启动；“修改所有礼装”默认关闭，因此已有礼装默认会被保留。助战及其礼装始终不会被编辑。
 
@@ -54,7 +67,7 @@
 | 任务 | 说明 |
 | --- | --- |
 | 登录 / 关闭游戏 | 自动启动、登录或关闭所选渠道的游戏包 |
-| 启动 BBC | 连接 BBchannel 战斗核心，支持雷电、MuMu 和手动 ADB |
+| 启动 BBC（Windows） | 连接 BBchannel 战斗核心，支持雷电、MuMu 和手动 ADB |
 | 每日召唤 | 每日 1 石、免费友情 10 连、常驻每日 1 抽 |
 | 技能升级 | 强化从者主动技能与追加技能，支持目标等级配置 |
 | 强化从者 | 自动喂经验值卡并突破；可循环从礼物盒补充经验值卡 |
@@ -77,21 +90,31 @@
 
 登录和关闭游戏目前提供 B 服、4399 服、vivo 服、应用宝服、日服和小米服包名选项。不同渠道仍需选择与游戏画面对应的资源包。
 
+上述表格表示已有资源覆盖，不代表每个渠道、关卡都已在安卓真机验收。安卓目前已在 MuMu 日服完成一场原生战斗，在华为 Android 10 ARM64 真机通过 Shizuku 前后台登录、从者库保存与读取、Chaldea 下载缓存和模型离线推理；真机战斗、完整自动编队与真实助战筛选仍需继续验证。
+
 ### 运行要求
 
-- Windows 操作系统
-- 雷电或 MuMu 安卓模拟器，也可手动填写 ADB 端口
-- 模拟器分辨率必须为 **1280 × 720**
-- Windows 系统区域必须为**中文（简体，中国）**
+| 项目 | Windows / MXU | Android / APK |
+| --- | --- | --- |
+| 系统与设备 | Windows，雷电 / MuMu 模拟器或手动 ADB 连接 | 支持目标为 Android 10+；ARM64 手机或 x86_64 模拟器 |
+| 控制权限 | 连接模拟器的 ADB | **正在运行且已授权的 Shizuku**，或设备已有 Root 权限；前后台模式均需要其中一种 |
+| 游戏画面 | 模拟器固定 **1280 × 720** | 后台使用 **1280 × 720** 虚拟屏；前台要求游戏处于**横屏 16:9** |
+| 战斗方式 | BBC / 原生自动战斗 | 原生自动战斗 |
+| 其他 | Windows 系统区域为**中文（简体，中国）** | 前台操作面板需要悬浮窗权限；未支持仅靠无障碍服务运行 |
+
+超宽屏手机建议先用后台模式。例如 **2160 × 720** 主屏可保持原尺寸，游戏在独立的 1280 × 720 虚拟屏运行；前台暂不支持以该超宽比例直接执行任务。设备的虚拟屏能力与厂商限制仍可能影响后台运行。
+
 ---
 
-## 快速开始
+## Windows / MXU 快速开始
 
 ### 1. 下载并解压
 
 前往 [Releases](https://github.com/xlxyvergil/MaaFgo/releases) 下载最新版 `MXU.zip`，完整解压后运行。MXU 是桌面客户端，无需浏览器。
 
-### 2. 安装 BBchannel
+### 2. 可选：安装 BBchannel
+
+使用 BBC 战斗时需要此步骤；选择原生自动战斗可跳过。
 
 1. 将 BBC 文件夹放入 MaaFgo 根目录。
 2. 将 `bbcdll` 文件夹内的文件复制到 `BBchannel\dist\BBchannel64`，替换同名文件。
@@ -109,6 +132,8 @@
 4. 使用雷电 / MuMu 自动检测，或手动填写 ADB 端口后连接。
 
 ### 4. 选择任务并启动
+
+使用 BBC 时先运行“启动 BBC”；使用原生自动战斗无需启动 BBC。
 
 普通刷本选择“原生自动战斗”后，可依次配置战斗次数、跳过剧情、是否使用 Chaldea
 队伍和助战方式。开启“是否使用 Chaldea 队伍”后，再将分享链接、队伍 ID、关卡 ID、
@@ -131,8 +156,51 @@
 
 ---
 
+## Android / APK 快速开始
+
+### 1. 下载并安装 APK
+
+打开 [APK 构建页面](https://github.com/dingi8528/MaaFgo_NEW/actions/workflows/android.yml)，选择 `main` 分支最近一次成功的构建，在 **Artifacts** 中下载对应架构的 `MaaFGO-android-<架构>-debug` 附件，解压后安装其中的 APK。下载附件需要登录 GitHub。
+
+- **ARM64 手机**：`arm64-v8a`。
+- **MuMu 12**：`x86_64`。本机 MuMu 的 ARM64 转译未通过控制与推理验收，请使用 x86_64 包。
+
+### 2. 启动并授权 Shizuku / Root
+
+未 Root 的设备先安装并启动 Shizuku，再向 MaaFGO 授权。请按 Shizuku 应用内的引导或 [官方启动指南](https://shizuku.rikka.app/zh-hans/guide/setup/) 操作；如果界面只提供“通过连接电脑启动（使用 adb）”，点“查看指令”，在电脑上执行它为当前设备显示的命令。**只安装 Shizuku 不等于服务已启动**，手机重启后通常需要重新启动服务。
+
+已有 Root 的设备也可在 MaaFGO 选择 Root 后端并授权。随后确认 MaaFGO 已连接后端，选择正确的服务器资源和游戏渠道包名。
+
+### 3. 选择运行方式
+
+| 方式 | 启动步骤 | 画面与限制 |
+| --- | --- | --- |
+| 后台（建议先试） | 切换到“后台模式”，仅勾选“登录”，从任务页开始 | 游戏运行在独立虚拟屏，MaaFGO 顶部显示预览，主屏无需改为横屏；部分渠道 SDK 的登录或授权窗口仍可能短暂出现在主屏 |
+| 前台 | 切换到“前台模式”，选择“悬浮球模式”；必要时在首页点“修改分辨率”；点“打开操作面板”并授予悬浮窗权限；手动打开游戏，等横屏 16:9 稳定后，从悬浮球面板点“开始任务” | 直接操作主屏；任务页的开始按钮用于后台模式。用完可点“重置分辨率”恢复系统显示尺寸 |
+
+先确认“登录”可以完成，再逐项启用其他任务。任务运行期间避免手动操作游戏或旋转屏幕；前台运行中尺寸变化会停止任务，恢复横屏后需重新开始。后台“屏保”是应用内黑底与降低亮度，系统息屏后持续运行尚未完成验收。
+
+### 4. 使用 Chaldea、助战与本地仓库
+
+- **Chaldea 队伍**：开启“是否使用 Chaldea 队伍”，将分享链接或队伍 ID 粘贴到“Chaldea 队伍导入”。手机可直接联网下载并缓存，也支持关卡 ID、缓存文件名及手机可读的本地 JSON 路径；电脑路径不能直接用于手机，`content://` 文件 URI 暂不自动转换。队伍获取与完整游戏内编队是不同步骤，后者仍需按实际账号验证。
+- **助战礼装**：使用标准选项列表选择 APK 已内置的图片模板。助战与关卡 YOLO 模型均已随包提供；添加自己的识别图片需要重新打包，暂不支持桌面版的文件夹动态扫描与大图预览。
+- **仓库统计**：运行“构建个人从者礼装库”，等待扫描完成，再在羁绊补齐任务中启用对应本地库。手机库存保存在应用文件目录的 `pi/config/Inventory/`，Chaldea 缓存位于 `pi/config/Battle/`；不会自动与电脑的 `config/` 同步。详细目录见 [安卓使用说明](./Android/README.md)。
+
+### 5. 更新与数据保留
+
+使用**相同签名**的 APK 覆盖安装时会保留配置、库存、队伍缓存和羁绊进度。同一 Git 提交反复构建的 APK 版本码相同，覆盖后需到“设置 → 项目资源 → 重新解压资源”刷新任务与图片；该操作保留 `pi/config/`。
+
+**卸载应用或清除数据会删除这些文件。** 本地与 CI 调试包可能签名不同，无法覆盖安装时请先备份数据或使用相同签名的构建。“导出配置”不包含库存、队伍缓存与羁绊进度，这些文件需另行备份 `pi/config/`。安卓包的更新来源与桌面版独立，桌面 Mirror酱 配置不用于 APK 更新。
+
+完整安装指引、兼容差异与已知问题见 [Android/README.md](./Android/README.md)。
+
+---
+
 ## 维护文档
 
+- [安卓使用、构建与平台差异](./Android/README.md)
+- [安卓兼容方案与 MXU 影响核验](./Android/COMPATIBILITY.md)
+- [安卓模拟器与真机验收记录](./Android/TESTING.md)
 - [Chaldea 自动编队使用说明](./docs/Chaldea自动编队使用说明.md)
 - [个人从者与礼装库构建](./docs/个人从者礼装库构建说明.md)
 - [Chaldea 羁绊补齐自动编队](./docs/Chaldea羁绊补齐自动编队方案.md)
@@ -149,6 +217,7 @@
 
 ```text
 MaaFgo/
+├── Android/        # 安卓外壳、补丁、构建配置与验收记录
 ├── agent/          # Python Agent 与 Custom Action
 ├── assets/         # 图片、Pipeline、任务及选项配置
 ├── config/         # 用户本地配置与运行时生成的数据（默认不提交）
@@ -163,7 +232,8 @@ MaaFgo/
 
 - **核心框架**：[MaaFramework](https://github.com/MaaXYZ/MaaFramework) — 图像识别与自动化流程
 - **桌面客户端**：[MXU](https://github.com/MistEO/MXU) — 基于 Tauri 2 + React 的通用 GUI
-- **战斗核心**：[BBchannel](https://github.com/Meowcolm024/FGO-Automata)
+- **安卓客户端**：[MaaFwApp](https://github.com/Aliothmoon/MaaFwApp) — Shizuku / Root 控制与前后台运行
+- **战斗执行**：共享 Python 原生自动战斗；Windows 另支持 [BBchannel](https://github.com/Meowcolm024/FGO-Automata)
 - **地图导航**：基于 YOLO / ONNX 的地图目标检测与轮巡导航
 
 提交资源或数据改动前，请先阅读对应的维护文档，并运行相关 JSON 校验与 `git diff --check`。
@@ -196,6 +266,8 @@ GitHub Actions 已配置这两个测试作业；实机识图与操作仍需单�
 | :--- | :--- |
 | [**MaaFramework**](https://github.com/MaaXYZ/MaaFramework) | 图像识别自动化框架 |
 | [**MXU**](https://github.com/MistEO/MXU) | 轻量级跨平台通用 GUI |
+| [**MaaFwApp**](https://github.com/Aliothmoon/MaaFwApp) / [**MaaAgentCoreAndroid**](https://github.com/Aliothmoon/MaaAgentCoreAndroid) | 安卓客户端与 Python 运行环境 |
+| [**MaaEnd**](https://github.com/MaaEnd/MaaEnd) | 安卓打包接入参考 |
 | [**BBchannel**](https://github.com/Meowcolm024/FGO-Automata) | FGO 自动化战斗核心 |
 | [**FGO-py**](https://github.com/hgjazhgj/FGO-py) | 地图导航图像匹配算法参考 |
 
