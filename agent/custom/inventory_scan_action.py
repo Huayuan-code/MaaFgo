@@ -29,6 +29,7 @@ from formation_action import (
     _read_image,
 )
 import mfaalog
+from platform_waits import platform_timeout
 
 
 _CUSTOM_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -60,8 +61,8 @@ INVENTORY_ICON_LAYOUT_NODES = {
     "servant": "个人库存-从者图标大小检测",
     "equip": "个人库存-礼装图标大小检测",
 }
-ICON_LAYOUT_TRANSITION_TIMEOUT_SECONDS = 2.0
-ICON_LAYOUT_RECOVERY_TIMEOUT_SECONDS = 2.5
+ICON_LAYOUT_TRANSITION_TIMEOUT_SECONDS = platform_timeout(2.0, 8.0)
+ICON_LAYOUT_RECOVERY_TIMEOUT_SECONDS = platform_timeout(2.5, 10.0)
 
 # “构建个人从者礼装库”独占小图标布局：8 列，卡片纵向节距约 149px。
 # 其他任务仍使用各自的大/中图标参数，不能复用这里的坐标与缩放。

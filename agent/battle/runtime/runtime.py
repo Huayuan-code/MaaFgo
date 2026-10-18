@@ -27,6 +27,7 @@ from ..core.validator import (
 from ..execution.executor import Executor
 from ..perception import perception
 import mfaalog
+from platform_waits import platform_timeout
 
 # 选完卡后等攻击动画结束（部分长演出可能超过 60s，留足余量）
 _ANIMATION_TIMEOUT_S = 120.0
@@ -39,14 +40,14 @@ _PICK_DELAY_S = 0.3
 # 主战斗界面首次出现后，等待技能 CD 数字渲染完成再重新截图感知。
 _MAIN_BATTLE_SETTLE_S = 1.0
 
-# —— 等待超时（秒）：均为真机验证过的正常时序；异常才用这些上限判定卡死 ——
+# —— 等待上限（秒）：安卓为慢速 OCR 留余量；识别成功立即继续 ——
 _OPEN_CARDS_TIMEOUT_S = 15.0        # 手机单轮 OCR 可耗时 5～6 秒，允许至少两轮确认选卡
 _OPEN_CARDS_RETRY = 6               # 攻击点击被覆盖层吞掉时的重试次数
 _SKILL_TARGET_TIMEOUT_S = 5.0       # 技能目标子屏出现
-_SKILL_ANIM_TIMEOUT_S = 15.0        # 施放技能后动画结束回到主界面
-_MASTER_SKILL_RETURN_TIMEOUT_S = 10.0  # 御主技能后回主界面或进换人界面
-_ORDER_CHANGE_OPEN_TIMEOUT_S = 10.0    # 换人界面出现
-_ORDER_CHANGE_RETURN_TIMEOUT_S = 25.0  # 换人完成后回主界面
+_SKILL_ANIM_TIMEOUT_S = platform_timeout(15.0, 30.0)        # 施放技能后动画结束回到主界面
+_MASTER_SKILL_RETURN_TIMEOUT_S = platform_timeout(10.0, 20.0)  # 御主技能后回主界面或进换人界面
+_ORDER_CHANGE_OPEN_TIMEOUT_S = platform_timeout(10.0, 20.0)    # 换人界面出现
+_ORDER_CHANGE_RETURN_TIMEOUT_S = platform_timeout(25.0, 45.0)  # 换人完成后回主界面
 
 _TERMINAL_OR_MAIN = (Scene.MAIN_BATTLE, Scene.VICTORY, Scene.DEFEAT)
 _KNOWN_SCENES = (Scene.MAIN_BATTLE, Scene.COMMAND_SELECTION, Scene.ORDER_CHANGE, Scene.VICTORY, Scene.DEFEAT)
@@ -395,7 +396,7 @@ class AutoBattleRuntime:
             selected_face_slots.add(slot)
         return replace(action, picks=tuple(picks[:3]))
 
-    def _wait_until_enemy_targeted(self, slot: int, timeout_s: float = 3.0) -> bool:
+    def _wait_until_enemy_targeted(self, slot: int, timeout_s: float = platform_timeout(3.0, 20.0)) -> bool:
         """点击敌人后确认职介框蓝色选中态已经出现。"""
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
