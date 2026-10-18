@@ -10,10 +10,10 @@
 
 | 设备 | Releases 下载文件 | 使用要求 |
 | --- | --- | --- |
-| 常见 ARM64 安卓手机 | `MaaFGO-android-arm64-v8a-<版本号>-debug.apk` | 目标系统 Android 10+；Shizuku 或已具备 Root 的设备 |
-| MuMu 12 等 x86_64 模拟器 | `MaaFGO-android-x86_64-<版本号>-debug.apk` | 选择模拟器实际架构，并启用 Shizuku 或 Root |
+| 常见 ARM64 安卓手机 | `MaaFGO-android-arm64-v8a-<版本号>.apk` | 目标系统 Android 10+；Shizuku 或已具备 Root 的设备 |
+| MuMu 12 等 x86_64 模拟器 | `MaaFGO-android-x86_64-<版本号>.apk` | 选择模拟器实际架构，并启用 Shizuku 或 Root |
 
-文件名中的 `<版本号>` 对应所选版本。安卓暂未接入 Mirror酱更新源，更新时请下载新版 APK。
+文件名中的 `<版本号>` 对应所选版本。正式版和 beta 均使用同一证书签名的 Release APK；旧版调试包可能带有 `-debug` 后缀。安卓暂未接入 Mirror酱更新源，更新时请下载新版 APK。
 
 需要开发版时，可从 [GitHub Actions](https://github.com/xlxyvergil/MaaFgo/actions/workflows/android.yml) 下载：登录 GitHub，选择 `main` 分支最近一次成功的构建，在 **Artifacts** 中下载 `MaaFGO-android-<架构>-debug` 附件，解压后安装其中的 APK。
 
@@ -86,7 +86,7 @@ Android 对 `Android/data` 的访问限制因系统而异；这些是手机数�
 | --- | --- |
 | 覆盖安装后仍是旧任务或旧资源 | 同一 Git 提交的开发构建可能使用相同 `versionCode`。停止任务后，在“设置 → 项目资源 → 重新解压资源”手动刷新；APK 版本码变化后会自动准备资源 |
 | 担心库存、队伍缓存丢失 | 同签名覆盖升级及手动重解会保留运行配置、应用日志与完整 `pi/config/`；其他 PI 资源和临时记录会重新生成。重要数据仍应另行备份 |
-| 提示签名冲突，无法覆盖安装 | 本地和 CI 调试证书可能不同。优先使用相同签名的安装包；更换签名前先备份本地库存、队伍缓存与配置。卸载应用或系统“清除数据”会删除应用数据 |
+| 提示签名冲突，无法覆盖安装 | 旧调试包与正式签名包的证书不同，通常无法直接覆盖安装；后续正式版和 beta 共用固定证书。切换前先备份本地库存、队伍缓存与配置。卸载应用或系统“清除数据”会删除应用数据 |
 | Shizuku 已安装但无法连接 | 确认 Shizuku 显示运行中，且已允许 MaaFGO 使用。只有安装管理器、没有启动服务时无法控制游戏 |
 | 前台有点击但位置不对，或任务因尺寸变化停止 | 先停止任务，确认游戏处于横屏 16:9，重新从悬浮面板开始；超宽屏可改用后台 |
 | 任务失败需要反馈 | 从“设置 → 日志 → 导出日志”保存或分享日志，附手机型号、安卓版本、APK 架构、Shizuku/Root 和前台/后台模式 |
@@ -129,15 +129,15 @@ python tools/build_android.py --skip-runtime
 python tools/build_android.py --abi x86_64 --skip-runtime
 ```
 
-正式签名使用 `python tools/build_android.py --release`，需设置 `KEYSTORE_PATH`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`；密钥不要提交仓库。Actions 使用当前调试签名，安卓应用内更新源和 Mirror酱发布仍需另行配置。
+正式签名包使用 `python tools/build_android.py --release`，需设置 `KEYSTORE_PATH`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`。tag 构建通过 GitHub Secrets 使用固定正式密钥，签名及验证说明见 [signing/README.md](signing/README.md)。安卓应用内更新源和 Mirror酱发布仍需另行配置。
 
 ## Tag 构建与发布
 
 推送 `v*` tag 会由统一发布流程同时构建 Windows / MXU、ARM64 安卓和 x86_64 安卓。三个构建均通过后，Windows ZIP 和两个 APK 一起上传到同一个 GitHub Release；`beta` 等预发布标记与 Windows 包一致。任一架构构建或回归失败时，本次 Release 不会发布。
 
-安卓下载文件为 `MaaFGO-android-arm64-v8a-<tag>-debug.apk` 和 `MaaFGO-android-x86_64-<tag>-debug.apk`，手机选 ARM64，MuMu 等 x86_64 模拟器选 x86_64。`debug` 表示 APK 使用调试签名，正式版本 tag 也不会自动切换为正式签名。
+安卓下载文件为 `MaaFGO-android-arm64-v8a-<tag>.apk` 和 `MaaFGO-android-x86_64-<tag>.apk`，手机选 ARM64，MuMu 等 x86_64 模拟器选 x86_64。正式版和 beta tag 均使用正式签名的 Release APK，并验证签名、非调试标志、架构及版本。
 
-原有分支、PR 和手动安卓构建仍会生成 Actions 附件，用于开发验证。已发布的旧 tag 不会自动补上 APK；该流程在修改合入后推送的新 tag 上生效，也可在包含修改的 tag 上手动运行统一发布流程。
+原有分支和 PR 继续构建 debug APK。手动安卓构建默认 debug，维护者可启用 `release` 输入验证正式签名构建，产物保存在 Actions 附件。已发布的旧 tag 不会自动补上 APK；该流程在修改合入后推送的新 tag 上生效，也可在包含修改的 tag 上手动运行统一发布流程。
 
 ## 从 MXU 移植时的维护要点
 

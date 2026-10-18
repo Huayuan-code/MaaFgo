@@ -162,8 +162,8 @@
 
 | 设备 | 下载文件 |
 | --- | --- |
-| 常见 ARM64 安卓手机 | `MaaFGO-android-arm64-v8a-<版本号>-debug.apk` |
-| MuMu 12 等 x86_64 模拟器 | `MaaFGO-android-x86_64-<版本号>-debug.apk` |
+| 常见 ARM64 安卓手机 | `MaaFGO-android-arm64-v8a-<版本号>.apk` |
+| MuMu 12 等 x86_64 模拟器 | `MaaFGO-android-x86_64-<版本号>.apk` |
 
 文件名中的 `<版本号>` 对应所选版本。部分旧版本没有 APK，请选择包含 APK 附件的版本；需要开发版时，可按 [安卓指南](./Android/README.md) 从 Actions 下载。
 

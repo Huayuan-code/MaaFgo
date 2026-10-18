@@ -477,6 +477,9 @@ bbcdll/*
 # 本地环境配置与工具目录
 .env
 .env.example
+*.jks
+*.keystore
+*.p12
 .dev/
 
 # 本地数据生成脚本（含本机绝对路径，仅本地用，不提交）
