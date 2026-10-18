@@ -1,4 +1,4 @@
-"""用真实 MaaFramework 执行日服标题页重试；内存屏幕，不连接设备。
+"""用真实 MaaFramework 执行日服提示页、标题页重试和中途弹窗；不连接设备。
 
 保留生产点击区域、next/JumpBack、max_hit、on_error 和全局错误恢复。
 只替换 OCR/模板识别并缩短等待，由控制器模拟首次点击丢失和页面变化。
@@ -24,16 +24,21 @@ from maa.tasker import Tasker
 
 ROOT = Path(__file__).resolve().parents[2]
 TITLE = "自动登录2"
+PROMPT = "自动登录"
 HOME = "直到达到主界面"
 CLOSE = "如果要关闭"
+NOTICE = "关闭主界面弹窗"
+NOTICE_ALT = "关闭主界面弹窗2"
 CONFIRMED = "确认抵达主界面流程"
 
 
 class LoginMemoryController(CustomController):
-    def __init__(self, *, succeed_after, popup=False, initial="title"):
+    def __init__(self, *, succeed_after, popup=False, initial="title", prompt_succeed_after=1):
         self.scene = initial
         self.succeed_after = succeed_after
         self.popup = popup
+        self.prompt_succeed_after = prompt_succeed_after
+        self.prompt_clicks = []
         self.title_clicks = []
         self.popup_clicks = []
         self.unexpected_inputs = []
@@ -45,14 +50,20 @@ class LoginMemoryController(CustomController):
     def screencap(self): return np.zeros((720, 1280, 3), dtype=np.uint8)
 
     def click(self, x, y):
-        if self.scene == "title":
+        if self.scene == "prompt":
+            self.prompt_clicks.append((x, y))
+            if (610 <= x < 670 and 665 <= y < 685
+                    and self.prompt_succeed_after is not None
+                    and len(self.prompt_clicks) >= self.prompt_succeed_after):
+                self.scene = "title"
+        elif self.scene == "title":
             self.title_clicks.append((x, y))
             # 当前标题截图中的 Touch Screen 区域；旧生产矩形落在其上方。
             if (590 <= x <= 690 and 595 <= y <= 640
                     and self.succeed_after is not None
                     and len(self.title_clicks) >= self.succeed_after):
-                self.scene = "popup" if self.popup else "home"
-        elif self.scene == "popup":
+                self.scene = ("popup" if self.popup is True else self.popup) if self.popup else "home"
+        elif self.scene in ("popup", "notice", "notice_alt"):
             self.popup_clicks.append((x, y))
             if 1200 <= x <= 1250 and 0 <= y <= 50:
                 self.scene = "home"
@@ -77,18 +88,26 @@ class JpLoginRecoveryTests(unittest.TestCase):
         cls.source = json.loads((ROOT / "assets/resource/jp/pipeline/run_FGO.json").read_text("utf-8"))
         cls.defaults = json.loads((ROOT / "assets/resource/base/default_pipeline.json").read_text("utf-8"))
 
-    def run_login(self, *, succeed_after, popup=False, initial="title", legacy=False):
-        nodes = {name: copy.deepcopy(self.source[name]) for name in (TITLE, HOME, CLOSE)}
-        controller = LoginMemoryController(succeed_after=succeed_after, popup=popup, initial=initial)
+    def run_login(self, *, succeed_after, popup=False, initial="title", legacy=False,
+                  entry=TITLE, prompt_succeed_after=1):
+        nodes = {name: copy.deepcopy(self.source[name]) for name in (PROMPT, TITLE, HOME, CLOSE, NOTICE, NOTICE_ALT)}
+        controller = LoginMemoryController(succeed_after=succeed_after, popup=popup, initial=initial,
+                                           prompt_succeed_after=prompt_succeed_after)
         seen = []
 
         class Screen(CustomRecognition):
             def analyze(self, context, argv):
+                if argv.node_name == PROMPT and controller.scene == "prompt":
+                    return (405, 651, 481, 39)  # 本次后台失败现场的实际 OCR 框。
                 if argv.node_name == TITLE and controller.scene == "title":
                     return (20, 610, 190, 50)  # 标题页稳定的引继按钮 OCR 锚点。
                 if argv.node_name == HOME and controller.scene == "home":
                     return (0, 0, 1, 1)
                 if argv.node_name == CLOSE and controller.scene == "popup":
+                    return (1200, 0, 50, 50)
+                if argv.node_name == NOTICE and controller.scene == "notice":
+                    return (1200, 0, 50, 50)
+                if argv.node_name == NOTICE_ALT and controller.scene == "notice_alt":
                     return (1200, 0, 50, 50)
                 return None
 
@@ -119,7 +138,7 @@ class JpLoginRecoveryTests(unittest.TestCase):
             self.assertTrue(controller.post_connection().wait().succeeded)
             tasker = Tasker()
             self.assertTrue(tasker.bind(resource, controller))
-            job = tasker.post_task(TITLE)
+            job = tasker.post_task(entry)
             try:
                 deadline = time.monotonic() + 4
                 while not job.status.done and time.monotonic() < deadline:
@@ -163,6 +182,44 @@ class JpLoginRecoveryTests(unittest.TestCase):
         self.assertTrue(succeeded)
         self.assertEqual(len(controller.title_clicks), 3)
         self.assertEqual(seen, ["Global_Null"])
+
+    def test_servant_prompt_lost_click_retries_then_reaches_title_and_home(self):
+        succeeded, controller, seen = self.run_login(
+            succeed_after=1, initial="prompt", entry=PROMPT, prompt_succeed_after=2)
+        self.assertTrue(succeeded)
+        self.assertEqual(len(controller.prompt_clicks), 2)
+        self.assertEqual(len(controller.title_clicks), 1)
+        self.assertEqual(seen, [CONFIRMED])
+
+    def test_servant_prompt_exhaustion_stops_without_global_back_recovery(self):
+        succeeded, controller, seen = self.run_login(
+            succeed_after=1, initial="prompt", entry=PROMPT, prompt_succeed_after=None)
+        self.assertFalse(succeeded)
+        self.assertEqual(len(controller.prompt_clicks), 3)
+        self.assertEqual(controller.title_clicks, [])
+        self.assertEqual(controller.scene, "prompt")
+        self.assertEqual(seen, [])
+
+    def test_unknown_screen_during_servant_prompt_never_receives_click(self):
+        succeeded, controller, seen = self.run_login(
+            succeed_after=1, initial="unknown", entry=PROMPT)
+        self.assertFalse(succeeded)
+        self.assertEqual(controller.prompt_clicks, [])
+        self.assertEqual(controller.title_clicks, [])
+        self.assertEqual(seen, [])
+
+    def test_intermediate_notices_close_before_home_without_extra_title_click(self):
+        for scene in ("notice", "notice_alt"):
+            for entry in (PROMPT, TITLE):
+                with self.subTest(scene=scene, entry=entry):
+                    succeeded, controller, seen = self.run_login(
+                        succeed_after=1, initial="prompt" if entry == PROMPT else "title",
+                        popup=scene, entry=entry)
+                    self.assertTrue(succeeded)
+                    self.assertEqual(len(controller.popup_clicks), 1)
+                    self.assertEqual(len(controller.prompt_clicks), 1 if entry == PROMPT else 0)
+                    self.assertEqual(len(controller.title_clicks), 1)
+                    self.assertEqual(seen, [CONFIRMED])
 
 
 if __name__ == "__main__":
