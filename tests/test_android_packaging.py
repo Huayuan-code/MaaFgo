@@ -37,6 +37,80 @@ class AndroidInterfaceTests(unittest.TestCase):
         self.assertEqual(nodes["matched"]["post_wait_freezes"], 800)
         self.assertEqual(nodes["disabled"]["post_wait_freezes"], 0)
 
+    def test_bilibili_launch_conversion_is_limited_to_known_start_actions(self):
+        def action(kind, package):
+            return {"action": {"type": kind, "param": {"package": package}}}
+
+        nodes = {
+            "cold_start": action("StartApp", "com.bilibili.fatego/.EmptyClass"),
+            "retry_start": action("StartApp", "com.bilibili.fatego/com.bilibili.fatego.EmptyClass"),
+            "already_unity": action("StartApp", "com.bilibili.fatego/.UnityPlayerNativeActivity"),
+            "stop": action("StopApp", "com.bilibili.fatego"),
+            "stop_component": action("StopApp", "com.bilibili.fatego/.EmptyClass"),
+            "other_bilibili_activity": action("StartApp", "com.bilibili.fatego/.OtherActivity"),
+            "jp": action("StartApp", "com.aniplex.fategrandorder/jp.delightworks.Fgo.player.AndroidPlugin"),
+            "metadata": {"attach": {"package": "com.bilibili.fatego"}},
+        }
+        original = copy.deepcopy(nodes)
+        android.adapt_android_start_apps(nodes)
+        for name in ("cold_start", "retry_start"):
+            self.assertEqual(nodes[name]["action"]["param"]["package"], android.BILIBILI_ANDROID_GAME_ACTIVITY)
+        for name in set(nodes) - {"cold_start", "retry_start"}:
+            self.assertEqual(nodes[name], original[name], name)
+        converted = copy.deepcopy(nodes)
+        android.adapt_android_start_apps(nodes)
+        self.assertEqual(nodes, converted)
+
+    def test_prepare_routes_bilibili_starts_to_unity_and_preserves_source_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = self.fixture()
+            source["option"]["native_setting"]["pipeline_override"] = {
+                "repeat_launch": {"action": {"type": "StartApp", "param": {"package": "com.bilibili.fatego"}}},
+            }
+            android.write_json(root / "assets/interface.json", source)
+            android.write_json(root / "assets/resource/base/pipeline/日常战斗.json", {"通用战斗调度": {}})
+            cn_login = {
+                "打开游戏": {"action": {"type": "StartApp", "param": {"package": "com.bilibili.fatego"}},
+                           "next": ["阶段判断循环"]},
+                "登录-关闭游戏": {"action": {"type": "StopApp", "param": {"package": "com.bilibili.fatego"}}},
+            }
+            android.write_json(root / "assets/resource/cn/pipeline/login.json", cn_login)
+            jp_login = {"打开游戏": {"action": {"type": "StartApp", "param": {
+                "package": "com.aniplex.fategrandorder/jp.delightworks.Fgo.player.AndroidPlugin"}}}}
+            android.write_json(root / "assets/resource/jp/pipeline/run_FGO.json", jp_login)
+            for server, package in (("cn", "com.bilibili.fatego"), ("jp", "com.aniplex.fategrandorder")):
+                android.write_json(root / f"assets/resource/{server}/pipeline/关闭游戏.json", {
+                    "关闭游戏": {"action": {"type": "StopApp", "param": {"package": package}}, "next": ["关闭bbc"]},
+                    "关闭bbc": {},
+                })
+            (root / "assets/i18n").mkdir()
+            (root / "agent").mkdir()
+            (root / "Android").mkdir()
+            (root / "Android/Announcement.md").write_text("fixture", encoding="utf-8")
+            (root / "LICENSE").write_text("fixture", encoding="utf-8")
+            ocr = root / "assets/resource/model/ocr"
+            ocr.mkdir(parents=True)
+            for name in ("rec.onnx", "det.onnx", "keys.txt"):
+                (ocr / name).write_bytes(b"fixture")
+            originals = {path: path.read_bytes() for path in (root / "assets").rglob("*") if path.is_file()}
+
+            output = root / "Android/assets"
+            android.prepare(root, output)
+            converted = android.read_json(output / "resource/cn/pipeline/login.json")
+            self.assertEqual(converted["打开游戏"]["action"]["param"]["package"], android.BILIBILI_ANDROID_GAME_ACTIVITY)
+            self.assertEqual(converted["打开游戏"]["next"], cn_login["打开游戏"]["next"])
+            self.assertEqual(converted["登录-关闭游戏"], cn_login["登录-关闭游戏"])
+            self.assertEqual(android.read_json(output / "resource/jp/pipeline/run_FGO.json"), jp_login)
+            self.assertEqual(android.read_json(output / "resource/cn/pipeline/关闭游戏.json")["关闭游戏"]["action"]["param"]["package"],
+                             "com.bilibili.fatego")
+            interface = android.read_json(output / "interface.json")
+            repeat = interface["option"]["native_setting"]["pipeline_override"]["repeat_launch"]
+            self.assertEqual(repeat["action"]["param"]["package"], android.BILIBILI_ANDROID_GAME_ACTIVITY)
+            self.assertEqual(interface["version"], source["version"])
+            for path, data in originals.items():
+                self.assertEqual(path.read_bytes(), data, str(path.relative_to(root)))
+
     def fixture(self):
         return {
             "version": "v9.8.7", "mirrorchyan_rid": "MaaFgo", "mirrorchyan_multiplatform": True,

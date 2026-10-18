@@ -1,4 +1,4 @@
-# 安卓首版模拟器验收记录
+# 安卓验收记录
 
 日期：2026-10-18。开发分支：`codex/android-app`。
 
@@ -212,3 +212,35 @@ CI 调试证书与本机已安装包不同，直接覆盖返回 `INSTALL_FAILED_
 收尾已删除手机上的临时诊断 Pipeline，并重启特权服务清除诊断缓存；正常资源的 `run_20261018_135834_1.jsonl` 仅执行登录并成功，随后恢复原本仅勾选日常战斗的配置，任务配置及设置原始字节完全一致。游戏保留在日服主界面、没有任务运行；全部 `pi/config/` 文件哈希不变，手机 APK 与本机 x86_64 产物哈希相同，实际登录/进本资源来自正常安装包。报告为本机 `Android/out/ordeal-navigation-acceptance.json`。
 
 测试脚本、原始日志、截图及备份保存在本机 `Android/.cache/earth-entry-20261018-133218/`，恢复续验材料在其 `resume-20261018-135005/` 子目录。其他 18 个副本的实机逐一导航、完整战斗及 ARM64 真机不在本轮已通过范围。
+
+## 华为 ARM64 真机：B 服后台窗口与登录
+
+2026-10-18 在华为 **ELE-AL00 / Android 10 / API 29 / ARM64** 手机上使用 Shizuku 验证。用户原安装为 CI 包 `com.aliothmoon.maafw.maafgo / code1212`；保留该安装及原本勾选的 7 个任务，测试前备份配置、结束后逐字节恢复。此次修复安装到独立包 **`com.aliothmoon.maafw.maafgo.bgtest`**，标签为“**MaaFGO后台验收**”，版本 **alpha.35 / code1215**，仅勾选“登录”，没有覆盖原包或运行原包的全部已选任务。
+
+| 阶段 | 真实结果 |
+| --- | --- |
+| 原 CI 包复现 | B 服默认 `.EmptyClass` 启动路径在第 7.88 秒观测到 Unity 游戏窗口从虚拟屏迁到主屏 display 0；游戏横屏弹出，与用户描述一致 |
+| 首轮外壳修复复测 | 使用同一默认启动路径，第 8.12 秒仍观测到 Unity 迁往主屏。修正 Android 10 的 `stackId` 后，手动迁回可生效，但不能消除后续游戏退出 |
+| 显示配置变化 | 从主屏迁回虚拟屏会将游戏 DPI 从 408 改为 240；游戏日志出现 `onDestroy` 和自行发送 SIG9。仅补任务迁移不足以保持游戏运行，不能将“拉回成功”等同于“后台任务成功” |
+| 直接 Unity 入口 | 冷启动 `com.bilibili.fatego/.UnityPlayerNativeActivity` 后，初步连续约 22 秒均处于虚拟屏；确认该 Activity 已导出，随后将转换限定加入 Android 生成资源，桌面源不变 |
+| 最终登录任务 | `run_20261018_144823_1.jsonl`：北京时间 14:48:23.847 开始，14:49:43.788 结束，任务显示 **1 分 19 秒**，最终 **`COMPLETED`** |
+| 窗口持续观测 | `final-timeline.json` 共 104 次采样、持续 83.69 秒；所有观测到的 Unity 游戏窗口均位于 **display 5**，没有迁到主屏；主屏截图保持 **1080×2340 竖屏**，MaaFGO 顶部预览中的游戏画面为 **1280×720** |
+| 正向识别 | “开始游戏”模板 0.9908 / 阈值 0.7，“关闭公告”0.9744 / 0.7，“主界面判断-main-ui”0.9938 / 0.8；日志包含登录任务完成及 `COMPLETED` footer |
+
+实现同时包含 `0005-fix-legacy-background-task-placement.patch` 的旧系统栈 ID 解析、后台目标提前登记和启动异常失败传播，以及 Android 生成资源中的 B 服 Unity 入口转换。Pipeline 与选项 override 的重复启动均转换；StopApp 的包名、日服和其他 Activity 保持原样，源文件逐字节保护由转换回归覆盖。
+
+本轮 Python 安卓专项 **23 项**、真实 PI 解析检查及最终 Kotlin 目标回归 **30 项**通过；与 CI 相同的完整外壳测试共 **95 项**，无失败，Windows 上两项符号链接测试因权限跳过。最终 0001–0005 在干净公开上游顺序重放成功，25 个修改文件与工作区一致。
+
+最终增量另做了两项真机复验：
+
+- 启动中停止：`run_20261018_150106_1.jsonl` 在初始稳定校验内点击停止，`ensureAppOnDisplay` 502ms 后返回 `reason=cancelled`；任务 footer 为 `CANCELLED`，后续未执行移栈或 Launcher 兜底。
+- 切回桌面：`run_20261018_150134_1.jsonl` 在约第 8 秒回到桌面、第 30 秒返回 MaaFGO；登录最终 `COMPLETED`，任务显示 **1 分 26 秒**。114 次采样、持续 94.66 秒，Unity 始终在 display 6；不是仅把游戏移回而停止任务。两种正常 ABI APK 已重新生成并校验，均为 alpha.35 / code1215，B 服入口为 Unity，APK 不携带用户 config 根。
+
+边界及现场保留：
+
+- SDK 的 `com.gsc.auto_login.AutoLoginActivity` 与 `com.gsc.welcome.WelcomeActivity` 曾短暂在 display 0 创建独立任务，采样截图主屏仍为 MaaFGO 与顶部预览。因此本轮确认的是 Unity 游戏窗口不再横屏占据主屏，不能宣称所有 SDK 窗口永不出现在主屏，首次登录或授权弹窗仍需另测。
+- `force_resizable_activities` 曾临时设为 1 诊断，未改善现象；其原值为 `null`，已恢复，未重启手机。不能据此保证排除了 resizeability 或 ROM 设置缓存的影响。
+- 本轮没有执行战斗、召唤或消耗 AP，也未在真机验证仓库统计、Chaldea 编队、长期运行、系统息屏或其他机型；先前 MuMu 的相应成功结果不自动扩展到该手机。
+- 原 CI 安装与 7 项任务勾选保留；“MaaFGO后台验收”是独立测试安装，用户原包不会因测试包登录成功而自动获得修复。
+
+原始证据保存在本机 `Android/.cache/phone-background-20261018-142144/`：`repro-timeline.json`、`verify-timeline.json`、`unity-game-logcat.txt`、`direct-unity-timeline.json` 记录复现及启动对照，`final-run.jsonl`、`final-timeline.json`、`final-screen.png`、`final-preview-*.png` 记录最终登录和窗口状态，`before-user-configuration.json` 与 `original-configuration-restored.json` 保存配置及恢复校验依据；`cancel-*.txt/jsonl` 与 `home-*.png/jsonl/json` 保存最终增量复验。报告为本机 `Android/out/phone-background-acceptance.json`，包哈希为 `Android/out/apk-sha256.json`。

@@ -22,6 +22,14 @@ python tools/apply_android_patches.py
 
 该补丁同时在实际 `prepare` 入口检查前台画面是否为 16:9。主屏为 `2160×720` 等不支持比例时，在加载资源、Agent 或创建 native controller 前明确失败，并提示切换后台模式或调整主屏分辨率；不自动修改系统显示设置。后台仍按其虚拟屏尺寸运行，不受主屏宽高影响。这是任务准备阶段的保护，不代表已支持任务执行中的任意旋转或分辨率切换。
 
+`0005-fix-legacy-background-task-placement.patch` 修复后台游戏漂移到主屏时的任务迁移目标。Android 10/11 的 `moveStackToDisplay` 和 `am display move-stack` 使用真实 `stackId`，不再误传 `taskId`；API 31+ 仅在确认任务没有父任务时将其 `taskId` 作为 root task ID，无法确认或存在嵌套关系时交给启动 Intent 兜底，避免误移其他任务。
+
+该补丁还在提交后台任务前准备 watchdog 状态，并在 `StartApp` 启动游戏前登记目标包与虚拟屏，避免游戏在首次轮询前跳回主屏而漏掉跟踪。登记只接受当前后台运行的目标屏，启动失败或停止时清理跟踪；任务结束后的关闭游戏使用独立保留的清理目标。底层 `startActivity` 遇到反射或 Binder 调用异常时返回失败值，允许上层尝试 `am start --display`，不再将异常当作启动成功。
+
+华为 ELE-AL00 / Android 10 ARM64 的 Shizuku 实测确认：修正 `stackId` 后迁回虚拟屏可生效，但 B 服经 `.EmptyClass` 启动壳跳到主屏后，迁回时的 DPI 408→240 变化仍可能触发游戏 `onDestroy` 及自行 SIG9 退出，不能只靠 watchdog 拉回。Android 资源转换器另将 B 服启动动作改为直接进入已导出的 `.UnityPlayerNativeActivity`；配合补丁的独立验收包完成登录 1 分 19 秒，Unity 在 83.69 秒的 104 次采样中均位于虚拟屏。SDK 的 AutoLogin / Welcome 活动仍曾在主屏创建独立任务，此结果不代表全部 SDK 窗口或真机战斗均已通过。详见 [TESTING.md](../TESTING.md)。
+
+本轮 Kotlin 目标回归 30 项通过；与 CI 一致的完整外壳检查共 95 项，无失败，Windows 上两项符号链接测试因权限跳过。取消保护使用单调轮次与目标 token，慢查询和迁移在 watchdog 锁外执行；停止即令 token 失效，旧回调无法清理新轮目标。真机在启动稳定校验中停止，502ms 后明确返回取消，任务为 CANCELLED，未继续移栈或重新启动。0001–0005 在干净公开上游顺序重放成功，25 个修改文件与工作区一致。
+
 验证补丁应用器与外壳 Kotlin 回归：
 
 ```powershell

@@ -86,6 +86,11 @@ jobs:
           --tests 'com.aliothmoon.maafw.overlay.screensaver.ScreenSaver*Test'
           --tests 'com.aliothmoon.maafw.settings.SettingsViewModelTest'
           --tests 'com.aliothmoon.maafw.remote.MaaRunnerControllerTargetTest'
+          --tests 'com.aliothmoon.maafw.remote.internal.ActivityStartFailureTest'
+          --tests 'com.aliothmoon.maafw.remote.internal.ActivityLaunchCancellationTest'
+          --tests 'com.aliothmoon.maafw.remote.internal.AppWatchdogTargetTest'
+          --tests 'com.aliothmoon.maafw.remote.internal.DisplayPinStabilityTest'
+          --tests 'com.aliothmoon.maafw.remote.internal.TaskDisplayMoveTargetTest'
       - uses: actions/upload-artifact@v7
         with:
           name: MaaFGO-android-${{ matrix.abi }}-debug

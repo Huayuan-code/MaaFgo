@@ -18,17 +18,17 @@
 | 分辨率与生命周期 | 后台固定 1280×720 / DPI 240，前台要求 16:9；任务间尺寸改变后重建 controller/tasker。屏保放在主 Activity 的 Compose 树中，恢复亮度与唤醒标记，避免遮挡虚拟屏；运行中改尺寸/旋转仍需先停止 |
 | 数据与文件输入 | Agent 工作目录对齐手机 PI 根目录；库存、Chaldea 缓存和羁绊进度放在 `pi/config/`。升级及手动重解保留整个 config；文件输入使用手机可读路径，`content://` 不会自动转换。库存失败须明确报错，已有有效数据不能被不完整结果覆盖 |
 | Chaldea 数据链 | 复用编队与缓存业务，修复分享链接/Base64 解析、phase 默认过滤和缓存关卡匹配。支持手机直接获取链接；当前原生策略不能保证复现分享中的指定 Arts 面卡顺序 |
-| 构建与更新 | 固定公开上游子模块，定制保存为可重放的 [0001–0004 补丁](patches/README.md)；分别构建 ARM64/x86_64，递增 APK versionCode。安卓更新源和签名独立配置，源 interface 版本保留，桌面打包版同步仍遵守原版本保护约定 |
+| 构建与更新 | 固定公开上游子模块，定制保存为可重放的 [0001–0005 补丁](patches/README.md)；分别构建 ARM64/x86_64，递增 APK versionCode。安卓更新源和签名独立配置，源 interface 版本保留，桌面打包版同步仍遵守原版本保护约定 |
 
 后续新增 MXU 专属字段时，应同步补充 `tools/prepare_android.py` 的转换、打包回归和真实 Kotlin PI/执行计划检查。修改安卓生成目录会在下次生成时被覆盖，应修改源文件或转换器。新增外壳定制应更新补丁，而非只留下本机子模块修改。
 
-当前已完成 APK 构建、MuMu 授权连接、登录、原生单场战斗、后台/屏保、库存落盘与读取、Chaldea 下载缓存，以及超宽逻辑主屏测试。ARM64 真机、完整自定义助战/自动编队/羁绊补齐、连续战斗和异常恢复仍需独立验收；正式签名与发布更新源尚未配置。具体日志、版本及边界以 [TESTING.md](TESTING.md) 为准。
+当前已完成 APK 构建、MuMu 授权连接、登录、原生单场战斗、后台/屏保、库存落盘与读取、Chaldea 下载缓存，以及超宽逻辑主屏测试。另在华为 ELE-AL00 / Android 10 ARM64 手机上通过 Shizuku 完成 B 服后台登录，主屏保持竖屏及顶部预览。ARM64 战斗及其他机型、完整自定义助战/自动编队/羁绊补齐、连续战斗和异常恢复仍需独立验收；正式签名与发布更新源尚未配置。具体日志、版本及边界以 [TESTING.md](TESTING.md) 为准。
 
 ## 构建
 
 需要完整 JDK 17+（含 `javac`、`jlink`，本机实测 JDK 21）、Python 3.12+、Android SDK。标准环境变量为 `JAVA_HOME`、`ANDROID_HOME`（或 `ANDROID_SDK_ROOT`），NDK 默认从 SDK 下寻找，也可设置 `ANDROID_NDK_ROOT`。
 
-外壳 APK 安装下限为 API 28 / Android 9，后台模式要求 API 29 / Android 10 以上；当前支持目标为 Android 10+，实测设备为 MuMu Android 12 / API 32。安装下限不代表对应系统已验收。
+外壳 APK 安装下限为 API 28 / Android 9，后台模式要求 API 29 / Android 10 以上；当前支持目标为 Android 10+，实测设备包括 MuMu Android 12 / API 32 与华为 ELE-AL00 Android 10 / API 29，后者当前仅通过 B 服 Shizuku 后台登录。安装下限不代表对应系统已验收。
 
 ```powershell
 git submodule update --init Android/MaaFwApp assets/MaaCommonAssets
@@ -42,6 +42,10 @@ python tools/build_android.py --abi x86_64
 SDK Manager 使用 command-line tools 19.0（13114758）；CI 固定同一版本。依赖版本记录在 `versions.json`：MaaFramework 与 Python 内核中的 maafw 版本必须一致。
 
 常规构建自动应用 `patches/` 中的外壳补丁，重复运行会跳过已应用的补丁。直接运行子模块 Gradle 前须先执行 `python tools/apply_android_patches.py`；补丁冲突会明确报错，具体行为和测试见 [patches/README.md](patches/README.md)。子模块保留公开的上游提交，定制改动由可重放补丁记录。
+
+`0005-fix-legacy-background-task-placement.patch` 为后台窗口漂移修正任务迁移：Android 10/11 使用正确的 `stackId`，API 31+ 核实 root task 后再迁移；后台启动前登记 watchdog 目标，底层启动异常返回失败并尝试备用启动方式，避免伪成功。华为真机确认迁回可生效，但游戏仍可能因显示配置变化退出，须配合下述启动入口转换；补丁还以本轮 token 保护启动和恢复操作，停止后不继续移栈或重新启动，已通过真机启动中停止复验，具体结果以 [TESTING.md](TESTING.md) 为准。
+
+安卓版生成资源还会将 B 服 `StartApp` 的裸包名或 `.EmptyClass` 启动壳改为 `com.bilibili.fatego/.UnityPlayerNativeActivity`。华为 ELE-AL00 的独立后台验收包已通过完整登录，用时 1 分 19 秒；83.69 秒内的 104 次采样中，Unity 游戏窗口始终在虚拟屏，主屏保持 1080×2340 竖屏和顶部 1280×720 游戏预览。SDK 的 AutoLogin / Welcome 活动仍曾短暂在主屏创建独立任务，不能保证所有 SDK 窗口始终留在后台。转换覆盖 Pipeline 和选项中的重复启动动作，只修改 Android 副本，关闭游戏的包名与桌面源资源保持原样。
 
 产物：`Android/out/MaaFGO-android-<abi>-debug.apk`。默认 debug 包已经由 Android 调试证书签名，可直接安装。不同电脑的调试证书不同，跨机器升级可能需要先卸载，卸载会清除应用数据。
 
@@ -76,7 +80,7 @@ ONNX 推理复用 MaaFramework APK 已附带的 `libonnxruntime.so`，通过稳�
 
 ## 验证与实机验收
 
-本次 MuMu 安装、日服登录和一场原生战斗的具体结果与验证边界见 [TESTING.md](TESTING.md)。
+MuMu 安装、日服登录和一场原生战斗，以及华为 ARM64 手机 B 服后台登录的具体结果与验证边界见 [TESTING.md](TESTING.md)。
 
 ```powershell
 python -m pip install numpy opencv-python-headless onnxruntime
@@ -92,7 +96,7 @@ MuMu 12 的前台任务从悬浮球面板开始：在首页点“打开操作面
 
 超宽屏优先选择后台模式：游戏在固定 `1280×720 / DPI 240` 虚拟屏运行，主屏无需改成 16:9。MuMu 将逻辑主屏设为 `2160×720` 后已验证 Shizuku 后台登录、截图和日服 X-A 一场完整战斗。前台按主屏实际画面操作，目前要求 16:9；首页“修改分辨率”会改变系统显示尺寸，用完可“重置分辨率”。任务之间调整尺寸后控制器会按新的触摸范围重建；任务运行中应先停止，再调整和重开。模拟器的逻辑尺寸测试不替代 ARM64 手机、异形屏和厂商后台限制验收。
 
-本机现已通过 Root 后台单场原生战斗、Shizuku 后台冷启动与仓库统计、屏保重复显隐/自动收尾，以及退回模拟器桌面后继续运行。屏保为应用内黑底与最低亮度，需要 MaaFGO 界面可见；任务仍在虚拟屏服务中执行。ARM64 真机与完整 Chaldea 编队实战仍需另测。
+MuMu 现已通过 Root 后台单场原生战斗、Shizuku 后台冷启动与仓库统计、屏保重复显隐/自动收尾，以及退回模拟器桌面后继续运行。屏保为应用内黑底与最低亮度，需要 MaaFGO 界面可见；任务仍在虚拟屏服务中执行。华为 ARM64 手机当前仅通过 Shizuku 的 B 服后台登录，真机战斗、库存统计及完整 Chaldea 编队实战仍需另测。
 
 ARM64 包在本机 x86_64 MuMu 上的转译验收未通过：可以安装并打开界面，但 Root/Shizuku 特权服务由 x86_64 的系统 `app_process` 启动，无法加载 ARM64 的 `libbridge.so`；独立 MaaFramework/ONNX 探针也出现崩溃。MuMu 使用已验收的 x86_64 包，ARM64 完整流程须在真正的 ARM64 设备继续验证，详细分层结果见 [TESTING.md](TESTING.md)。
 

@@ -13,6 +13,12 @@ OUTPUT = ROOT / "Android" / "assets"
 ANDROID_OPTION_TYPES = {"select", "switch", "checkbox", "input"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 REMOVED_TASKS = {"启动bbc", "关闭bbc", "BBC 配置转 Chaldea 本地队伍"}
+BILIBILI_ANDROID_LAUNCHERS = {
+    "com.bilibili.fatego",
+    "com.bilibili.fatego/.EmptyClass",
+    "com.bilibili.fatego/com.bilibili.fatego.EmptyClass",
+}
+BILIBILI_ANDROID_GAME_ACTIVITY = "com.bilibili.fatego/.UnityPlayerNativeActivity"
 NATIVE_NEXT = [
     "[JumpBack]执行回主界面", "[JumpBack]执行队伍选择", "[JumpBack]执行章节导航",
     "[JumpBack]原生自动战斗_多次入口", "战斗完成信息",
@@ -26,6 +32,21 @@ def read_json(path: Path):
 def write_json(path: Path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def adapt_android_start_apps(value):
+    """B服默认启动壳会将后台游戏带回主屏；安卓副本直接启动导出的游戏 Activity。"""
+    if isinstance(value, dict):
+        action = value.get("action")
+        if isinstance(action, dict) and action.get("type") == "StartApp":
+            params = action.get("param")
+            if isinstance(params, dict) and params.get("package") in BILIBILI_ANDROID_LAUNCHERS:
+                params["package"] = BILIBILI_ANDROID_GAME_ACTIVITY
+        for child in value.values():
+            adapt_android_start_apps(child)
+    elif isinstance(value, list):
+        for child in value:
+            adapt_android_start_apps(child)
 
 
 def adapt_wait_freezes(value):
@@ -229,6 +250,7 @@ def prepare(root: Path = ROOT, output: Path = OUTPUT) -> dict:
     assets = root / "assets"
     interface_source = load_interface(assets)
     interface = adapt_interface(interface_source, assets)
+    adapt_android_start_apps(interface)
     adapt_wait_freezes(interface)
     output = output.resolve()
     # 此目录只放生成文件；不接受任意用户目录，避免清理误删其他工程文件。
@@ -264,6 +286,7 @@ def prepare(root: Path = ROOT, output: Path = OUTPUT) -> dict:
     for path in (output / "resource").glob("*/pipeline/**/*.json"):
         pipeline = read_json(path)
         original = copy.deepcopy(pipeline)
+        adapt_android_start_apps(pipeline)
         adapt_wait_freezes(pipeline)
         if pipeline != original:
             write_json(path, pipeline)
