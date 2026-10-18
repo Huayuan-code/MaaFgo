@@ -1,0 +1,146 @@
+{
+  "战斗_安卓点击攻击": {
+    "doc": "仅安卓原生战斗调用；华为 Android 10 后台预览实测 50ms 点击无响应，500ms 可打开攻击/选中面卡及宝具。参考战斗_安卓点击攻击，保持按住时长在 Pipeline；不将该时长用于技能，避免触发技能长按详情。",
+    "action": {
+      "type": "LongPress",
+      "param": {
+        "target": [
+          1136,
+          601
+        ],
+        "duration": 500
+      }
+    },
+    "pre_delay": 0,
+    "post_delay": 0,
+    "on_error": []
+  },
+  "战斗_安卓选择指令卡1": {
+    "doc": "仅安卓原生战斗调用；华为 Android 10 后台预览实测 50ms 点击无响应，500ms 可打开攻击/选中面卡及宝具。参考战斗_安卓点击攻击，保持按住时长在 Pipeline；不将该时长用于技能，避免触发技能长按详情。",
+    "action": {
+      "type": "LongPress",
+      "param": {
+        "target": [
+          144,
+          578
+        ],
+        "duration": 500
+      }
+    },
+    "pre_delay": 0,
+    "post_delay": 0,
+    "on_error": []
+  },
+  "战斗_安卓选择指令卡2": {
+    "doc": "仅安卓原生战斗调用；华为 Android 10 后台预览实测 50ms 点击无响应，500ms 可打开攻击/选中面卡及宝具。参考战斗_安卓点击攻击，保持按住时长在 Pipeline；不将该时长用于技能，避免触发技能长按详情。",
+    "action": {
+      "type": "LongPress",
+      "param": {
+        "target": [
+          388,
+          578
+        ],
+        "duration": 500
+      }
+    },
+    "pre_delay": 0,
+    "post_delay": 0,
+    "on_error": []
+  },
+  "战斗_安卓选择指令卡3": {
+    "doc": "仅安卓原生战斗调用；华为 Android 10 后台预览实测 50ms 点击无响应，500ms 可打开攻击/选中面卡及宝具。参考战斗_安卓点击攻击，保持按住时长在 Pipeline；不将该时长用于技能，避免触发技能长按详情。",
+    "action": {
+      "type": "LongPress",
+      "param": {
+        "target": [
+          646,
+          578
+        ],
+        "duration": 500
+      }
+    },
+    "pre_delay": 0,
+    "post_delay": 0,
+    "on_error": []
+  },
+  "战斗_安卓选择指令卡4": {
+    "doc": "仅安卓原生战斗调用；华为 Android 10 后台预览实测 50ms 点击无响应，500ms 可打开攻击/选中面卡及宝具。参考战斗_安卓点击攻击，保持按住时长在 Pipeline；不将该时长用于技能，避免触发技能长按详情。",
+    "action": {
+      "type": "LongPress",
+      "param": {
+        "target": [
+          905,
+          578
+        ],
+        "duration": 500
+      }
+    },
+    "pre_delay": 0,
+    "post_delay": 0,
+    "on_error": []
+  },
+  "战斗_安卓选择指令卡5": {
+    "doc": "仅安卓原生战斗调用；华为 Android 10 后台预览实测 50ms 点击无响应，500ms 可打开攻击/选中面卡及宝具。参考战斗_安卓点击攻击，保持按住时长在 Pipeline；不将该时长用于技能，避免触发技能长按详情。",
+    "action": {
+      "type": "LongPress",
+      "param": {
+        "target": [
+          1161,
+          578
+        ],
+        "duration": 500
+      }
+    },
+    "pre_delay": 0,
+    "post_delay": 0,
+    "on_error": []
+  },
+  "战斗_安卓选择宝具1": {
+    "doc": "仅安卓原生战斗调用；华为 Android 10 后台预览实测 50ms 点击无响应，500ms 可打开攻击/选中面卡及宝具。参考战斗_安卓点击攻击，保持按住时长在 Pipeline；不将该时长用于技能，避免触发技能长按详情。",
+    "action": {
+      "type": "LongPress",
+      "param": {
+        "target": [
+          410,
+          138
+        ],
+        "duration": 500
+      }
+    },
+    "pre_delay": 0,
+    "post_delay": 0,
+    "on_error": []
+  },
+  "战斗_安卓选择宝具2": {
+    "doc": "仅安卓原生战斗调用；华为 Android 10 后台预览实测 50ms 点击无响应，500ms 可打开攻击/选中面卡及宝具。参考战斗_安卓点击攻击，保持按住时长在 Pipeline；不将该时长用于技能，避免触发技能长按详情。",
+    "action": {
+      "type": "LongPress",
+      "param": {
+        "target": [
+          640,
+          138
+        ],
+        "duration": 500
+      }
+    },
+    "pre_delay": 0,
+    "post_delay": 0,
+    "on_error": []
+  },
+  "战斗_安卓选择宝具3": {
+    "doc": "仅安卓原生战斗调用；华为 Android 10 后台预览实测 50ms 点击无响应，500ms 可打开攻击/选中面卡及宝具。参考战斗_安卓点击攻击，保持按住时长在 Pipeline；不将该时长用于技能，避免触发技能长按详情。",
+    "action": {
+      "type": "LongPress",
+      "param": {
+        "target": [
+          875,
+          138
+        ],
+        "duration": 500
+      }
+    },
+    "pre_delay": 0,
+    "post_delay": 0,
+    "on_error": []
+  }
+}

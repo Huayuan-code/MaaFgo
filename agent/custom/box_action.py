@@ -35,6 +35,7 @@ from maa.context import Context
 from maa.pipeline import JOCR
 
 import mfaalog
+from platform_waits import platform_timeout
 
 BASE_W, BASE_H = 1280, 720
 
@@ -100,7 +101,7 @@ SWIPE_SELECT_BOTTOM = 700          # 下滑终点 y（贴近屏幕底，触发�
 SWIPE_SCROLL_TIMES = 3             # 停在底部触发滚动后，再补滑的次数
 TAP_SELL_JD = (1153, 671)          # 「决定」按钮（多选后点它，判断是否选中）
 MAX_SELL_ROUND = 300               # 贩卖最大循环轮数
-LJBH_NAV_TIMEOUT = 10.0            # 导航到灵基变还后的最大等待时间（秒）
+LJBH_NAV_TIMEOUT = platform_timeout(10.0, 20.0)            # 导航到灵基变还后的最大等待时间（秒）
 LJBH_NAV_POLL_INTERVAL = 0.5       # 灵基变还界面检测轮询间隔（秒）
 
 

@@ -24,6 +24,47 @@ NATIVE_NEXT = [
     "[JumpBack]原生自动战斗_多次入口", "战斗完成信息",
 ]
 
+# 仅调整确实等待后继界面的节点；timeout=1 的失败出口和可选弹窗探测保持原样。
+ANDROID_TRANSITION_TIMEOUTS = {
+    "base/pipeline/冠位戴冠战.json": {
+        "冠位戴冠战-职介": 10000,
+        "冠位戴冠战列表": 10000,
+    },
+    "base/pipeline/自动战斗_特殊技能.json": {
+        "战斗_仇凛2技能_色卡选择": 15000,
+        "战斗_库库尔坎_暴击星消耗": 15000,
+        "战斗_技能目标子屏": 15000,
+        "战斗_特殊技能处理": 15000,
+    },
+    "base/pipeline/自动编队.json": {"自动编队-卸下当前礼装": 15000},
+    "base/pipeline/羁绊补齐自动编队.json": {"羁绊补齐-卸下当前礼装": 15000},
+    "base/pipeline/原生自动战斗调度.json": {
+        "结算推进_点击右上角": 20000,
+        "结算推进_点击右上角_继续": 20000,
+    },
+    "base/pipeline/进本流程.json": {
+        "进本-开始后弹窗检查": 20000,
+        "进本-开始按钮已消失": 15000,
+    },
+    "base/pipeline/跳过剧情.json": {
+        "战斗-出卡后剧情处理": 15000,
+        "跳过剧情-点击跳过": 15000,
+        "跳过剧情-直接点击跳过": 15000,
+    },
+    "jp/pipeline/run_FGO.json": {"如果要SKIP": 15000, "点击是": 15000},
+}
+
+
+def adapt_transition_timeouts(pipeline, relative_path):
+    """在生成的安卓副本中给切页留余量，不更改 next、重试数或固定延时。"""
+    for name, minimum in ANDROID_TRANSITION_TIMEOUTS.get(relative_path, {}).items():
+        node = pipeline.get(name)
+        if isinstance(node, dict):
+            previous = node.get("timeout", minimum)
+            node["timeout"] = max(previous, minimum)
+            if node["timeout"] > previous:
+                node["doc"] = (node.get("doc", "") + " 安卓采集和 OCR 较慢，放宽后继界面查找上限；命中即继续，保留原有失败出口。").strip()
+
 
 def read_json(path: Path):
     return json.loads(path.read_text(encoding="utf-8-sig"))
@@ -288,6 +329,7 @@ def prepare(root: Path = ROOT, output: Path = OUTPUT) -> dict:
         original = copy.deepcopy(pipeline)
         adapt_android_start_apps(pipeline)
         adapt_wait_freezes(pipeline)
+        adapt_transition_timeouts(pipeline, path.relative_to(output / "resource").as_posix())
         if pipeline != original:
             write_json(path, pipeline)
 
