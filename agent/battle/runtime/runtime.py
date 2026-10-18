@@ -40,7 +40,7 @@ _PICK_DELAY_S = 0.3
 _MAIN_BATTLE_SETTLE_S = 1.0
 
 # —— 等待超时（秒）：均为真机验证过的正常时序；异常才用这些上限判定卡死 ——
-_OPEN_CARDS_TIMEOUT_S = 5.0         # 点击攻击后确认进入选卡界面
+_OPEN_CARDS_TIMEOUT_S = 15.0        # 手机单轮 OCR 可耗时 5～6 秒，允许至少两轮确认选卡
 _OPEN_CARDS_RETRY = 6               # 攻击点击被覆盖层吞掉时的重试次数
 _SKILL_TARGET_TIMEOUT_S = 5.0       # 技能目标子屏出现
 _SKILL_ANIM_TIMEOUT_S = 15.0        # 施放技能后动画结束回到主界面
@@ -188,12 +188,6 @@ class AutoBattleRuntime:
                     # 攻击点击被残留覆盖层吞掉。确认仍在主界面后重试点击。
                     img = self.controller.post_screencap().wait().get()
                     scene = perception.detect_scene(self.ctx, img)
-                    # 慢速 OCR 可能跨过等待截止时间；最终复核已进入选卡时
-                    # 应继续战斗，不能把非主界面一律当作确认失败。
-                    if scene is Scene.COMMAND_SELECTION and not self.ctx.tasker.stopping:
-                        mfaalog.info("[AutoBattle] command selection confirmed on final recheck")
-                        opened = True
-                        break
                     mfaalog.info(
                         f"[AutoBattle] attack click not confirmed "
                         f"(attempt {attempt}/{_OPEN_CARDS_RETRY}, scene={scene.name}); retrying"

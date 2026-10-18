@@ -1,4 +1,4 @@
-"""选卡在等待截止后才出现时仍应继续；未确认和取消时不能盲点。"""
+"""慢速手机识别应有足够的开卡确认时间；超时和取消仍须停止。"""
 
 import sys
 import unittest
@@ -16,7 +16,7 @@ from battle.runtime.runtime import AutoBattleRuntime
 
 
 class CommandConfirmationTests(unittest.TestCase):
-    def run_scenario(self, observations, *, cancel_on_recheck=False):
+    def run_scenario(self, observations, *, cancel_during_recognition=False):
         clock = [0.0]
         context = SimpleNamespace(tasker=SimpleNamespace(stopping=False))
         capture = Mock()
@@ -38,7 +38,7 @@ class CommandConfirmationTests(unittest.TestCase):
         def detect(_context, _image):
             scene, elapsed = next(pending)
             clock[0] += elapsed
-            if cancel_on_recheck and scene is Scene.COMMAND_SELECTION:
+            if cancel_during_recognition:
                 context.tasker.stopping = True
             return scene
 
@@ -49,28 +49,27 @@ class CommandConfirmationTests(unittest.TestCase):
                 patch("battle.runtime.runtime.time.monotonic", side_effect=lambda: clock[0]), \
                 patch("battle.runtime.runtime.time.sleep", side_effect=sleep):
             result = runtime.run()
-        return result, runtime
+        return result, runtime, clock[0]
 
-    def test_command_scene_on_final_recheck_resumes_without_another_attack(self):
-        for clicks in (1, 3):
-            with self.subTest(clicks=clicks):
-                # 手机一轮 OCR 超过五秒；前两次未响应，最后一次复核才出现指令卡。
-                observations = [(Scene.MAIN_BATTLE, 6.0)]
-                observations += [(Scene.MAIN_BATTLE, 0.0), (Scene.MAIN_BATTLE, 6.0)] * (clicks - 1)
-                observations += [(Scene.COMMAND_SELECTION, 0.0)]
-                result, runtime = self.run_scenario(observations)
+    def test_slow_recognition_can_confirm_without_another_attack(self):
+        for seconds in (6.0, 12.0):
+            with self.subTest(recognition_seconds=seconds):
+                result, runtime, _ = self.run_scenario([
+                    (Scene.MAIN_BATTLE, seconds), (Scene.COMMAND_SELECTION, 0.1)
+                ])
                 self.assertTrue(result.ok, result.reason)
-                self.assertEqual(runtime.executor.open_command_cards.call_count, clicks)
+                runtime.executor.open_command_cards.assert_called_once()
                 self.assertEqual(runtime._observe.call_count, 2)
 
     def test_confirmed_scene_within_deadline_still_resumes(self):
-        result, runtime = self.run_scenario([(Scene.COMMAND_SELECTION, 0.1)])
+        result, runtime, elapsed = self.run_scenario([(Scene.COMMAND_SELECTION, 0.1)])
         self.assertTrue(result.ok, result.reason)
+        self.assertEqual(elapsed, 0.1)  # 最大等待时间不是固定等待时间。
         runtime.executor.open_command_cards.assert_called_once()
 
     def test_stuck_main_scene_exhausts_bounded_retries(self):
-        result, runtime = self.run_scenario(
-            [(Scene.MAIN_BATTLE, 6.0), (Scene.MAIN_BATTLE, 0.0)] * 6
+        result, runtime, _ = self.run_scenario(
+            [(Scene.MAIN_BATTLE, 16.0), (Scene.MAIN_BATTLE, 0.0)] * 6
         )
         self.assertFalse(result.ok)
         self.assertEqual(result.reason, "open_cards_confirm_failed")
@@ -78,17 +77,17 @@ class CommandConfirmationTests(unittest.TestCase):
         runtime._observe.assert_called_once()
 
     def test_unknown_scene_stops_without_further_attack(self):
-        result, runtime = self.run_scenario([
-            (Scene.MAIN_BATTLE, 6.0), (Scene.UNKNOWN, 0.0)
+        result, runtime, _ = self.run_scenario([
+            (Scene.MAIN_BATTLE, 16.0), (Scene.UNKNOWN, 0.0)
         ])
         self.assertFalse(result.ok)
         runtime.executor.open_command_cards.assert_called_once()
         runtime._observe.assert_called_once()
 
-    def test_cancelled_late_confirmation_does_not_resume(self):
-        result, runtime = self.run_scenario([
+    def test_cancellation_during_recognition_does_not_resume(self):
+        result, runtime, _ = self.run_scenario([
             (Scene.MAIN_BATTLE, 6.0), (Scene.COMMAND_SELECTION, 0.0)
-        ], cancel_on_recheck=True)
+        ], cancel_during_recognition=True)
         self.assertFalse(result.ok)
         runtime.executor.open_command_cards.assert_called_once()
         runtime._observe.assert_called_once()
