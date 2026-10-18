@@ -6,14 +6,16 @@
 
 ## 下载与设备要求
 
-新版 `v*` tag 会将 ARM64 与 x86_64 APK 和 Windows 包一起发布到 [主项目 GitHub Releases](https://github.com/xlxyvergil/MaaFgo/releases)。选择带 APK 附件的版本，直接下载对应架构的 `MaaFGO-android-<abi>-<tag>-debug.apk`；该流程接入前的旧 tag 不会自动补包。
+前往 [GitHub Releases](https://github.com/xlxyvergil/MaaFgo/releases)，在对应版本的 **Assets** 中下载适合设备的 APK，直接安装。安卓包与 Windows 包在同一个版本中提供；部分旧版本没有 APK，请选择包含 APK 附件的版本。
 
-开发构建也可从 [主项目 GitHub Actions 构建附件](https://github.com/xlxyvergil/MaaFgo/actions/workflows/android.yml) 下载。登录 GitHub，选择 `main` 分支最近一次成功的构建，在页面底部 **Artifacts** 下载下表对应附件，解压后安装其中的 APK。安卓尚未接入 Mirror酱更新源。
-
-| 设备 | 下载附件 | 使用要求 |
+| 设备 | Releases 下载文件 | 使用要求 |
 | --- | --- | --- |
-| 常见 ARM64 安卓手机 | `MaaFGO-android-arm64-v8a-debug` | 目标系统 Android 10+；Shizuku 或已具备 Root 的设备 |
-| MuMu 12 等 x86_64 模拟器 | `MaaFGO-android-x86_64-debug` | 选择模拟器实际架构，并启用 Shizuku 或 Root |
+| 常见 ARM64 安卓手机 | `MaaFGO-android-arm64-v8a-<版本号>-debug.apk` | 目标系统 Android 10+；Shizuku 或已具备 Root 的设备 |
+| MuMu 12 等 x86_64 模拟器 | `MaaFGO-android-x86_64-<版本号>-debug.apk` | 选择模拟器实际架构，并启用 Shizuku 或 Root |
+
+文件名中的 `<版本号>` 对应所选版本。安卓暂未接入 Mirror酱更新源，更新时请下载新版 APK。
+
+需要开发版时，可从 [GitHub Actions](https://github.com/xlxyvergil/MaaFgo/actions/workflows/android.yml) 下载：登录 GitHub，选择 `main` 分支最近一次成功的构建，在 **Artifacts** 中下载 `MaaFGO-android-<架构>-debug` 附件，解压后安装其中的 APK。
 
 外壳安装下限为 Android 9 / API 28，后台模式要求 Android 10 / API 29 以上；当前支持和测试目标为 Android 10+，能安装不代表所有功能已验收。MuMu 对普通 ARM 应用的兼容不能代替原生库兼容：本机 ARM64 包在 x86_64 MuMu 上虽能安装和打开界面，特权服务及部分推理未通过，请使用 x86_64 包。
 

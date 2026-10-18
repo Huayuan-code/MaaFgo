@@ -27,10 +27,10 @@
 
 | 客户端 | 适用场景 | 下载与说明 |
 | --- | --- | --- |
-| Windows / MXU | 在电脑上通过 ADB 操作模拟器；可选 BBC 或原生自动战斗 | [桌面版 Releases](https://github.com/xlxyvergil/MaaFgo/releases)，下载 `MXU.zip` |
-| Android / APK（测试版） | 直接在手机或模拟器内运行；使用 Shizuku / Root，支持前台与后台模式 | [本仓库 APK 构建](https://github.com/dingi8528/MaaFgo_NEW/actions/workflows/android.yml)，操作步骤见下方及 [安卓使用说明](./Android/README.md) |
+| Windows / MXU | 在电脑上通过 ADB 操作模拟器；可选 BBC 或原生自动战斗 | [桌面版 Releases](https://github.com/xlxyvergil/MaaFgo/releases)，下载 `*-MXU.zip` |
+| Android / APK（测试版） | 直接在手机或模拟器内运行；使用 Shizuku / Root，支持前台与后台模式 | [安卓版 Releases](https://github.com/xlxyvergil/MaaFgo/releases)，下载对应架构的 `.apk`；详见 [安卓使用说明](./Android/README.md) |
 
-安卓手机通常选择 **`arm64-v8a`**，MuMu 12 选择 **`x86_64`**。安卓包已包含 Python、识别模型和原生战斗运行环境，无需另装 BBC 或电脑端 Python。当前 APK 通过 GitHub Actions 附件提供，尚未接入正式 Release 或 Mirror酱 更新。
+安卓包与 Windows 包在同一个 Release 中提供。安卓手机通常选择 **`arm64-v8a`**，MuMu 12 选择 **`x86_64`**。APK 已包含 Python、识别模型和原生战斗运行环境，无需另装 BBC 或电脑端 Python；安卓更新请从 Releases 下载新版 APK，暂未接入 Mirror酱。
 
 ---
 
@@ -108,7 +108,7 @@
 
 ### 1. 下载并解压
 
-前往 [Releases](https://github.com/xlxyvergil/MaaFgo/releases) 下载最新版 `MXU.zip`，完整解压后运行。MXU 是桌面客户端，无需浏览器。
+前往 [Releases](https://github.com/xlxyvergil/MaaFgo/releases) 下载对应版本的 `*-MXU.zip`，完整解压后运行。MXU 是桌面客户端，无需浏览器。
 
 ### 2. 可选：安装 BBchannel
 
@@ -158,10 +158,14 @@
 
 ### 1. 下载并安装 APK
 
-打开 [APK 构建页面](https://github.com/dingi8528/MaaFgo_NEW/actions/workflows/android.yml)，选择 `main` 分支最近一次成功的构建，在 **Artifacts** 中下载对应架构的 `MaaFGO-android-<架构>-debug` 附件，解压后安装其中的 APK。下载附件需要登录 GitHub。
+打开 [Releases](https://github.com/xlxyvergil/MaaFgo/releases)，在对应版本的 **Assets** 中选择 APK，下载后直接安装：
 
-- **ARM64 手机**：`arm64-v8a`。
-- **MuMu 12**：`x86_64`。本机 MuMu 的 ARM64 转译未通过控制与推理验收，请使用 x86_64 包。
+| 设备 | 下载文件 |
+| --- | --- |
+| 常见 ARM64 安卓手机 | `MaaFGO-android-arm64-v8a-<版本号>-debug.apk` |
+| MuMu 12 等 x86_64 模拟器 | `MaaFGO-android-x86_64-<版本号>-debug.apk` |
+
+文件名中的 `<版本号>` 对应所选版本。部分旧版本没有 APK，请选择包含 APK 附件的版本；需要开发版时，可按 [安卓指南](./Android/README.md) 从 Actions 下载。
 
 ### 2. 启动并授权 Shizuku / Root
 
