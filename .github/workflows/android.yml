@@ -2,7 +2,25 @@ name: build-android-apk
 
 on:
   workflow_call:
+    inputs:
+      release:
+        type: boolean
+        default: false
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: true
+      ANDROID_KEYSTORE_PASSWORD:
+        required: true
+      ANDROID_KEY_ALIAS:
+        required: true
+      ANDROID_KEY_PASSWORD:
+        required: true
   workflow_dispatch:
+    inputs:
+      release:
+        description: Build and verify APKs with the production signing key
+        type: boolean
+        default: false
   pull_request:
     paths:
       - "Android/**"
@@ -34,6 +52,8 @@ jobs:
   apk:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      APK_BUILD_TYPE: ${{ (startsWith(github.ref, 'refs/tags/v') || inputs.release) && 'release' || 'debug' }}
     strategy:
       fail-fast: false
       matrix:
@@ -74,11 +94,42 @@ jobs:
         run: |
           python -m pip install numpy opencv-python-headless onnxruntime
           python -m unittest discover -s tests -p 'test_android*.py' -v
-      - name: Build APK
+      - name: Restore release signing key
+        if: env.APK_BUILD_TYPE == 'release'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo "::error::Missing ANDROID_KEYSTORE_BASE64"; exit 1; }
+          umask 077
+          key_path=$(mktemp "$RUNNER_TEMP/maafgo-release-XXXXXX")
+          echo "KEYSTORE_PATH=$key_path" >> "$GITHUB_ENV"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$key_path"
+          test -s "$key_path"
+      - name: Build debug APK
+        if: env.APK_BUILD_TYPE == 'debug'
         env:
           BUILD_ABI: ${{ matrix.abi }}
         run: python tools/build_android.py --abi "$BUILD_ABI"
+      - name: Build signed release APK
+        if: env.APK_BUILD_TYPE == 'release'
+        env:
+          BUILD_ABI: ${{ matrix.abi }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: python tools/build_android.py --abi "$BUILD_ABI" --release
+      - name: Verify release signature and APK metadata
+        if: env.APK_BUILD_TYPE == 'release'
+        env:
+          BUILD_ABI: ${{ matrix.abi }}
+        run: |
+          args=(--abi "$BUILD_ABI" --report "Android/out/release-verification-${BUILD_ABI}.json")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            args+=(--tag "$GITHUB_REF_NAME")
+          fi
+          python tools/check_android_release.py "Android/out/MaaFGO-android-${BUILD_ABI}-release.apk" "${args[@]}"
       - name: Check PI with Android parser and run-plan builder
+        # 上游只提供 debug JVM 测试；实际 Release APK 已在上一步单独校验。
         run: python tools/check_android_interface.py
       - name: Check Android shell fixes
         working-directory: Android/MaaFwApp
@@ -100,7 +151,23 @@ jobs:
           --tests 'com.aliothmoon.maafw.runner.MaaFrameworkRunnerPortTest'
       - uses: actions/upload-artifact@v7
         with:
-          name: MaaFGO-android-${{ matrix.abi }}-debug
-          path: Android/out/*.apk
+          name: MaaFGO-android-${{ matrix.abi }}-${{ env.APK_BUILD_TYPE }}
+          path: Android/out/MaaFGO-android-${{ matrix.abi }}-${{ env.APK_BUILD_TYPE }}.apk
           if-no-files-found: error
           compression-level: 0
+      - name: Upload release verification
+        if: env.APK_BUILD_TYPE == 'release'
+        uses: actions/upload-artifact@v7
+        with:
+          name: MaaFGO-android-${{ matrix.abi }}-release-verification
+          path: Android/out/release-verification-${{ matrix.abi }}.json
+          if-no-files-found: error
+      - name: Remove release signing key
+        if: always() && env.APK_BUILD_TYPE == 'release'
+        run: |
+          if [[ -n "${KEYSTORE_PATH:-}" ]]; then
+            case "$KEYSTORE_PATH" in
+              "$RUNNER_TEMP"/maafgo-release-*) rm -f -- "$KEYSTORE_PATH" ;;
+              *) echo "::error::Unexpected signing key path"; exit 1 ;;
+            esac
+          fi
