@@ -109,11 +109,14 @@ jobs:
         if: env.APK_BUILD_TYPE == 'debug'
         env:
           BUILD_ABI: ${{ matrix.abi }}
+          # 下载器读取此环境变量，以认证方式查询 MaaFramework Release。
+          GITHUB_TOKEN: ${{ github.token }}
         run: python tools/build_android.py --abi "$BUILD_ABI"
       - name: Build signed release APK
         if: env.APK_BUILD_TYPE == 'release'
         env:
           BUILD_ABI: ${{ matrix.abi }}
+          GITHUB_TOKEN: ${{ github.token }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
