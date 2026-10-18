@@ -1,0 +1,1114 @@
+diff --git a/app/src/main/java/com/aliothmoon/maafw/bridge/DriverClass.java b/app/src/main/java/com/aliothmoon/maafw/bridge/DriverClass.java
+index 50b0ddc..23abfc1 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/bridge/DriverClass.java
++++ b/app/src/main/java/com/aliothmoon/maafw/bridge/DriverClass.java
+@@ -8,6 +8,7 @@ import com.aliothmoon.maafw.remote.internal.ActivityUtils;
+ import com.aliothmoon.maafw.remote.internal.AppWatchdog;
+ import com.aliothmoon.maafw.remote.internal.GameFpsMonitor;
+ import com.aliothmoon.maafw.remote.internal.PrimaryDisplayManager;
++import com.aliothmoon.maafw.remote.internal.PrimaryInputGuard;
+ import com.aliothmoon.maafw.third.FakeContext;
+ import com.aliothmoon.maafw.third.Ln;
+ 
+@@ -31,15 +32,17 @@ public final class DriverClass {
+     private static volatile String targetPackage;
+ 
+     /** 各 contact 按下的时刻（uptime ms），抬起时据此补足最短按住时长，见 {@link TapHoldPolicy} */
+-    private static final ConcurrentHashMap<Integer, Long> downAt = new ConcurrentHashMap<>();
++    private static final ConcurrentHashMap<Long, Long> downAt = new ConcurrentHashMap<>();
+ 
+     /** 按下后动过的 contact：滑动本就按得久，日志里与点击分开看 */
+-    private static final ConcurrentHashMap<Integer, Boolean> moved = new ConcurrentHashMap<>();
++    private static final ConcurrentHashMap<Long, Boolean> moved = new ConcurrentHashMap<>();
++    private static final ConcurrentHashMap<Integer, Boolean> primaryKeys = new ConcurrentHashMap<>();
+ 
+     private DriverClass() {
+     }
+ 
+     public static boolean startApp(String packageName, int displayId, boolean forceStop) {
++        if (!allowInput(displayId)) return false;
+         Ln.i(TAG + String.format(Locale.US, "%s %d %b", packageName, displayId, forceStop));
+         logTargetAppInfo(packageName, displayId, forceStop);
+         targetPackage = ActivityUtils.packageNameOf(packageName);
+@@ -74,6 +77,7 @@ public final class DriverClass {
+     }
+ 
+     public static boolean inputText(byte[] utf8, int displayId) {
++        if (!allowInput(displayId)) return false;
+         return TextInputDispatcher.input(new String(utf8, StandardCharsets.UTF_8), displayId, targetPackage);
+     }
+ 
+@@ -119,17 +123,20 @@ public final class DriverClass {
+      * 系统丢掉的 DOWN 照样报成功：ADB 控制器只管写出去，点击被吞也是成功，PI 按这个写；
+      * 报失败的话 MaaFramework 直接判节点失败，不会再识别一轮重点
+      */
+-    public static boolean touchDown(int x, int y, int contact, int displayId) {
++    public static synchronized boolean touchDown(int x, int y, int contact, int displayId) {
++        if (!allowInput(displayId)) return false;
+         InputControlUtils.TouchResult result = InputControlUtils.down(x, y, contact, displayId);
+         if (result == InputControlUtils.TouchResult.DELIVERED) {
+-            downAt.put(contact, SystemClock.uptimeMillis());
+-            moved.remove(contact);
++            long key = contactKey(contact, displayId);
++            downAt.put(key, SystemClock.uptimeMillis());
++            moved.remove(key);
+         }
+         return result != InputControlUtils.TouchResult.FAILED;
+     }
+ 
+-    public static boolean touchMove(int x, int y, int contact, int displayId) {
+-        moved.put(contact, Boolean.TRUE);
++    public static synchronized boolean touchMove(int x, int y, int contact, int displayId) {
++        if (!allowInput(displayId)) return false;
++        moved.put(contactKey(contact, displayId), Boolean.TRUE);
+         return InputControlUtils.move(x, y, contact, displayId);
+     }
+ 
+@@ -138,9 +145,11 @@ public final class DriverClass {
+      *
+      * 每次都记一行，用来实测按住时长、帧率与漏点的关系，参数定下来后再收
+      */
+-    public static boolean touchUp(int x, int y, int contact, int displayId) {
+-        Long down = downAt.remove(contact);
+-        boolean swipe = moved.remove(contact) != null;
++    public static synchronized boolean touchUp(int x, int y, int contact, int displayId) {
++        if (!allowInput(displayId)) return false;
++        long key = contactKey(contact, displayId);
++        Long down = downAt.get(key);
++        boolean swipe = moved.containsKey(key);
+         if (down != null) {
+             long held = SystemClock.uptimeMillis() - down;
+             float fps = GameFpsMonitor.currentFps();
+@@ -153,20 +162,63 @@ public final class DriverClass {
+                     ": touchUp %s contact=%d at=(%d,%d) held=%dms fps=%.1f minHold=%dms pad=%dms display=%d",
+                     swipe ? "swipe" : "tap", contact, x, y, held, fps, minHold, pad, displayId));
+         }
+-        return InputControlUtils.up(x, y, contact, displayId);
++        // Rotation may also happen while the minimum tap hold is being padded.
++        if (!allowInput(displayId)) return false;
++        try {
++            return InputControlUtils.up(x, y, contact, displayId);
++        } finally {
++            downAt.remove(key);
++            moved.remove(key);
++        }
+     }
+ 
+-    public static boolean keyDown(int keyCode, int displayId) {
++    public static synchronized boolean keyDown(int keyCode, int displayId) {
++        if (!allowInput(displayId)) return false;
+         Ln.i(TAG + ": keyDown(keyCode=" + keyCode + ", displayId=" + displayId + ")");
+         boolean result = InputControlUtils.keyDown(keyCode, displayId);
++        if (result && displayId == PrimaryDisplayManager.DISPLAY_ID) primaryKeys.put(keyCode, Boolean.TRUE);
+         Ln.i(TAG + ": keyDown result=" + result);
+         return result;
+     }
+ 
+-    public static boolean keyUp(int keyCode, int displayId) {
++    public static synchronized boolean keyUp(int keyCode, int displayId) {
++        if (!allowInput(displayId)) return false;
+         Ln.i(TAG + ": keyUp(keyCode=" + keyCode + ", displayId=" + displayId + ")");
+         boolean result = InputControlUtils.keyUp(keyCode, displayId);
++        if (result && displayId == PrimaryDisplayManager.DISPLAY_ID) primaryKeys.remove(keyCode);
+         Ln.i(TAG + ": keyUp result=" + result);
+         return result;
+     }
++
++    private static synchronized boolean allowInput(int displayId) {
++        if (PrimaryInputGuard.allowsInput(displayId)) return true;
++        cancelPrimaryInput();
++        return false;
++    }
++
++    private static long contactKey(int contact, int displayId) {
++        return ((long) displayId << 32) | (contact & 0xffffffffL);
++    }
++
++    private static boolean isPrimaryContact(long key) {
++        return (int) (key >> 32) == PrimaryDisplayManager.DISPLAY_ID;
++    }
++
++    /** Cancel a DOWN without turning it into a click on the newly visible application. */
++    public static synchronized void cancelPrimaryInput() {
++        try {
++            if (downAt.keySet().stream().anyMatch(DriverClass::isPrimaryContact)) {
++                InputControlUtils.cancelActiveGesture(PrimaryDisplayManager.DISPLAY_ID);
++            }
++            for (Integer key : primaryKeys.keySet()) {
++                InputControlUtils.cancelKey(key, PrimaryDisplayManager.DISPLAY_ID);
++            }
++        } catch (Throwable error) {
++            Ln.w(TAG + ": cancelling primary input failed", error);
++        } finally {
++            downAt.keySet().removeIf(DriverClass::isPrimaryContact);
++            moved.keySet().removeIf(DriverClass::isPrimaryContact);
++            primaryKeys.clear();
++        }
++    }
+ }
+diff --git a/app/src/main/java/com/aliothmoon/maafw/bridge/InputControlUtils.java b/app/src/main/java/com/aliothmoon/maafw/bridge/InputControlUtils.java
+index cc4476f..7f95b9a 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/bridge/InputControlUtils.java
++++ b/app/src/main/java/com/aliothmoon/maafw/bridge/InputControlUtils.java
+@@ -48,6 +48,7 @@ public final class InputControlUtils {
+      */
+     private static List<TouchPointerSequence.Pointer> slots = Collections.emptyList();
+     private static long gestureDownTime = 0;
++    private static Integer gestureDisplayId;
+     /**
+      * 解锁注入期间 >0：失败日志不带键码与坐标、不回调触控预览，PIN 与手势轨迹不能进可导出的日志；
+      * 进程级而非线程级，任务线程此刻的失败日志也会打出 slots
+@@ -181,11 +182,25 @@ public final class InputControlUtils {
+     }
+ 
+     private static void cancelGesture(int displayId) {
++        if (!slots.isEmpty() && !Integer.valueOf(displayId).equals(gestureDisplayId)) return;
+         if (!slots.isEmpty()) {
+             MotionEvent cancel = obtainEvent(slots, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, -1);
+             inject(cancel, slots, displayId, InputManager.INJECT_INPUT_EVENT_MODE_ASYNC, 0);
+         }
+         slots = Collections.emptyList();
++        gestureDisplayId = null;
++    }
++
++    /** Used when a foreground run is stopped or its touch coordinate space becomes invalid. */
++    public static synchronized void cancelActiveGesture(int displayId) {
++        if (!slots.isEmpty() && !Integer.valueOf(displayId).equals(gestureDisplayId)) return;
++        try {
++            cancelGesture(displayId);
++        } finally {
++            slots = Collections.emptyList();
++            gestureDownTime = 0;
++            gestureDisplayId = null;
++        }
+     }
+ 
+     private static TouchResult injectStep(TouchPointerSequence.Step step, int displayId) {
+@@ -218,12 +233,18 @@ public final class InputControlUtils {
+         // 未送达则槽位不动；之后同 contact 再按下会先整体 CANCEL 自愈
+         if (result == TouchResult.DELIVERED) {
+             slots = next;
++            gestureDisplayId = next.isEmpty() ? null : displayId;
+         }
+         return result;
+     }
+ 
+     private static synchronized TouchResult apply(TouchPointerSequence.Kind kind, int x, int y, int contact,
+                                                   int displayId) {
++        if (!slots.isEmpty() && !Integer.valueOf(displayId).equals(gestureDisplayId)) {
++            // A new display starts its own gesture; MOVE/UP must never reuse another display's slots.
++            if (kind != TouchPointerSequence.Kind.Down) return TouchResult.FAILED;
++            cancelActiveGesture(gestureDisplayId);
++        }
+         TouchPointerSequence.Step step = TouchPointerSequence.INSTANCE.plan(kind, slots, contact, x, y);
+         if (!step.getOk()) {
+             logPlanFailure(step, kind, x, y, contact, displayId);
+@@ -256,9 +277,19 @@ public final class InputControlUtils {
+         return injectKey(KeyEvent.ACTION_UP, keyCode, displayId, InputManager.INJECT_INPUT_EVENT_MODE_ASYNC);
+     }
+ 
++    public static boolean cancelKey(int keyCode, int displayId) {
++        return injectKey(KeyEvent.ACTION_UP, keyCode, displayId,
++                InputManager.INJECT_INPUT_EVENT_MODE_ASYNC, KeyEvent.FLAG_CANCELED);
++    }
++
+     private static boolean injectKey(int action, int keyCode, int displayId, int mode) {
++        return injectKey(action, keyCode, displayId, mode, 0);
++    }
++
++    private static boolean injectKey(int action, int keyCode, int displayId, int mode, int flags) {
+         long now = SystemClock.uptimeMillis();
+         KeyEvent keyEvent = new KeyEvent(now, now, action, keyCode, 0);
++        if (flags != 0) keyEvent = KeyEvent.changeFlags(keyEvent, flags);
+ 
+         if (!setDisplayId(keyEvent, displayId)) {
+             logKeyFailure(keyEvent, displayId, mode, STAGE_SET_DISPLAY_ID, -1);
+diff --git a/app/src/main/java/com/aliothmoon/maafw/di/RunnerModule.kt b/app/src/main/java/com/aliothmoon/maafw/di/RunnerModule.kt
+index ca0de39..cab55ef 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/di/RunnerModule.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/di/RunnerModule.kt
+@@ -22,6 +22,8 @@ import com.aliothmoon.maafw.runner.RemoteGameFpsReader
+ import com.aliothmoon.maafw.telemetry.TelemetryController
+ import com.aliothmoon.maafw.telemetry.TelemetryHook
+ import com.aliothmoon.maafw.runner.ForegroundModePrecheck
++import com.aliothmoon.maafw.runner.ForegroundDisplayPrecheck
++import com.aliothmoon.maafw.util.ScreenSize
+ import com.aliothmoon.maafw.runner.PrivilegedAccessPrecheck
+ import com.aliothmoon.maafw.runner.PrivilegedConnectHook
+ import com.aliothmoon.maafw.runner.OverlayClearHook
+@@ -157,6 +159,7 @@ val runnerModule = module {
+             prechecks = listOf(
+                 PrivilegedAccessPrecheck(get(), get()),
+                 ForegroundModePrecheck,
++                ForegroundDisplayPrecheck { ScreenSize.current(androidContext()) },
+                 BackgroundModePrecheck(),
+                 DisplayHazardPrecheck(get()),
+             ),
+diff --git a/app/src/main/java/com/aliothmoon/maafw/remote/MaaRunner.kt b/app/src/main/java/com/aliothmoon/maafw/remote/MaaRunner.kt
+index fd5c382..b4c4694 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/remote/MaaRunner.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/remote/MaaRunner.kt
+@@ -2,6 +2,7 @@ package com.aliothmoon.maafw.remote
+ 
+ import com.aliothmoon.maafw.IMaaRunnerCallback
+ import com.aliothmoon.maafw.bridge.NativeBridgeLib
++import com.aliothmoon.maafw.bridge.DriverClass
+ import com.aliothmoon.maafw.constant.DefaultDisplayConfig
+ import com.aliothmoon.maafw.constant.DisplayMode
+ import com.aliothmoon.maafw.maa.MaaAgentClientLibrary
+@@ -12,6 +13,7 @@ import com.aliothmoon.maafw.maa.MaaGlobalOption
+ import com.aliothmoon.maafw.maa.MaaLoggingLevel
+ import com.aliothmoon.maafw.maa.MaaStatus
+ import com.aliothmoon.maafw.remote.internal.PrimaryDisplayManager
++import com.aliothmoon.maafw.remote.internal.PrimaryInputGuard
+ import com.aliothmoon.maafw.remote.internal.VirtualDisplayManager
+ import com.aliothmoon.maafw.runner.AgentPayload
+ import com.aliothmoon.maafw.runner.RunOutcome
+@@ -35,7 +37,12 @@ import java.util.concurrent.atomic.AtomicReference
+  * native handle 全部只存在于这里；app 侧只经 binder 拿事件与结果
+  * 单工作线程串行：MaaFramework 的一个 Tasker 同时只跑一轮
+  */
+-class MaaRunner(private val agentHost: AgentHost) {
++class MaaRunner(
++    private val agentHost: AgentHost,
++    private val primaryInputStopper: java.util.concurrent.ExecutorService = Executors.newSingleThreadExecutor { r ->
++        Thread(r, "maa-primary-input-stop").apply { isDaemon = true }
++    },
++) {
+ 
+     // agent child 由这条线程 fork，PDEATHSIG 认线程：线程被换掉时 child 一并收走，下一轮判不可复用重拉
+     private val worker = Executors.newSingleThreadExecutor { r ->
+@@ -46,6 +53,8 @@ class MaaRunner(private val agentHost: AgentHost) {
+     private val lifecycleLock = Any()
+     private var running = false
+     private var stopRequested = false
++    private var primaryCaptureFailure: String? = null
++    private var runGeneration = 0L
+     private val callbackRef = AtomicReference<IMaaRunnerCallback?>()
+ 
+     // native handle
+@@ -217,6 +226,8 @@ class MaaRunner(private val agentHost: AgentHost) {
+             }
+             running = true
+             stopRequested = false
++            primaryCaptureFailure = null
++            runGeneration++
+         }
+         val payload = runCatching { runPlanWireJson.decodeFromString<RunPlanPayload>(payloadJson) }
+             .getOrElse {
+@@ -235,6 +246,8 @@ class MaaRunner(private val agentHost: AgentHost) {
+             if (!running) return true
+             stopRequested = true
+             tasker?.let(lib::MaaTaskerPostStop)
++            // Keep clearing this run's guard atomic with finish/start of another run.
++            releasePrimaryInputGuard()
+         }
+         return true
+     }
+@@ -250,6 +263,7 @@ class MaaRunner(private val agentHost: AgentHost) {
+             Ln.w("MaaRunner: native release skipped on destroy: $it")
+         }
+         worker.shutdownNow()
++        primaryInputStopper.shutdownNow()
+     }
+ 
+     private fun runPlan(payload: RunPlanPayload) {
+@@ -277,7 +291,7 @@ class MaaRunner(private val agentHost: AgentHost) {
+             var cancelled = false
+             payload.tasks.forEachIndexed { index, task ->
+                 if (cancelled) return@forEachIndexed
+-                if (stopRequested(lib)) {
++                if (stopRequested(lib) || synchronized(lifecycleLock) { primaryCaptureFailure != null }) {
+                     cancelled = true
+                     return@forEachIndexed
+                 }
+@@ -294,7 +308,9 @@ class MaaRunner(private val agentHost: AgentHost) {
+                     return@forEachIndexed
+                 }
+                 val status = lib.MaaTaskerWait(currentTasker, taskId)
+-                val success = status == MaaStatus.SUCCEEDED
++                awaitPrimaryInputStopRequests()
++                val captureChanged = synchronized(lifecycleLock) { primaryCaptureFailure != null }
++                val success = status == MaaStatus.SUCCEEDED && !captureChanged
+                 if (!success) anyFailed = true
+                 // PostStop 一发，在跑的任务就带着失败从 Wait 返回：外壳叫停的不算任务自己失败。
+                 // 只认外壳的 stop，pipeline 经 agent 自己 PostStop 的照旧算失败
+@@ -302,7 +318,7 @@ class MaaRunner(private val agentHost: AgentHost) {
+                 notify { onTaskFinished(task.taskName, success, statusText(status), stopped) }
+ 
+                 // Stop 之后 Tasker 会把剩余任务直接判失败，这里提前收尾避免刷一串假失败
+-                if (lib.MaaTaskerStopping(currentTasker).toInt() != 0) {
++                if (captureChanged || lib.MaaTaskerStopping(currentTasker).toInt() != 0) {
+                     cancelled = true
+                 }
+             }
+@@ -312,10 +328,20 @@ class MaaRunner(private val agentHost: AgentHost) {
+                 anyFailed -> RunOutcome.COMPLETED_WITH_FAILURES
+                 else -> RunOutcome.COMPLETED
+             }
++            synchronized(lifecycleLock) { primaryCaptureFailure }?.let {
++                outcome = RunOutcome.FOREGROUND_CAPTURE_CHANGED
++                reason = it
++            }
+         } catch (e: Throwable) {
+             reason = "${e.javaClass.simpleName}: ${e.message}"
+             Ln.e("MaaRunner: run failed: $reason")
+         } finally {
++            awaitPrimaryInputStopRequests()
++            synchronized(lifecycleLock) { primaryCaptureFailure }?.let {
++                outcome = RunOutcome.FOREGROUND_CAPTURE_CHANGED
++                reason = it
++            }
++            releasePrimaryInputGuard()
+             synchronized(lifecycleLock) {
+                 running = false
+                 stopRequested = false
+@@ -346,9 +372,10 @@ class MaaRunner(private val agentHost: AgentHost) {
+         val target = snapshotControllerTarget(payload) ?: return PrepareFailure(
+             if (payload.displayMode == DisplayMode.PRIMARY) "主屏采集未启动" else "虚拟显示器未启动",
+         )
+-        if (payload.displayMode == DisplayMode.PRIMARY && !ScreenSize.isAspect16x9(target.width, target.height)) {
++        if (payload.displayMode == DisplayMode.PRIMARY && !ScreenSize.isLandscape16x9(target.width, target.height)) {
+             return PrepareFailure(
+-                "前台模式要求 16:9 画面，当前为 ${target.width}×${target.height}；请切换后台模式，或在首页调整主屏分辨率后重试",
++                "前台模式要求横屏 16:9 画面，当前为 ${target.width}×${target.height}；请切换后台模式，或在首页调整主屏分辨率，手动打开游戏并等待横屏稳定后，从悬浮操作面板开始",
++                outcome = RunOutcome.FOREGROUND_LANDSCAPE_REQUIRED,
+             )
+         }
+         // bridge 必须先 System.loadLibrary 进本进程，控制单元按名 dlopen 才能命中同一份
+@@ -420,7 +447,20 @@ class MaaRunner(private val agentHost: AgentHost) {
+                 }
+                 synchronized(lifecycleLock) { tasker = tsk }
+             }
+-            return registerAgentSinks()?.let { PrepareFailure(it) }
++            registerAgentSinks()?.let { return PrepareFailure(it) }
++            if (target.displayId == PrimaryDisplayManager.DISPLAY_ID) {
++                synchronized(lifecycleLock) {
++                    if (!stopRequested) {
++                        val generation = runGeneration
++                        PrimaryInputGuard.bind(target.width, target.height) { actual ->
++                            onPrimaryCaptureChanged(target, actual, generation)
++                        }
++                    }
++                }
++            } else {
++                releasePrimaryInputGuard()
++            }
++            return null
+         } finally {
+             // 没能改登记过去的（建 tasker 或登记失败），由 destroyTasker / destroyController 先收掉 agent
+             retired?.let {
+@@ -430,6 +470,35 @@ class MaaRunner(private val agentHost: AgentHost) {
+         }
+     }
+ 
++    /** Native input calls this before injecting coordinates from a controller with stale bounds. */
++    private fun onPrimaryCaptureChanged(expected: ControllerTarget, actual: Pair<Int, Int>?, generation: Long) {
++        // This callback may hold DriverClass's input monitor. PostStop synchronously
++        // releases pressed inputs through DriverClass, so never take lifecycleLock here.
++        primaryInputStopper.execute {
++            synchronized(lifecycleLock) {
++                if (!running || stopRequested || runGeneration != generation ||
++                    boundControllerTarget != expected || primaryCaptureFailure != null) return@execute
++                val detail = "前台主屏尺寸变化：${expected.width}×${expected.height} → " +
++                        (actual?.let { "${it.first}×${it.second}" } ?: "采集不可用")
++                primaryCaptureFailure = detail
++                Ln.e("MaaRunner: $detail; rejecting primary input and stopping this run")
++                // Validate and post atomically: a delayed old callback cannot stop a reused tasker.
++                tasker?.let { MaaFrameworkLoader.library?.MaaTaskerPostStop(it) }
++            }
++        }
++    }
++
++    private fun awaitPrimaryInputStopRequests() {
++        // Native may finish the failed input before its queued stop is processed.
++        // Drain on the run worker, never on the native input callback thread.
++        runCatching { primaryInputStopper.submit {}.get(DESTROY_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS) }
++            .onFailure { Ln.w("MaaRunner: primary input stop drain failed", it) }
++    }
++
++    private fun releasePrimaryInputGuard() {
++        if (PrimaryInputGuard.clear()) DriverClass.cancelPrimaryInput()
++    }
++
+     /**
+      * 每个 agent 都登记当前这套 resource / controller / tasker，agent 侧 `AgentServerAdd*Sink` 的监听器
+      * （比如 MaaEnd go-service 在任务开始前查分辨率）才收得到事件；对齐 MXU 在 connect 之后的 register_sinks
+@@ -662,6 +731,7 @@ class MaaRunner(private val agentHost: AgentHost) {
+ 
+     /** Tasker 手里是 controller 的裸指针，停止时还要用，必须先于它拆 */
+     private fun releaseController(lib: MaaFrameworkLibrary) {
++        releasePrimaryInputGuard()
+         releaseTasker(lib)
+         controller?.let { destroyController(lib, it) }
+         controller = null
+diff --git a/app/src/main/java/com/aliothmoon/maafw/remote/internal/PrimaryInputGuard.kt b/app/src/main/java/com/aliothmoon/maafw/remote/internal/PrimaryInputGuard.kt
+new file mode 100644
+index 0000000..9f6d351
+--- /dev/null
++++ b/app/src/main/java/com/aliothmoon/maafw/remote/internal/PrimaryInputGuard.kt
+@@ -0,0 +1,47 @@
++package com.aliothmoon.maafw.remote.internal
++
++import com.aliothmoon.maafw.third.Ln
++
++/**
++ * A native controller's touch bounds cannot follow a rotation. Once invalidated, reject all
++ * remaining primary input until the next run binds a fresh capture size, even if it rotates back.
++ */
++object PrimaryInputGuard {
++    private class Binding(
++        val size: Pair<Int, Int>,
++        val onChanged: (Pair<Int, Int>?) -> Unit,
++        var invalidated: Boolean = false,
++    )
++
++    private val lock = Any()
++    private var binding: Binding? = null
++
++    fun bind(width: Int, height: Int, onChanged: (Pair<Int, Int>?) -> Unit) {
++        synchronized(lock) { binding = Binding(width to height, onChanged) }
++    }
++
++    /** Returns whether a primary run had been bound, so its injected DOWN events can be cancelled. */
++    fun clear(): Boolean = synchronized(lock) {
++        val existed = binding != null
++        binding = null
++        existed
++    }
++
++    @JvmStatic
++    fun allowsInput(displayId: Int): Boolean {
++        if (displayId != PrimaryDisplayManager.DISPLAY_ID) return true
++        val expected = synchronized(lock) { binding?.takeUnless { it.invalidated } } ?: return false
++        // Do not hold our lock while reading the capture manager or stopping the runner.
++        val actual = runCatching { PrimaryDisplayManager.getCaptureSize() }.getOrNull()
++        val accepted = synchronized(lock) {
++            if (binding !== expected || expected.invalidated) return false
++            if (actual == expected.size) true else {
++                expected.invalidated = true
++                false
++            }
++        }
++        if (!accepted) runCatching { expected.onChanged(actual) }
++            .onFailure { Ln.w("PrimaryInputGuard: failed to request run stop", it) }
++        return accepted
++    }
++}
+diff --git a/app/src/main/java/com/aliothmoon/maafw/runner/ForegroundDisplayPrecheck.kt b/app/src/main/java/com/aliothmoon/maafw/runner/ForegroundDisplayPrecheck.kt
+new file mode 100644
+index 0000000..8076c4a
+--- /dev/null
++++ b/app/src/main/java/com/aliothmoon/maafw/runner/ForegroundDisplayPrecheck.kt
+@@ -0,0 +1,19 @@
++package com.aliothmoon.maafw.runner
++
++import com.aliothmoon.maafw.R
++import com.aliothmoon.maafw.domain.RunMode
++import com.aliothmoon.maafw.i18n.uiTextOf
++import com.aliothmoon.maafw.util.ScreenSize
++
++/** Read the primary display when Start is pressed; the home resolution controls also allow portrait. */
++class ForegroundDisplayPrecheck(private val currentSize: () -> Pair<Int, Int>?) : RunPrecheck {
++    override suspend fun evaluate(ctx: RunContext): Verdict {
++        if (ctx.runMode != RunMode.FOREGROUND) return Verdict.Pass
++        val size = runCatching(currentSize).getOrNull()
++        return if (size != null && ScreenSize.isLandscape16x9(size.first, size.second)) {
++            Verdict.Pass
++        } else {
++            Verdict.Block(uiTextOf(R.string.runner_foreground_landscape_required))
++        }
++    }
++}
+diff --git a/app/src/main/java/com/aliothmoon/maafw/runner/MaaFrameworkRunnerPort.kt b/app/src/main/java/com/aliothmoon/maafw/runner/MaaFrameworkRunnerPort.kt
+index 890bfb9..7c350b7 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/runner/MaaFrameworkRunnerPort.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/runner/MaaFrameworkRunnerPort.kt
+@@ -256,6 +256,8 @@ class MaaFrameworkRunnerPort(
+                 RunOutcome.COMPLETED_WITH_FAILURES -> ExecutionResult.CompletedWithFailures(results)
+                 RunOutcome.CANCELLED -> ExecutionResult.Cancelled(results)
+                 RunOutcome.AGENT_LAUNCH_FAILED -> ExecutionResult.Failed(agentLaunchFailure(reason?.toIntOrNull()), results)
++                RunOutcome.FOREGROUND_LANDSCAPE_REQUIRED -> ExecutionResult.Failed(uiTextOf(R.string.runner_foreground_landscape_required), results)
++                RunOutcome.FOREGROUND_CAPTURE_CHANGED -> ExecutionResult.Failed(uiTextOf(R.string.runner_foreground_capture_changed), results)
+                 else -> ExecutionResult.Failed(if (reason.isNullOrBlank()) uiTextOf(R.string.msg_fail_default) else uiTextFromFramework(reason), results)
+             }
+             emit(RunnerEvent.ExecutionFinished(result))
+diff --git a/app/src/main/java/com/aliothmoon/maafw/runner/RunPlanPayload.kt b/app/src/main/java/com/aliothmoon/maafw/runner/RunPlanPayload.kt
+index b98beb4..0966e46 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/runner/RunPlanPayload.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/runner/RunPlanPayload.kt
+@@ -63,6 +63,10 @@ object RunOutcome {
+ 
+     /** reason 只带失败 agent 的序号：细节是带设备路径的排障字面量，只进特权进程 logcat，不当用户文案 */
+     const val AGENT_LAUNCH_FAILED = 4
++
++    /** App side renders these shell-owned failures through localized resources. */
++    const val FOREGROUND_LANDSCAPE_REQUIRED = 5
++    const val FOREGROUND_CAPTURE_CHANGED = 6
+ }
+ 
+ /** 线格式的编解码；宽容未知字段，便于 app 与特权进程版本短暂不一致时不至于直接崩 */
+diff --git a/app/src/main/java/com/aliothmoon/maafw/util/ScreenSize.kt b/app/src/main/java/com/aliothmoon/maafw/util/ScreenSize.kt
+index 2331201..9feb1e6 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/util/ScreenSize.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/util/ScreenSize.kt
+@@ -78,6 +78,10 @@ object ScreenSize {
+         return abs(longSide.toFloat() / shortSide - target) <= target * ASPECT_TOLERANCE
+     }
+ 
++    /** Foreground Start must not prepare portrait touch bounds before the game turns landscape. */
++    fun isLandscape16x9(width: Int, height: Int): Boolean =
++        width > height && isAspect16x9(width, height)
++
+     /**
+      * 物理尺寸内能放下的最大 16:9，方向跟随原屏
+      *
+diff --git a/app/src/main/res/values-en/strings.xml b/app/src/main/res/values-en/strings.xml
+index cf14f01..f06d9dd 100644
+--- a/app/src/main/res/values-en/strings.xml
++++ b/app/src/main/res/values-en/strings.xml
+@@ -43,6 +43,8 @@
+     <!-- Runner toggle -->
+     <string name="runner_start">Start tasks</string>
+     <string name="runner_foreground_blocked">Foreground mode is active; switch to background mode first</string>
++    <string name="runner_foreground_landscape_required">Foreground mode needs a landscape 16:9 game screen. Adjust the resolution, open the game manually and wait for landscape, then start from the floating panel; or switch to background mode</string>
++    <string name="runner_foreground_capture_changed">The screen size changed during the foreground run, so the task was stopped. Reopen the game in landscape 16:9, then start again from the floating panel</string>
+     <string name="runner_background_unsupported">Background mode is unavailable below Android 10. Try another device or update the system.</string>
+     <string name="runner_stop">Stop</string>
+     <string name="runner_stopping">Stopping…</string>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index db37824..1a03b31 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -43,6 +43,8 @@
+     <!-- 运行开关 -->
+     <string name="runner_start">开始任务</string>
+     <string name="runner_foreground_blocked">当前是前台模式，请先切换到后台模式</string>
++    <string name="runner_foreground_landscape_required">前台模式需要横屏 16:9 游戏画面。请先调整分辨率，手动打开游戏并等待横屏稳定，再从悬浮操作面板开始；也可切换后台模式</string>
++    <string name="runner_foreground_capture_changed">前台运行中屏幕尺寸发生变化，任务已停止。请重新打开游戏并保持横屏 16:9，再从悬浮操作面板开始</string>
+     <string name="runner_background_unsupported">Android 10 以下无法使用后台模式，尝试更换设备或者升级系统</string>
+     <string name="runner_stop">停止</string>
+     <string name="runner_stopping">停止中…</string>
+diff --git a/app/src/test/java/com/aliothmoon/maafw/bridge/DriverPrimaryInputGuardTest.kt b/app/src/test/java/com/aliothmoon/maafw/bridge/DriverPrimaryInputGuardTest.kt
+new file mode 100644
+index 0000000..2f9962c
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/bridge/DriverPrimaryInputGuardTest.kt
+@@ -0,0 +1,109 @@
++package com.aliothmoon.maafw.bridge
++
++import android.os.SystemClock
++import com.aliothmoon.maafw.remote.internal.PrimaryDisplayManager
++import com.aliothmoon.maafw.remote.internal.PrimaryInputGuard
++import com.aliothmoon.maafw.remote.internal.GameFpsMonitor
++import com.aliothmoon.maafw.third.Ln
++import io.mockk.Runs
++import io.mockk.every
++import io.mockk.just
++import io.mockk.mockkObject
++import io.mockk.mockkStatic
++import io.mockk.unmockkAll
++import io.mockk.verify
++import org.junit.After
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Before
++import org.junit.Test
++
++/** Exercise real Driver entry points; no actual Android input or native library is used. */
++class DriverPrimaryInputGuardTest {
++    private var stopped = 0
++
++    @Before
++    fun setUp() {
++        PrimaryInputGuard.clear()
++        mockkObject(PrimaryDisplayManager)
++        mockkStatic(InputControlUtils::class, SystemClock::class, Ln::class)
++        every { PrimaryDisplayManager.getCaptureSize() } returns (1920 to 1080)
++        every { SystemClock.uptimeMillis() } returns 100L
++        every { Ln.i(any()) } just Runs
++        every { Ln.w(any<String>(), any<Throwable>()) } just Runs
++        every { InputControlUtils.down(any(), any(), any(), any()) } returns InputControlUtils.TouchResult.DELIVERED
++        every { InputControlUtils.cancelActiveGesture(any()) } just Runs
++        every { InputControlUtils.keyDown(any(), any()) } returns true
++        every { InputControlUtils.cancelKey(any(), any()) } returns true
++        DriverClass.cancelPrimaryInput()
++        PrimaryInputGuard.bind(1920, 1080) { stopped++ }
++    }
++
++    @After
++    fun tearDown() {
++        PrimaryInputGuard.clear()
++        DriverClass.cancelPrimaryInput()
++        unmockkAll()
++    }
++
++    @Test
++    fun `rotation after DOWN cancels touch and blocks MOVE UP and recovery clicks`() {
++        assertTrue(DriverClass.touchDown(1200, 500, 0, 0))
++        every { PrimaryDisplayManager.getCaptureSize() } returns (1080 to 1920)
++        assertFalse(DriverClass.touchMove(1250, 510, 0, 0))
++        assertFalse(DriverClass.touchUp(1250, 510, 0, 0))
++        assertFalse(DriverClass.touchDown(1200, 500, 1, 0))
++        assertEquals(1, stopped)
++        verify(exactly = 1) { InputControlUtils.cancelActiveGesture(0) }
++        verify(exactly = 1) { InputControlUtils.down(any(), any(), any(), any()) }
++        verify(exactly = 0) { InputControlUtils.move(any(), any(), any(), any()) }
++        verify(exactly = 0) { InputControlUtils.up(any(), any(), any(), any()) }
++    }
++
++    @Test
++    fun `stopping a pressed primary touch cancels it without generating UP`() {
++        assertTrue(DriverClass.touchDown(1200, 500, 0, 0))
++        assertTrue(PrimaryInputGuard.clear())
++        DriverClass.cancelPrimaryInput()
++        assertFalse(DriverClass.touchUp(1200, 500, 0, 0))
++        assertEquals(0, stopped)
++        verify(exactly = 1) { InputControlUtils.cancelActiveGesture(0) }
++        verify(exactly = 0) { InputControlUtils.up(any(), any(), any(), any()) }
++    }
++
++    @Test
++    fun `rotation releases a pressed key through the cancelled key path`() {
++        assertTrue(DriverClass.keyDown(111, 0))
++        every { PrimaryDisplayManager.getCaptureSize() } returns (1080 to 1920)
++        assertFalse(DriverClass.keyUp(111, 0))
++        assertEquals(1, stopped)
++        verify(exactly = 1) { InputControlUtils.cancelKey(111, 0) }
++        verify(exactly = 0) { InputControlUtils.keyUp(any(), any()) }
++    }
++
++    @Test
++    fun `virtual display input is not blocked by a stopped primary guard`() {
++        PrimaryInputGuard.clear()
++        assertTrue(DriverClass.keyDown(111, 7))
++        verify(exactly = 1) { InputControlUtils.keyDown(111, 7) }
++        verify(exactly = 0) { PrimaryDisplayManager.getCaptureSize() }
++        assertEquals(0, stopped)
++    }
++
++    @Test
++    fun `cancelling primary input preserves an ongoing virtual display gesture`() {
++        mockkStatic(GameFpsMonitor::class)
++        every { GameFpsMonitor.currentFps() } returns 60f
++        every { SystemClock.uptimeMillis() } returnsMany listOf(100L, 500L)
++        every { InputControlUtils.move(any(), any(), any(), any()) } returns true
++        every { InputControlUtils.up(any(), any(), any(), any()) } returns true
++        assertTrue(DriverClass.touchDown(100, 200, 0, 7))
++        DriverClass.cancelPrimaryInput()
++        assertTrue(DriverClass.touchMove(110, 210, 0, 7))
++        assertTrue(DriverClass.touchUp(110, 210, 0, 7))
++        verify(exactly = 0) { InputControlUtils.cancelActiveGesture(any()) }
++        verify(exactly = 1) { InputControlUtils.up(110, 210, 0, 7) }
++        verify(exactly = 0) { PrimaryDisplayManager.getCaptureSize() }
++    }
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/bridge/InputControlGestureDisplayTest.kt b/app/src/test/java/com/aliothmoon/maafw/bridge/InputControlGestureDisplayTest.kt
+new file mode 100644
+index 0000000..cd1aa1b
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/bridge/InputControlGestureDisplayTest.kt
+@@ -0,0 +1,49 @@
++package com.aliothmoon.maafw.bridge
++
++import org.junit.After
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertSame
++import org.junit.Test
++
++/** A primary cancellation must not erase the real virtual display gesture's slots. */
++class InputControlGestureDisplayTest {
++    @After
++    fun tearDown() {
++        set("slots", emptyList<TouchPointerSequence.Pointer>())
++        set("gestureDisplayId", null)
++        set("gestureDownTime", 0L)
++    }
++
++    @Test
++    fun `primary cancellation leaves virtual pointers and their down time intact`() {
++        val pointers = listOf(TouchPointerSequence.Pointer(0, 100f, 200f))
++        set("slots", pointers)
++        set("gestureDisplayId", 7)
++        set("gestureDownTime", 50L)
++        InputControlUtils.cancelActiveGesture(0)
++        assertSame(pointers, get("slots"))
++        assertEquals(7, get("gestureDisplayId"))
++        assertEquals(50L, get("gestureDownTime"))
++    }
++
++    @Test
++    fun `move and up on another display cannot reuse virtual pointers`() {
++        val pointers = listOf(TouchPointerSequence.Pointer(0, 100f, 200f))
++        set("slots", pointers)
++        set("gestureDisplayId", 7)
++        assertFalse(InputControlUtils.move(110, 210, 0, 0))
++        assertFalse(InputControlUtils.up(110, 210, 0, 0))
++        assertSame(pointers, get("slots"))
++    }
++
++    private fun get(name: String): Any? = InputControlUtils::class.java.getDeclaredField(name).run {
++        isAccessible = true
++        get(null)
++    }
++
++    private fun set(name: String, value: Any?) = InputControlUtils::class.java.getDeclaredField(name).run {
++        isAccessible = true
++        set(null, value)
++    }
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/remote/MaaRunnerControllerTargetTest.kt b/app/src/test/java/com/aliothmoon/maafw/remote/MaaRunnerControllerTargetTest.kt
+index 615a676..9fd6425 100644
+--- a/app/src/test/java/com/aliothmoon/maafw/remote/MaaRunnerControllerTargetTest.kt
++++ b/app/src/test/java/com/aliothmoon/maafw/remote/MaaRunnerControllerTargetTest.kt
+@@ -1,11 +1,14 @@
+ package com.aliothmoon.maafw.remote
+ 
+ import com.aliothmoon.maafw.constant.DisplayMode
++import com.aliothmoon.maafw.bridge.DriverClass
+ import com.aliothmoon.maafw.maa.MaaAgentClientLibrary
+ import com.aliothmoon.maafw.maa.MaaAgentClientLoader
+ import com.aliothmoon.maafw.maa.MaaFrameworkLibrary
++import com.aliothmoon.maafw.maa.MaaFrameworkLoader
+ import com.aliothmoon.maafw.maa.MaaStatus
+ import com.aliothmoon.maafw.remote.internal.PrimaryDisplayManager
++import com.aliothmoon.maafw.remote.internal.PrimaryInputGuard
+ import com.aliothmoon.maafw.remote.internal.VirtualDisplayManager
+ import com.aliothmoon.maafw.runner.RunOutcome
+ import com.aliothmoon.maafw.runner.RunPlanPayload
+@@ -13,6 +16,7 @@ import com.sun.jna.Pointer
+ import io.mockk.every
+ import io.mockk.mockk
+ import io.mockk.mockkObject
++import io.mockk.mockkStatic
+ import io.mockk.unmockkAll
+ import io.mockk.verify
+ import io.mockk.verifyOrder
+@@ -23,12 +27,16 @@ import kotlinx.serialization.json.jsonObject
+ import kotlinx.serialization.json.jsonPrimitive
+ import org.junit.After
+ import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
+ import org.junit.Assert.assertNotNull
+ import org.junit.Assert.assertNull
+ import org.junit.Assert.assertSame
+ import org.junit.Assert.assertTrue
+ import org.junit.Before
+ import org.junit.Test
++import java.util.concurrent.CountDownLatch
++import java.util.concurrent.ExecutorService
++import java.util.concurrent.TimeUnit
+ 
+ /** Drives the runner's real handle preparation without loading Android native libraries. */
+ class MaaRunnerControllerTargetTest {
+@@ -70,7 +78,11 @@ class MaaRunnerControllerTargetTest {
+     }
+ 
+     @After
+-    fun tearDown() = unmockkAll()
++    fun tearDown() {
++        PrimaryInputGuard.clear()
++        (field(runner, "primaryInputStopper") as ExecutorService).shutdownNow()
++        unmockkAll()
++    }
+ 
+     @Test
+     fun `same display resize rebinds live agent before retiring old native pointers`() {
+@@ -166,7 +178,7 @@ class MaaRunnerControllerTargetTest {
+         every { PrimaryDisplayManager.getCaptureSize() } returns (2160 to 720)
+         val failure = invoke("prepare", lib, payload())
+         assertNotNull(failure)
+-        assertEquals(RunOutcome.FAILED, field(failure!!, "outcome"))
++        assertEquals(RunOutcome.FOREGROUND_LANDSCAPE_REQUIRED, field(failure!!, "outcome"))
+         val reason = field(failure, "reason") as String
+         assertTrue(reason.contains("2160×720"))
+         assertTrue(reason.contains("后台模式"))
+@@ -177,6 +189,133 @@ class MaaRunnerControllerTargetTest {
+         verify(exactly = 0) { agentLib.MaaAgentClientCreateV2(any()) }
+     }
+ 
++    @Test
++    fun `portrait capture is rejected before resources even if payload says landscape`() {
++        every { PrimaryDisplayManager.getCaptureSize() } returns (1080 to 1920)
++        val failure = invoke("prepare", lib, payload().copy(screenWidth = 1920, screenHeight = 1080))!!
++        assertEquals(RunOutcome.FOREGROUND_LANDSCAPE_REQUIRED, field(failure, "outcome"))
++        assertTrue((field(failure, "reason") as String).contains("手动打开游戏"))
++        verify(exactly = 1) { PrimaryDisplayManager.getCaptureSize() }
++        verify(exactly = 0) { lib.MaaResourceCreate() }
++        verify(exactly = 0) { lib.MaaAndroidNativeControllerCreate(any()) }
++        verify(exactly = 0) { agentLib.MaaAgentClientCreateV2(any()) }
++    }
++
++    @Test
++    fun `changed primary input requests native task stop once with an explicit failure`() {
++        mockkObject(MaaFrameworkLoader)
++        every { MaaFrameworkLoader.library } returns lib
++        setField(runner, "running", true)
++        assertNull(prepareController(snapshot()))
++        every { PrimaryDisplayManager.getCaptureSize() } returns (720 to 1280)
++        assertFalse(PrimaryInputGuard.allowsInput(0))
++        assertFalse(PrimaryInputGuard.allowsInput(0))
++        invoke("awaitPrimaryInputStopRequests")
++        assertTrue((field(runner, "primaryCaptureFailure") as String).contains("1280×720 → 720×1280"))
++        verify(exactly = 1) { lib.MaaTaskerPostStop(taskers.single()) }
++    }
++
++    @Test
++    fun `manual stop disarms bound primary input before another round`() {
++        mockkObject(MaaFrameworkLoader)
++        every { MaaFrameworkLoader.library } returns lib
++        setField(runner, "running", true)
++        assertNull(prepareController(snapshot()))
++        assertTrue(PrimaryInputGuard.allowsInput(0))
++        assertTrue(runner.stop())
++        assertFalse(PrimaryInputGuard.allowsInput(0))
++        assertNull(field(runner, "primaryCaptureFailure"))
++        verify(exactly = 1) { lib.MaaTaskerPostStop(taskers.single()) }
++    }
++
++    @Test
++    fun `manual stop clears primary input before releasing the lifecycle lock to a new run`() {
++        mockkObject(MaaFrameworkLoader)
++        every { MaaFrameworkLoader.library } returns lib
++        setField(runner, "running", true)
++        assertNull(prepareController(snapshot()))
++        mockkStatic(DriverClass::class)
++        var cleared = false
++        every { DriverClass.cancelPrimaryInput() } answers {
++            assertTrue(Thread.holdsLock(field(runner, "lifecycleLock")))
++            assertFalse(PrimaryInputGuard.allowsInput(0))
++            cleared = true
++        }
++        assertTrue(runner.stop())
++        assertTrue(cleared)
++    }
++
++    @Test
++    fun `a delayed size callback from the previous run cannot stop a new run with the same bounds`() {
++        setField(runner, "running", true)
++        val target = snapshot()
++        assertNull(prepareController(target))
++        setField(runner, "runGeneration", 1L)
++        invoke("onPrimaryCaptureChanged", target, 720 to 1280, 0L)
++        invoke("awaitPrimaryInputStopRequests")
++        assertNull(field(runner, "primaryCaptureFailure"))
++        verify(exactly = 0) { lib.MaaTaskerPostStop(any()) }
++    }
++
++    @Test
++    fun `input callback queues without lifecycle lock and delayed stop cannot reach the next run`() {
++        setField(runner, "running", true)
++        val target = snapshot()
++        assertNull(prepareController(target))
++        val returned = CountDownLatch(1)
++        val callback = Thread {
++            invoke("onPrimaryCaptureChanged", target, 720 to 1280, 0L)
++            returned.countDown()
++        }
++        synchronized(field(runner, "lifecycleLock")!!) {
++            callback.start()
++            assertTrue("input callback must not wait for lifecycleLock", returned.await(2, TimeUnit.SECONDS))
++            // The old run ends and a new one reuses the same target before the queued stop gets the lock.
++            setField(runner, "runGeneration", 1L)
++        }
++        callback.join(2000)
++        invoke("awaitPrimaryInputStopRequests")
++        assertNull(field(runner, "primaryCaptureFailure"))
++        verify(exactly = 0) { lib.MaaTaskerPostStop(any()) }
++    }
++
++    @Test
++    fun `binder stop and changed input finish when native stop synchronously releases a touch`() {
++        mockkObject(MaaFrameworkLoader)
++        every { MaaFrameworkLoader.library } returns lib
++        setField(runner, "running", true)
++        assertNull(prepareController(snapshot()))
++        every { PrimaryDisplayManager.getCaptureSize() } returns (720 to 1280)
++        val inputHeld = CountDownLatch(1)
++        val nativeStopEntered = CountDownLatch(1)
++        val allowChangedInput = CountDownLatch(1)
++        every { lib.MaaTaskerPostStop(any()) } answers {
++            nativeStopEntered.countDown()
++            DriverClass.touchUp(100, 200, 0, 0) // v5.14.3 auto_release_pressed calls this synchronously.
++            1L
++        }
++        val input = Thread {
++            synchronized(DriverClass::class.java) {
++                inputHeld.countDown()
++                check(allowChangedInput.await(2, TimeUnit.SECONDS))
++                PrimaryInputGuard.allowsInput(0)
++            }
++        }
++        val stop = Thread { runner.stop() }
++        input.start()
++        assertTrue(inputHeld.await(2, TimeUnit.SECONDS))
++        stop.start()
++        assertTrue(nativeStopEntered.await(2, TimeUnit.SECONDS))
++        allowChangedInput.countDown()
++        input.join(2000)
++        stop.join(2000)
++        assertFalse("input callback deadlocked with Binder stop", input.isAlive)
++        assertFalse("native touch release deadlocked with input", stop.isAlive)
++        invoke("awaitPrimaryInputStopRequests")
++        assertNull(field(runner, "primaryCaptureFailure"))
++        verify(exactly = 1) { lib.MaaTaskerPostStop(taskers.single()) }
++    }
++
+     @Test
+     fun `missing primary capture has an explicit prepare failure without fallback dimensions`() {
+         every { PrimaryDisplayManager.getCaptureSize() } returns null
+diff --git a/app/src/test/java/com/aliothmoon/maafw/remote/internal/PrimaryInputGuardTest.kt b/app/src/test/java/com/aliothmoon/maafw/remote/internal/PrimaryInputGuardTest.kt
+new file mode 100644
+index 0000000..372a0b3
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/remote/internal/PrimaryInputGuardTest.kt
+@@ -0,0 +1,63 @@
++package com.aliothmoon.maafw.remote.internal
++
++import io.mockk.every
++import io.mockk.mockkObject
++import io.mockk.unmockkAll
++import io.mockk.verify
++import org.junit.After
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Before
++import org.junit.Test
++
++class PrimaryInputGuardTest {
++    @Before
++    fun setUp() {
++        PrimaryInputGuard.clear()
++        mockkObject(PrimaryDisplayManager)
++        every { PrimaryDisplayManager.getCaptureSize() } returns (1920 to 1080)
++    }
++
++    @After
++    fun tearDown() {
++        PrimaryInputGuard.clear()
++        unmockkAll()
++    }
++
++    @Test
++    fun `rotation invalidates once and rotating back does not resume stale coordinates`() {
++        val changes = mutableListOf<Pair<Int, Int>?>()
++        PrimaryInputGuard.bind(1920, 1080) { changes += it }
++        assertTrue(PrimaryInputGuard.allowsInput(0))
++        every { PrimaryDisplayManager.getCaptureSize() } returns (1080 to 1920)
++        assertFalse(PrimaryInputGuard.allowsInput(0))
++        every { PrimaryDisplayManager.getCaptureSize() } returns (1920 to 1080)
++        assertFalse(PrimaryInputGuard.allowsInput(0))
++        assertEquals(listOf(1080 to 1920), changes)
++        PrimaryInputGuard.bind(1920, 1080) { changes += it }
++        assertTrue(PrimaryInputGuard.allowsInput(0))
++    }
++
++    @Test
++    fun `missing capture invalidates while stopped or unbound primary rejects input`() {
++        var failures = 0
++        assertFalse(PrimaryInputGuard.allowsInput(0))
++        PrimaryInputGuard.bind(1920, 1080) { failures++ }
++        every { PrimaryDisplayManager.getCaptureSize() } returns null
++        assertFalse(PrimaryInputGuard.allowsInput(0))
++        assertEquals(1, failures)
++        assertTrue(PrimaryInputGuard.clear())
++        assertFalse(PrimaryInputGuard.allowsInput(0))
++        assertFalse(PrimaryInputGuard.clear())
++    }
++
++    @Test
++    fun `background input bypasses both primary capture reads and failure callback`() {
++        PrimaryInputGuard.bind(1920, 1080) { error("background must not stop") }
++        assertTrue(PrimaryInputGuard.allowsInput(7))
++        PrimaryInputGuard.clear()
++        assertTrue(PrimaryInputGuard.allowsInput(7))
++        verify(exactly = 0) { PrimaryDisplayManager.getCaptureSize() }
++    }
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/runner/ForegroundDisplayPrecheckTest.kt b/app/src/test/java/com/aliothmoon/maafw/runner/ForegroundDisplayPrecheckTest.kt
+new file mode 100644
+index 0000000..172bef0
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/runner/ForegroundDisplayPrecheckTest.kt
+@@ -0,0 +1,53 @@
++package com.aliothmoon.maafw.runner
++
++import com.aliothmoon.maafw.R
++import com.aliothmoon.maafw.domain.ControllerDefinition
++import com.aliothmoon.maafw.domain.ResourceDefinition
++import com.aliothmoon.maafw.domain.RunConfigurationId
++import com.aliothmoon.maafw.domain.RunMode
++import com.aliothmoon.maafw.i18n.isResource
++import com.aliothmoon.maafw.util.ScreenSize
++import kotlinx.coroutines.test.runTest
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ForegroundDisplayPrecheckTest {
++    private val plan = RunPlan(
++        projectName = "demo", projectVersion = "1", controller = ControllerDefinition(),
++        resource = ResourceDefinition("base", listOf("./base")),
++        runConfigurationId = RunConfigurationId("c1"), tasks = emptyList(),
++    )
++
++    private fun context(mode: RunMode = RunMode.FOREGROUND) =
++        RunContext(RunTrigger.Overlay, mode, plan, journal = DiscardingRunJournal)
++
++    @Test
++    fun `portrait 16 by 9 can configure home but cannot start foreground input`() = runTest {
++        assertTrue(ScreenSize.isAspect16x9(1080, 1920))
++        val block = ForegroundDisplayPrecheck { 1080 to 1920 }.evaluate(context()) as Verdict.Block
++        assertTrue(block.reason.isResource(R.string.runner_foreground_landscape_required))
++    }
++
++    @Test
++    fun `only landscape 16 by 9 passes and each Start reads the latest orientation`() = runTest {
++        var size = 1920 to 1080
++        val precheck = ForegroundDisplayPrecheck { size }
++        assertEquals(Verdict.Pass, precheck.evaluate(context()))
++        size = 1080 to 1920
++        assertTrue(precheck.evaluate(context()) is Verdict.Block)
++        size = 2340 to 1080
++        assertTrue(precheck.evaluate(context()) is Verdict.Block)
++    }
++
++    @Test
++    fun `unreadable primary blocks foreground but background never reads it`() = runTest {
++        var reads = 0
++        val precheck = ForegroundDisplayPrecheck { reads++; error("display unavailable") }
++        assertEquals(Verdict.Pass, precheck.evaluate(context(RunMode.BACKGROUND)))
++        assertEquals(0, reads)
++        assertTrue(precheck.evaluate(context()) is Verdict.Block)
++        assertEquals(1, reads)
++        assertTrue(ForegroundDisplayPrecheck { null }.evaluate(context()) is Verdict.Block)
++    }
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/runner/MaaFrameworkRunnerPortTest.kt b/app/src/test/java/com/aliothmoon/maafw/runner/MaaFrameworkRunnerPortTest.kt
+index 1ad1baf..ccc055d 100644
+--- a/app/src/test/java/com/aliothmoon/maafw/runner/MaaFrameworkRunnerPortTest.kt
++++ b/app/src/test/java/com/aliothmoon/maafw/runner/MaaFrameworkRunnerPortTest.kt
+@@ -323,6 +323,20 @@ class MaaFrameworkRunnerPortTest {
+         )
+     }
+ 
++    @Test
++    fun `foreground display failures use localized instructions instead of raw service text`() = runTest(dispatcher) {
++        val (runner, _) = port(this)
++        val (callbacks, _) = recordCallbacks(runner)
++        for ((outcome, message) in listOf(
++            RunOutcome.FOREGROUND_LANDSCAPE_REQUIRED to R.string.runner_foreground_landscape_required,
++            RunOutcome.FOREGROUND_CAPTURE_CHANGED to R.string.runner_foreground_capture_changed,
++        )) {
++            runner.start(plan(), "e$outcome")
++            callbacks.last().onFinished(outcome, "raw diagnostic dimensions")
++            assertTrue((runner.state.value.latestResult as ExecutionResult.Failed).reason.isResource(message))
++        }
++    }
++
+     @Test
+     fun `an agent launch failure drops the hint once debug mode is on`() = runTest(dispatcher) {
+         var debug = false

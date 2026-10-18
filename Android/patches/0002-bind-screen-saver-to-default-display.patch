@@ -1,0 +1,671 @@
+diff --git a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt b/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
+--- a/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverOverlayManager.kt
+@@ -1,26 +1,21 @@
+ package com.aliothmoon.maafw.overlay.screensaver
+ 
++import android.app.Activity
+ import android.content.Context
+-import android.graphics.PixelFormat
+-import android.graphics.Rect
+ import android.os.Build
+-import android.view.Gravity
++import android.view.Display
++import android.view.View
++import android.view.Window
+ import android.view.WindowManager
+-import androidx.compose.runtime.collectAsState
+-import androidx.compose.runtime.getValue
+-import androidx.compose.ui.platform.ComposeView
+-import androidx.lifecycle.setViewTreeLifecycleOwner
+-import androidx.lifecycle.setViewTreeViewModelStoreOwner
+-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+ import com.aliothmoon.maafw.domain.RunMode
+-import com.aliothmoon.maafw.overlay.OverlayViewModelOwner
+ import com.aliothmoon.maafw.runner.FocusDispatcher
+ import com.aliothmoon.maafw.runner.RunnerPhase
+ import com.aliothmoon.maafw.runner.RunnerPort
+ import com.aliothmoon.maafw.runner.isBusy
+ import com.aliothmoon.maafw.runner.toLogText
+ import com.aliothmoon.maafw.settings.AppSettingsGateway
+-import com.aliothmoon.maafw.theme.MaaFwTheme
++import com.aliothmoon.maafw.third.Ln
++import java.lang.ref.WeakReference
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.Job
+@@ -32,35 +27,29 @@
+ import kotlinx.coroutines.withContext
+ import timber.log.Timber
+ 
+-/**
+- * 后台模式的运行期屏保
+- *
+- */
++/** 后台屏保只在 AppRoot 现有 Compose 树中渲染，不创建 Window、ViewRoot 或独立 Composition。 */
+ class ScreenSaverOverlayManager(
+-    private val context: Context,
++    @Suppress("UNUSED_PARAMETER") context: Context,
+     private val runnerPort: RunnerPort,
+     private val focusDispatcher: FocusDispatcher,
+     private val appSettings: AppSettingsGateway,
+ ) {
+-
+-    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+-
+-    /**
+-     * 不复用 Koin 里那个 single：那份归控制层，生命周期跟着面板显隐推
+-     * 两处共用会互相把对方推回 CREATED，`collectAsStateWithLifecycle` 就此停摆
+-     */
+-    private val viewModelOwner = OverlayViewModelOwner()
+-
+-    private var composeView: ComposeView? = null
++    private val presentation = ScreenSaverPresentation()
+     private var phaseJob: Job? = null
+     private var logJob: Job? = null
+-
+-    private val _isShowing = MutableStateFlow(false)
+-    val isShowing: StateFlow<Boolean> = _isShowing.asStateFlow()
+-
+-    /** 屏保上滚动那一行；只保最新一条，历史留在运行日志里 */
+-    private val latestLog = MutableStateFlow<String?>(null)
++    private val _latestLog = MutableStateFlow<String?>(null)
++    val latestLog: StateFlow<String?> = _latestLog.asStateFlow()
++    val isShowing: StateFlow<Boolean> = presentation.isShowing
++
++    fun bindHostActivity(activity: Activity) {
++        presentation.bind(activity)
++        if (!isShowing.value) stopLogRelay()
++    }
++
++    fun unbindHostActivity(activity: Activity) {
++        if (presentation.unbind(activity)) stopLogRelay()
++    }
+ 
+     fun setup() {
+         scope.launch {
+@@ -68,15 +57,14 @@
+                 when (mode) {
+                     RunMode.BACKGROUND -> observePhase()
+                     RunMode.FOREGROUND -> {
+-                        stopObservingPhase()
++                        phaseJob?.cancel()
++                        phaseJob = null
+                         hide()
+                     }
+                 }
+             }
+         }
+     }
+-
+-    // ── 执行态 ──
+ 
+     private fun observePhase() {
+         if (phaseJob != null) return
+@@ -85,11 +73,8 @@
+             runnerPort.state.collect { state ->
+                 val current = state.phase
+                 when {
+-                    // 开关只管「自动盖」；手动盖上的那次不受它影响
+                     !previous.isBusy && current.isBusy ->
+                         if (appSettings.screenSaverEnabled.value) show()
+-
+-                    // 结束就撤，别让用户回来面对一块黑屏还得先滑一下
+                     previous.isBusy && !current.isBusy -> hide()
+                 }
+                 previous = current
+@@ -97,118 +82,123 @@
+         }
+     }
+ 
+-    private fun stopObservingPhase() {
+-        phaseJob?.cancel()
+-        phaseJob = null
+-    }
+-
+-    // ── 显隐 ──
+-
+-    /** 返回是否真的盖上了；没有悬浮窗权限时 addView 会抛，这里吞掉并如实回 false */
++    /** 手动与自动入口共用；只有可见主 Activity 才能显示同树屏保。 */
+     suspend fun show(): Boolean = withContext(Dispatchers.Main.immediate) {
+-        if (_isShowing.value) return@withContext true
+-        if (appSettings.runMode.value != RunMode.BACKGROUND) {
+-            Timber.w("Not in background mode; ignoring screen-saver show request")
+-            return@withContext false
+-        }
+-
+-        val view = createView()
+-        runCatching { windowManager.addView(view, createLayoutParams()) }
+-            .onSuccess {
+-                composeView = view
+-                viewModelOwner.start()
+-                startLogRelay()
+-                _isShowing.value = true
+-                Timber.d("Screen saver shown")
++        if (appSettings.runMode.value != RunMode.BACKGROUND) return@withContext false
++        if (!presentation.show()) return@withContext false
++        if (logJob == null) startLogRelay()
++        true
++    }
++
++    suspend fun hide() = withContext(Dispatchers.Main.immediate) {
++        presentation.hide()
++        stopLogRelay()
++    }
++
++    private fun startLogRelay() {
++        logJob = scope.launch {
++            focusDispatcher.recording.collect { envelope ->
++                envelope.event.toLogText(envelope.taskLabel)
++                    .takeIf(String::isNotBlank)
++                    ?.let { _latestLog.value = it }
+             }
+-            .onFailure { Timber.e(it, "Failed to show screen saver") }
+-        _isShowing.value
+-    }
+-
+-    suspend fun hide() = withContext(Dispatchers.Main.immediate) {
+-        val view = composeView ?: return@withContext
+-        composeView = null
+-        _isShowing.value = false
++        }
++    }
++
++    private fun stopLogRelay() {
+         logJob?.cancel()
+         logJob = null
+-        // 清掉，否则下一轮盖上的瞬间显示的是上一轮的尾句
+-        latestLog.value = null
+-        viewModelOwner.stop()
+-        runCatching { windowManager.removeView(view) }
+-            .onSuccess { Timber.d("Screen saver dismissed") }
+-            .onFailure { Timber.e(it, "Failed to remove screen saver") }
+-    }
+-
+-    /**
+-     * 读 [FocusDispatcher.recording] 而不是 `runnerPort.events`：后者的 focus 还是没补完的模板，
+-     * `$key`、文件路径、`{name}` 都原样挂着
+-     */
+-    private fun startLogRelay() {
+-        logJob?.cancel()
+-        logJob = scope.launch {
+-            focusDispatcher.recording.collect { envelope ->
+-                // 空串不盖掉上一句：Marker 没有正文，只有一张图的 focus 剥完记号也是空
+-                envelope.event.toLogText(envelope.taskLabel)
+-                    .takeIf(String::isNotBlank)
+-                    ?.let { latestLog.value = it }
+-            }
+-        }
+-    }
+-
+-    private fun createView(): ComposeView = ComposeView(context).apply {
+-        setViewTreeLifecycleOwner(viewModelOwner)
+-        setViewTreeViewModelStoreOwner(viewModelOwner)
+-        setViewTreeSavedStateRegistryOwner(viewModelOwner)
+-        setContent {
+-            // 屏保恒为暗色：整块屏幕本来就该压到最黑；风格仍跟设置里的 ThemeStyle
+-            val themeStyle by appSettings.themeStyle.collectAsState()
+-            MaaFwTheme(themeStyle = themeStyle, darkTheme = true) {
+-                ScreenSaverView(
+-                    latestLog = latestLog,
+-                    onUnlock = { scope.launch { hide() } },
+-                )
+-            }
+-        }
+-        // 排掉底部手势区，不然系统的返回手势会把解锁条的横向拖拽抢走
+-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+-            addOnLayoutChangeListener { v, _, _, _, _, _, _, _, _ ->
+-                val excluded = (v.resources.displayMetrics.density * GESTURE_EXCLUSION_DP).toInt()
+-                v.systemGestureExclusionRects =
+-                    listOf(Rect(0, v.height - excluded, v.width, v.height))
+-            }
+-        }
+-    }
+-
+-    /**
+-     * 不可聚焦：返回键与音量键要原样落给系统，屏保不该改变它们的行为
+-     * KEEP_SCREEN_ON + screenBrightness 压到最低是这层的核心——真息屏会让
+-     */
+-    private fun createLayoutParams(): WindowManager.LayoutParams {
+-        @Suppress("DEPRECATION")
+-        val flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+-                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+-                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+-                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+-        return WindowManager.LayoutParams(
+-            WindowManager.LayoutParams.MATCH_PARENT,
+-            WindowManager.LayoutParams.MATCH_PARENT,
+-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+-            flags,
+-            PixelFormat.TRANSLUCENT,
+-        ).apply {
+-            gravity = Gravity.CENTER
+-            screenBrightness = MIN_BRIGHTNESS
+-            layoutInDisplayCutoutMode =
+-                WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+-        }
+-    }
+-
+-    private companion object {
+-        /** 0f 在部分 ROM 上被当成「跟随系统」，给一个够小但非零的值 */
+-        const val MIN_BRIGHTNESS = 0.01f
+-
+-        /** 覆盖三大厂的手势条高度还有余量；解锁条本身离底 56dp，不会被这块挡住 */
+-        const val GESTURE_EXCLUSION_DP = 120
+-    }
+-}
++        _latestLog.value = null
++    }
++}
++
++/** 可独立验证的显示状态；Activity 与被修改的 Window 均只保留弱引用。 */
++internal class ScreenSaverPresentation {
++    private var activity = WeakReference<Activity>(null)
++    private val dimming = ScreenSaverWindowDimming()
++    private val _isShowing = MutableStateFlow(false)
++    val isShowing: StateFlow<Boolean> = _isShowing.asStateFlow()
++
++    fun bind(host: Activity) {
++        if (activity.get() === host) return
++        hide()
++        activity = WeakReference(host)
++    }
++
++    fun unbind(host: Activity): Boolean {
++        if (activity.get() !== host) return false
++        hide()
++        activity.clear()
++        return true
++    }
++
++    fun show(sdkInt: Int = Build.VERSION.SDK_INT): Boolean {
++        val host = activity.get()
++        if (!isVisiblePrimaryScreenSaverActivity(host, sdkInt)) {
++            hide()
++            traceScreenSaver("show-rejected: no visible primary Activity")
++            return false
++        }
++        if (_isShowing.value) return true
++        return runCatching {
++            dimming.apply(host!!.window)
++            _isShowing.value = true
++            traceScreenSaver("show route=activity-compose-tree display=0")
++            true
++        }.getOrElse {
++            dimming.restore()
++            traceScreenSaver("show failed: ${it.javaClass.simpleName}")
++            false
++        }
++    }
++
++    fun hide() {
++        _isShowing.value = false
++        dimming.restore()
++    }
++}
++
++@Suppress("DEPRECATION")
++internal fun isVisiblePrimaryScreenSaverActivity(activity: Activity?, sdkInt: Int): Boolean =
++    runCatching {
++        if (activity == null || activity.isFinishing || activity.isDestroyed) return false
++        val displayId = if (sdkInt >= Build.VERSION_CODES.R) activity.display?.displayId
++            else activity.windowManager.defaultDisplay.displayId
++        val decor = activity.window.decorView
++        displayId == Display.DEFAULT_DISPLAY && decor.display?.displayId == Display.DEFAULT_DISPLAY &&
++            decor.isAttachedToWindow && decor.isShown && decor.windowVisibility == View.VISIBLE
++    }.getOrDefault(false)
++
++/** 只恢复本功能改过的亮度与 KEEP_SCREEN_ON 位，保留期间其他功能更新的窗口 flags。 */
++internal class ScreenSaverWindowDimming {
++    private data class Saved(val window: WeakReference<Window>, val brightness: Float, val flags: Int)
++    private var saved: Saved? = null
++
++    fun apply(window: Window) {
++        if (saved?.window?.get() === window) return
++        restore()
++        val attrs = window.attributes
++        saved = Saved(WeakReference(window), attrs.screenBrightness, attrs.flags)
++        attrs.screenBrightness = 0.01f
++        attrs.flags = attrs.flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
++        window.attributes = attrs
++    }
++
++    fun restore() {
++        val original = saved ?: return
++        saved = null
++        val window = original.window.get() ?: return
++        runCatching {
++            val attrs = window.attributes
++            attrs.screenBrightness = original.brightness
++            val keepOn = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
++            attrs.flags = (attrs.flags and keepOn.inv()) or (original.flags and keepOn)
++            window.attributes = attrs
++        }.onFailure { traceScreenSaver("restore window failed: ${it.javaClass.simpleName}") }
++    }
++}
++
++private fun traceScreenSaver(message: String) {
++    runCatching { Ln.i("ScreenSaverDisplay: $message") }
++    runCatching { Timber.i("ScreenSaverDisplay: %s", message) }
++}
+diff --git a/app/src/main/java/com/aliothmoon/maafw/ui/AppRoot.kt b/app/src/main/java/com/aliothmoon/maafw/ui/AppRoot.kt
+--- a/app/src/main/java/com/aliothmoon/maafw/ui/AppRoot.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/ui/AppRoot.kt
+@@ -1,6 +1,7 @@
+ package com.aliothmoon.maafw.ui
+ 
+ import android.content.Intent
++import androidx.activity.compose.BackHandler
+ import android.net.Uri
+ import timber.log.Timber
+ import com.aliothmoon.maafw.settings.search.SettingLocation
+@@ -64,12 +65,14 @@
+ import androidx.compose.runtime.remember
+ import androidx.compose.runtime.rememberCoroutineScope
+ import androidx.compose.runtime.saveable.rememberSaveable
++import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+ import androidx.compose.runtime.setValue
+ import androidx.compose.ui.Alignment
+ import androidx.compose.ui.Modifier
+ import androidx.compose.ui.graphics.Color
+ import androidx.compose.ui.graphics.vector.ImageVector
+ import androidx.compose.ui.input.pointer.pointerInput
++import androidx.compose.ui.zIndex
+ import androidx.compose.ui.layout.layout
+ import androidx.compose.ui.platform.LocalConfiguration
+ import androidx.compose.ui.platform.LocalContext
+@@ -98,6 +101,7 @@
+ import com.aliothmoon.maafw.i18n.resolve
+ import com.aliothmoon.maafw.overlay.OverlayController
+ import com.aliothmoon.maafw.overlay.screensaver.ScreenSaverOverlayManager
++import com.aliothmoon.maafw.overlay.screensaver.ScreenSaverView
+ import com.aliothmoon.maafw.privileged.ShizukuInstallHelper
+ import com.aliothmoon.maafw.privileged.SystemPermission
+ import com.aliothmoon.maafw.privileged.SystemPermissionRequester
+@@ -323,6 +327,11 @@
+         }
+ 
+         val context = LocalContext.current
++        val screenSaverActivity = context.findActivity()
++        DisposableEffect(screenSaverManager, screenSaverActivity) {
++            screenSaverActivity?.let(screenSaverManager::bindHostActivity)
++            onDispose { screenSaverActivity?.let(screenSaverManager::unbindHostActivity) }
++        }
+         // 悬浮窗面板的「导出」：先把应用拉到前面，再由这条流打开 Activity 里的导出 sheet
+         LaunchedEffect(overlayController) {
+             overlayController.exportLogRequests.collect { exportSheetVisible = true }
+@@ -390,6 +399,25 @@
+             onDispose { scheduleLifecycleOwner.lifecycle.removeObserver(observer) }
+         }
+ 
++        val screenSaverShowing by screenSaverManager.isShowing.collectAsStateWithLifecycle()
++        val mainUiStateHolder = rememberSaveableStateHolder()
++        // 无条件挂在这一层：它注册的 SAF launcher 要活得比 sheet 的显隐久
++        LogExportController(
++            visible = exportSheetVisible && !screenSaverShowing,
++            onDismiss = { exportSheetVisible = false },
++            onMessage = { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() },
++        )
++        ConfigBackupController(
++            action = configBackupAction.takeUnless { screenSaverShowing },
++            uiVisible = !screenSaverShowing,
++            onActionConsumed = { configBackupAction = null },
++            onMessage = { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() },
++        )
++
++        // 屏保复用主 Activity 的 ViewRoot；撤下其它视觉内容也会撤下 Dialog/Sheet，SAF launcher 保持注册。
++        Box(Modifier.fillMaxSize()) {
++            if (!screenSaverShowing) {
++                mainUiStateHolder.SaveableStateProvider("main-ui") {
+         // 未装/未启动/未授权时的引导；needsGuidance 为 false 时自身不渲染
+         ShizukuReadinessDialog(
+             readiness = state.shizukuReadiness,
+@@ -723,18 +751,6 @@
+         }
+         }
+ 
+-        // 无条件挂在这一层：它注册的 SAF launcher 要活得比 sheet 的显隐久
+-        LogExportController(
+-            visible = exportSheetVisible,
+-            onDismiss = { exportSheetVisible = false },
+-            onMessage = { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() },
+-        )
+-        ConfigBackupController(
+-            action = configBackupAction,
+-            onActionConsumed = { configBackupAction = null },
+-            onMessage = { message -> Toast.makeText(context, message, Toast.LENGTH_SHORT).show() },
+-        )
+-
+         // 挂在 Scaffold 之外，才盖得住底部 tab 栏与系统栏
+         val fullscreenResolution = state.previewResolution
+         if (previewFullscreen && previewContent != null && fullscreenResolution != null) {
+@@ -792,6 +808,19 @@
+                 },
+             )
+         }
++                }
++            }
++            if (screenSaverShowing) {
++                BackHandler { /* 仅滑动条解除屏保，避免返回键改变下层导航。 */ }
++                MaaFwTheme(themeStyle = state.themeStyle, darkTheme = true) {
++                    ScreenSaverView(
++                        latestLog = screenSaverManager.latestLog,
++                        onUnlock = { scope.launch { screenSaverManager.hide() } },
++                        modifier = Modifier.fillMaxSize().zIndex(100f),
++                    )
++                }
++            }
++        }
+     }
+ }
+ 
+diff --git a/app/src/main/java/com/aliothmoon/maafw/ui/settings/ConfigBackupController.kt b/app/src/main/java/com/aliothmoon/maafw/ui/settings/ConfigBackupController.kt
+--- a/app/src/main/java/com/aliothmoon/maafw/ui/settings/ConfigBackupController.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/ui/settings/ConfigBackupController.kt
+@@ -57,6 +57,7 @@
+     onActionConsumed: () -> Unit,
+     onMessage: (String) -> Unit,
+     service: ConfigBackupService = koinInject(),
++    uiVisible: Boolean = true,
+ ) {
+     val scope = rememberCoroutineScope()
+     // 回调里取文案用：LocalContext 不随语言切换失效，Resources 会
+@@ -128,7 +129,7 @@
+         }
+     }
+ 
+-    if (pasteVisible) {
++    if (uiVisible && pasteVisible) {
+         ShareCodeDialog(
+             onDismiss = { pasteVisible = false },
+             onSubmit = { text ->
+@@ -138,7 +139,7 @@
+         )
+     }
+ 
+-    pending?.let { import ->
++    pending?.takeIf { uiVisible }?.let { import ->
+         ImportPreviewDialog(
+             import = import,
+             onDismiss = { pending = null },
+diff --git a/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverPresentationTest.kt b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverPresentationTest.kt
+new file mode 100644
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/overlay/screensaver/ScreenSaverPresentationTest.kt
+@@ -0,0 +1,174 @@
++package com.aliothmoon.maafw.overlay.screensaver
++
++import android.app.Activity
++import android.view.Display
++import android.view.View
++import android.view.Window
++import android.view.WindowManager
++import io.mockk.every
++import io.mockk.just
++import io.mockk.mockk
++import io.mockk.Runs
++import io.mockk.verify
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ScreenSaverPresentationTest {
++    private class Host(brightness: Float = 0.6f, flags: Int = WindowManager.LayoutParams.FLAG_DIM_BEHIND) {
++        val activity = mockk<Activity>()
++        val window = mockk<Window>()
++        val attrs = mockk<WindowManager.LayoutParams>()
++        val windows = mockk<WindowManager>()
++        val display = mockk<Display>()
++        val decor = mockk<View>()
++
++        init {
++            attrs.screenBrightness = brightness
++            attrs.flags = flags
++            every { activity.isFinishing } returns false
++            every { activity.isDestroyed } returns false
++            every { activity.display } returns display
++            every { display.displayId } returns Display.DEFAULT_DISPLAY
++            every { activity.windowManager } returns windows
++            every { windows.defaultDisplay } returns display
++            every { activity.window } returns window
++            every { window.decorView } returns decor
++            every { decor.display } returns display
++            every { decor.isAttachedToWindow } returns true
++            every { decor.isShown } returns true
++            every { decor.windowVisibility } returns View.VISIBLE
++            every { window.attributes } returns attrs
++            every { window.attributes = any() } just Runs
++        }
++    }
++
++    @Test
++    fun `show and hide adjust the existing window and restore its original state`() {
++        val host = Host()
++        val originalFlags = host.attrs.flags
++        val presentation = ScreenSaverPresentation()
++        presentation.bind(host.activity)
++
++        assertTrue(presentation.show(32))
++        assertTrue(presentation.isShowing.value)
++        assertEquals(0.01f, host.attrs.screenBrightness, 0f)
++        assertEquals(originalFlags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON, host.attrs.flags)
++        presentation.hide()
++        assertFalse(presentation.isShowing.value)
++        assertEquals(0.6f, host.attrs.screenBrightness, 0f)
++        assertEquals(originalFlags, host.attrs.flags)
++        verify(exactly = 0) { host.windows.addView(any(), any()) }
++        verify(exactly = 0) { host.activity.createWindowContext(any(), any()) }
++    }
++
++    @Test
++    fun `repeat show does not replace the saved brightness and repeat hide is harmless`() {
++        val host = Host()
++        val presentation = ScreenSaverPresentation()
++        presentation.bind(host.activity)
++
++        repeat(3) { assertTrue(presentation.show(32)) }
++        presentation.hide()
++        assertEquals(0.6f, host.attrs.screenBrightness, 0f)
++        host.attrs.screenBrightness = 0.9f
++        presentation.hide()
++        assertEquals(0.9f, host.attrs.screenBrightness, 0f)
++        verify(exactly = 2) { host.window.attributes = any() }
++
++        assertTrue(presentation.show(32))
++        presentation.hide()
++        assertEquals(0.9f, host.attrs.screenBrightness, 0f)
++    }
++
++    @Test
++    fun `keep screen on already present is retained and unrelated new flags are not lost`() {
++        val host = Host(flags = WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
++        val presentation = ScreenSaverPresentation()
++        presentation.bind(host.activity)
++        assertTrue(presentation.show(32))
++        host.attrs.flags = host.attrs.flags or WindowManager.LayoutParams.FLAG_FULLSCREEN
++
++        presentation.hide()
++
++        assertEquals(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or WindowManager.LayoutParams.FLAG_FULLSCREEN, host.attrs.flags)
++    }
++
++    @Test
++    fun `changing Activity restores old window and starts new host without stale showing state`() {
++        val old = Host(brightness = 0.4f)
++        val current = Host(brightness = 0.8f)
++        val presentation = ScreenSaverPresentation()
++        presentation.bind(old.activity)
++        assertTrue(presentation.show(32))
++
++        presentation.bind(current.activity)
++        assertFalse(presentation.isShowing.value)
++        assertEquals(0.4f, old.attrs.screenBrightness, 0f)
++        assertTrue(presentation.show(32))
++        assertEquals(0.01f, current.attrs.screenBrightness, 0f)
++        assertFalse(presentation.unbind(old.activity))
++        assertTrue(presentation.isShowing.value)
++        assertTrue(presentation.unbind(current.activity))
++        assertFalse(presentation.isShowing.value)
++        assertEquals(0.8f, current.attrs.screenBrightness, 0f)
++        assertFalse(presentation.show(32))
++    }
++
++    @Test
++    fun `rebind same host retains the original brightness until final hide`() {
++        val host = Host()
++        val presentation = ScreenSaverPresentation()
++        presentation.bind(host.activity)
++        assertTrue(presentation.show(32))
++        presentation.bind(host.activity)
++        assertTrue(presentation.isShowing.value)
++        presentation.hide()
++        assertEquals(0.6f, host.attrs.screenBrightness, 0f)
++    }
++
++    @Test
++    fun `invisible host is refused and an active host becoming invisible restores the window`() {
++        val host = Host()
++        val presentation = ScreenSaverPresentation()
++        presentation.bind(host.activity)
++        assertTrue(presentation.show(32))
++        every { host.decor.isShown } returns false
++
++        assertFalse(presentation.show(32))
++        assertFalse(presentation.isShowing.value)
++        assertEquals(0.6f, host.attrs.screenBrightness, 0f)
++    }
++
++    @Test
++    fun `destroyed finishing game display and missing hosts never become showing`() {
++        val presentation = ScreenSaverPresentation()
++        assertFalse(presentation.show(32))
++        val host = Host()
++        presentation.bind(host.activity)
++        every { host.display.displayId } returns 10
++        assertFalse(presentation.show(32))
++        every { host.display.displayId } returns 0
++        every { host.activity.isDestroyed } returns true
++        assertFalse(presentation.show(32))
++        every { host.activity.isDestroyed } returns false
++        every { host.activity.isFinishing } returns true
++        assertFalse(presentation.show(32))
++        assertEquals(0.6f, host.attrs.screenBrightness, 0f)
++        verify(exactly = 0) { host.window.attributes = any() }
++    }
++
++    @Test
++    fun `Android 29 uses the existing Activity display and no new window API`() {
++        val host = Host()
++        val presentation = ScreenSaverPresentation()
++        presentation.bind(host.activity)
++        assertTrue(presentation.show(29))
++        presentation.hide()
++
++        verify(exactly = 0) { host.activity.display }
++        verify(exactly = 0) { host.windows.addView(any(), any()) }
++        assertEquals(0.6f, host.attrs.screenBrightness, 0f)
++    }
++}

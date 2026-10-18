@@ -6,3 +6,5 @@
 !unit/
 !component/
 !fixtures/
+!android/
+!android/*.kt

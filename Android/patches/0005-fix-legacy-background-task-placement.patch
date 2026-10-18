@@ -1,0 +1,1279 @@
+diff --git a/app/src/main/java/com/aliothmoon/maafw/bridge/DriverClass.java b/app/src/main/java/com/aliothmoon/maafw/bridge/DriverClass.java
+index 4633b97..50b0ddc 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/bridge/DriverClass.java
++++ b/app/src/main/java/com/aliothmoon/maafw/bridge/DriverClass.java
+@@ -5,6 +5,7 @@ import android.content.pm.PackageInfo;
+ import android.os.SystemClock;
+ 
+ import com.aliothmoon.maafw.remote.internal.ActivityUtils;
++import com.aliothmoon.maafw.remote.internal.AppWatchdog;
+ import com.aliothmoon.maafw.remote.internal.GameFpsMonitor;
+ import com.aliothmoon.maafw.remote.internal.PrimaryDisplayManager;
+ import com.aliothmoon.maafw.third.FakeContext;
+@@ -13,6 +14,7 @@ import com.aliothmoon.maafw.third.Ln;
+ import java.nio.charset.StandardCharsets;
+ import java.util.Locale;
+ import java.util.concurrent.ConcurrentHashMap;
++import java.util.function.BooleanSupplier;
+ 
+ import timber.log.Timber;
+ 
+@@ -45,20 +47,29 @@ public final class DriverClass {
+             return ActivityUtils.startApp(packageName, displayId, forceStop);
+         }
+         String target = ActivityUtils.packageNameOf(packageName);
+-        boolean ret = ActivityUtils.startApp(packageName, displayId, forceStop, true);
++        // Tell the watchdog before launching: a game SDK may leave the VD before its first poll.
++        // The watchdog accepts registrations only for the current background run's display.
++        AppWatchdog.TargetToken token = AppWatchdog.registerTarget(target, displayId);
++        if (token == null) return false;
++        BooleanSupplier stillActive = () -> AppWatchdog.isTargetActive(token);
++        boolean ret = ActivityUtils.startApp(packageName, displayId, forceStop, true, stillActive);
+         if (ret) {
+             // 部分 ROM（如 One UI）会把游戏从虚拟屏挪回主屏，启动后校验并尝试拉回；
+             // 拉不回则快速失败，避免识别对着虚拟屏空转
+             // 这里比对的是包名，PI 给的可能是 "包名/Activity"，先拆
+-            ret = ActivityUtils.ensureAppOnDisplay(target, displayId);
++            ret = ActivityUtils.ensureAppOnDisplay(target, displayId, stillActive);
+             if (!ret) {
+                 Ln.e(TAG + ": " + target + " could not be pinned on display " + displayId);
+             }
+         }
+-        if (ret) {
+-            awaitFirstFrame();
+-            GameFpsMonitor.start(target);
++        if (ret && stillActive.getAsBoolean()) {
++            awaitFirstFrame(stillActive);
++            ret = stillActive.getAsBoolean();
++            if (ret) GameFpsMonitor.start(target);
++        } else {
++            ret = false;
+         }
++        if (!ret) AppWatchdog.clearTarget(token);
+         return ret;
+     }
+ 
+@@ -85,10 +96,10 @@ public final class DriverClass {
+         }
+     }
+ 
+-    private static void awaitFirstFrame() {
++    private static void awaitFirstFrame(BooleanSupplier stillActive) {
+         long baseline = NativeBridgeLib.getFrameCount();
+         int elapsed = 0;
+-        while (NativeBridgeLib.getFrameCount() <= baseline && elapsed < FRAME_WAIT_TIMEOUT_MS) {
++        while (stillActive.getAsBoolean() && NativeBridgeLib.getFrameCount() <= baseline && elapsed < FRAME_WAIT_TIMEOUT_MS) {
+             try {
+                 Thread.sleep(FRAME_WAIT_INTERVAL_MS);
+             } catch (InterruptedException e) {
+diff --git a/app/src/main/java/com/aliothmoon/maafw/remote/RemoteServiceImpl.kt b/app/src/main/java/com/aliothmoon/maafw/remote/RemoteServiceImpl.kt
+index ee1a62d..f54e698 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/remote/RemoteServiceImpl.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/remote/RemoteServiceImpl.kt
+@@ -143,7 +143,7 @@ class RemoteServiceImpl : RemoteService.Stub() {
+     }
+ 
+     override fun stopTargetApp(): Boolean {
+-        val target = AppWatchdog.targetPackage ?: run {
++        val target = AppWatchdog.cleanupTargetPackage ?: run {
+             Ln.i("$TAG: stopTargetApp skipped, watchdog never acquired a target")
+             return false
+         }
+@@ -334,13 +334,20 @@ class RemoteServiceImpl : RemoteService.Stub() {
+         runner.setCallback(callback)
+     }
+ 
++    @Synchronized
+     override fun startRun(runPlanJson: String?): Boolean {
+         if (runPlanJson.isNullOrBlank()) return false
++        if (runner.isRunning()) return false
+         StaleFrameGuard.blankIfVacant()
++        val background = virtualDisplayMode.get() == DisplayMode.BACKGROUND
++        // Prepare before worker submission so its first StartApp cannot race target cleanup.
++        AppWatchdog.prepareRun(if (background) VirtualDisplayManager.getDisplayId() else DefaultDisplayConfig.DISPLAY_NONE)
+         val started = runner.start(runPlanJson)
+         if (started) {
+             AppWatchdog.startWatching(runner::isRunning)
+             StaleFrameGuard.start(runner::isRunning)
++        } else {
++            AppWatchdog.stopWatching()
+         }
+         return started
+     }
+diff --git a/app/src/main/java/com/aliothmoon/maafw/remote/internal/ActivityUtils.kt b/app/src/main/java/com/aliothmoon/maafw/remote/internal/ActivityUtils.kt
+index e8ba4af..0635f7f 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/remote/internal/ActivityUtils.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/remote/internal/ActivityUtils.kt
+@@ -12,6 +12,8 @@ import android.view.Display
+ import com.aliothmoon.maafw.third.FakeContext
+ import com.aliothmoon.maafw.third.Ln
+ import com.aliothmoon.maafw.third.wrappers.ServiceManager
++import java.util.concurrent.atomic.AtomicReference
++import java.util.function.BooleanSupplier
+ 
+ @SuppressLint("BlockedPrivateApi")
+ object ActivityUtils {
+@@ -25,6 +27,7 @@ object ActivityUtils {
+     // 启动后等待任务出现在目标屏的窗口
+     private const val APP_PIN_TIMEOUT_MS = 10_000L
+     private const val APP_PIN_POLL_INTERVAL_MS = 500L
++    private const val COLD_START_STABLE_MS = 2_000L
+ 
+     // 拉回操作后等系统完成 reparent 的时间
+     private const val REPIN_SETTLE_MS = 1_000L
+@@ -46,7 +49,11 @@ object ActivityUtils {
+      */
+     @JvmStatic
+     @JvmOverloads
+-    fun startActivity(intent: Intent, displayId: Int = 0, forceFullscreen: Boolean = false): Boolean {
++    fun startActivity(
++        intent: Intent, displayId: Int = 0, forceFullscreen: Boolean = false,
++        stillActive: BooleanSupplier = BooleanSupplier { true },
++    ): Boolean {
++        if (!stillActive.asBoolean) return false
+         val am = ServiceManager.getActivityManager()
+         try {
+             val launchOptions = ActivityOptions.makeBasic()
+@@ -61,19 +68,21 @@ object ActivityUtils {
+                 }
+             }
+             val ret = try {
++                if (!stillActive.asBoolean) return false
+                 am.startActivity(intent, launchOptions.toBundle())
+             } catch (e: Exception) {
+                 Ln.w("startActivity failed, returning -1", e)
+                 -1
+             }
++            if (!stillActive.asBoolean) return false
+             if (ret < 0) {
+                 Ln.w("startActivity returned error code $ret, fallback to am command")
+-                return startViaAmCommand(intent, displayId)
++                return startViaAmCommand(intent, displayId, stillActive)
+             }
+             return true
+         } catch (e: Exception) {
+             Ln.w("startActivity failed, fallback to am command", e)
+-            return startViaAmCommand(intent, displayId)
++            return startViaAmCommand(intent, displayId, stillActive)
+         }
+     }
+ 
+@@ -99,6 +108,8 @@ object ActivityUtils {
+     /** API < Q 读不出任务在哪块屏上，只能拿「上次是我们把它拉到这块屏上的」当它占着屏的依据 */
+     @Volatile
+     private var lastLaunched: Pair<String, Int>? = null
++    private data class PendingLaunch(val packageName: String, val displayId: Int, val stillActive: BooleanSupplier)
++    private val pendingStableLaunch = AtomicReference<PendingLaunch?>(null)
+ 
+     /**
+      * 强杀 [packageName]（可以是 component 全名）；它占着 [displayId] 时等画面停稳并把帧缓冲换成黑帧
+@@ -106,17 +117,24 @@ object ActivityUtils {
+      * 杀的不是屏上那个应用就不碰帧缓冲：屏上是别人的静止画面，换黑了不会自己回来
+      */
+     @JvmStatic
+-    fun forceStop(packageName: String, displayId: Int): Boolean {
++    @JvmOverloads
++    fun forceStop(
++        packageName: String, displayId: Int,
++        stillActive: BooleanSupplier = BooleanSupplier { true },
++    ): Boolean {
++        if (!stillActive.asBoolean) return false
+         val targetPackage = packageNameOf(packageName)
+         val occupiesDisplay = when (val current = getAppDisplayId(targetPackage)) {
+             null -> lastLaunched == (targetPackage to displayId)
+             else -> current == displayId
+         }
++        if (!stillActive.asBoolean) return false
+         val stopped = runCatching {
+             ServiceManager.getActivityManager().forceStopPackage(targetPackage)
+         }.onFailure {
+             Ln.w("forceStop: failed to force-stop $targetPackage", it)
+         }.getOrDefault(false)
++        if (!stillActive.asBoolean) return false
+         if (stopped && occupiesDisplay) StaleFrameGuard.blankAfterKill(displayId, targetPackage)
+         return stopped
+     }
+@@ -127,8 +145,10 @@ object ActivityUtils {
+         packageName: String,
+         displayId: Int,
+         forceStop: Boolean = true,
+-        excludeFromRecents: Boolean = true
++        excludeFromRecents: Boolean = true,
++        stillActive: BooleanSupplier = BooleanSupplier { true },
+     ): Boolean {
++        if (!stillActive.asBoolean) return false
+         val pm = FakeContext.get().packageManager
+ 
+         val component = componentOf(packageName)
+@@ -157,17 +177,26 @@ object ActivityUtils {
+         // force_stop 只为把主屏上的现有进程挪到目标屏；已在目标屏上运行时只拉到前台。
+         // 资源侧常在加载期反复 StartApp 等待进入游戏（ADB 下语义即"已运行则前台化"），
+         // 每次都杀会让目标永远停在启动阶段
++        val beforeLaunch = getAppDisplayId(targetPackage, "startApp-before")
++        if (!stillActive.asBoolean) return false
++        var knownColdStart = false
+         if (forceStop) {
+-            if (getAppDisplayId(targetPackage) == displayId) {
++            if (beforeLaunch == displayId) {
+                 Ln.i("startApp: $targetPackage already on display $displayId, skip force-stop")
+             } else {
+-                forceStop(targetPackage, displayId)
++                if (!stillActive.asBoolean) return false
++                val stopped = forceStop(targetPackage, displayId, stillActive)
++                knownColdStart = stopped && displayId > Display.DEFAULT_DISPLAY && beforeLaunch != null
+             }
+         }
+         Ln.i("startApp ${intent.component?.flattenToShortString()}")
+ 
+-        return startActivity(intent, displayId).also { started ->
+-            if (started) lastLaunched = targetPackage to displayId
++        return startActivity(intent, displayId, stillActive = stillActive).also { started ->
++            Ln.i("startApp: package=$targetPackage expected=$displayId started=$started knownColdStart=$knownColdStart")
++            if (started) {
++                lastLaunched = targetPackage to displayId
++                if (knownColdStart) pendingStableLaunch.set(PendingLaunch(targetPackage, displayId, stillActive))
++            }
+         }
+     }
+ 
+@@ -224,21 +253,50 @@ object ActivityUtils {
+         packageName: String,
+         displayId: Int,
+         timeoutMs: Long = APP_PIN_TIMEOUT_MS
++    ): Boolean = ensureAppOnDisplay(packageName, displayId, timeoutMs, BooleanSupplier { true })
++
++    @JvmStatic
++    fun ensureAppOnDisplay(packageName: String, displayId: Int, stillActive: BooleanSupplier): Boolean =
++        ensureAppOnDisplay(packageName, displayId, APP_PIN_TIMEOUT_MS, stillActive)
++
++    private fun ensureAppOnDisplay(
++        packageName: String, displayId: Int, timeoutMs: Long, stillActive: BooleanSupplier,
+     ): Boolean {
+-        val deadline = SystemClock.uptimeMillis() + timeoutMs
++        val startedAt = SystemClock.uptimeMillis()
++        if (!stillActive.asBoolean) return false
++        // Match the exact launch predicate, not just package/display: an old cancelled callback
++        // must not consume a newer run's pending stability check for the same game and VD.
++        val pending = pendingStableLaunch.get()
++        val requireStable = pending != null && pending.packageName == packageName &&
++                pending.displayId == displayId && pending.stillActive === stillActive &&
++                pendingStableLaunch.compareAndSet(pending, null)
++        val stability = DisplayPinStability(
++            displayId, startedAt, timeoutMs,
++            if (requireStable) COLD_START_STABLE_MS else 0L,
++        )
++        fun finish(result: Boolean, reason: String): Boolean {
++            Ln.i("ensureAppOnDisplay: package=$packageName expected=$displayId result=$result reason=$reason" +
++                    " stableRequired=$requireStable elapsed=${SystemClock.uptimeMillis() - startedAt}ms")
++            return result
++        }
+         while (true) {
+-            when (val current = getAppDisplayId(packageName)) {
+-                null -> return true // 无法判断，宽松放行
+-                displayId -> return true
+-                DISPLAY_NO_TASK -> Unit // 任务尚未出现，继续等待
+-                else -> {
++            if (!stillActive.asBoolean) return finish(false, "cancelled")
++            val current = getAppDisplayId(packageName, "ensure")
++            if (!stillActive.asBoolean) return finish(false, "cancelled-after-query")
++            when (stability.observe(current, SystemClock.uptimeMillis())) {
++                DisplayPinStability.Result.UNKNOWN -> return finish(true, "query-unavailable")
++                DisplayPinStability.Result.READY -> return finish(true, if (requireStable) "stable-on-display" else "on-display")
++                DisplayPinStability.Result.MOVE -> {
+                     Ln.w("ensureAppOnDisplay: $packageName drifted to display $current (expected $displayId), trying to move it back")
+-                    return repinAppToDisplay(packageName, displayId)
++                    val moved = repinAppToDisplay(packageName, displayId, stillActive)
++                    if (!stillActive.asBoolean) return finish(false, "cancelled-after-repin")
++                    if (!moved || !requireStable) return finish(moved, "repin")
+                 }
+-            }
+-            if (SystemClock.uptimeMillis() >= deadline) {
+-                Ln.w("ensureAppOnDisplay: no task of $packageName observed within ${timeoutMs}ms, passing leniently")
+-                return true
++                DisplayPinStability.Result.TIMEOUT -> {
++                    // Preserve the old lenient no-task behavior outside verified cold launches.
++                    return finish(!requireStable, if (requireStable) "stable-timeout" else "no-task-timeout")
++                }
++                DisplayPinStability.Result.WAIT -> Unit
+             }
+             SystemClock.sleep(APP_PIN_POLL_INTERVAL_MS)
+         }
+@@ -251,21 +309,37 @@ object ActivityUtils {
+      * 3. 重新投放 launch intent（强制 FULLSCREEN），让系统 reparent 现有任务
+      */
+     @JvmStatic
+-    fun repinAppToDisplay(packageName: String, displayId: Int): Boolean {
+-        if (moveAppTaskToDisplay(packageName, displayId)) {
++    fun repinAppToDisplay(packageName: String, displayId: Int): Boolean =
++        repinAppToDisplay(packageName, displayId, BooleanSupplier { true })
++
++    @JvmStatic
++    fun repinAppToDisplay(packageName: String, displayId: Int, stillActive: BooleanSupplier): Boolean {
++        if (!stillActive.asBoolean) return false
++        val moved = moveAppTaskToDisplay(packageName, displayId, stillActive)
++        if (!stillActive.asBoolean) return false
++        if (moved) {
+             SystemClock.sleep(REPIN_SETTLE_MS)
+-            if (isAppOnDisplay(packageName, displayId)) {
++            if (!stillActive.asBoolean) return false
++            val current = getAppDisplayId(packageName, "repin-after-move")
++            if (!stillActive.asBoolean) return false
++            Ln.i("repinAppToDisplay: after move package=$packageName expected=$displayId observed=$current")
++            if (current == null || current == displayId) {
+                 Ln.i("repinAppToDisplay: $packageName moved back to display $displayId")
+                 return true
+             }
+         }
++        if (!stillActive.asBoolean) return false
+         val pm = FakeContext.get().packageManager
+         val intent = pm.getLaunchIntentForPackage(packageName)
+         if (intent != null) {
+             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+-            if (startActivity(intent, displayId, forceFullscreen = true)) {
++            if (startActivity(intent, displayId, forceFullscreen = true, stillActive = stillActive)) {
+                 SystemClock.sleep(REPIN_SETTLE_MS)
+-                if (isAppOnDisplay(packageName, displayId)) {
++                if (!stillActive.asBoolean) return false
++                val current = getAppDisplayId(packageName, "repin-after-relaunch")
++                if (!stillActive.asBoolean) return false
++                Ln.i("repinAppToDisplay: after relaunch package=$packageName expected=$displayId observed=$current")
++                if (current == null || current == displayId) {
+                     Ln.i("repinAppToDisplay: $packageName relaunched onto display $displayId")
+                     return true
+                 }
+@@ -280,37 +354,66 @@ object ActivityUtils {
+      * null = 无法判断（API < Q / 反射失败 / 异常）；[DISPLAY_NO_TASK] = 无运行中任务。
+      * 取最近任务而非任意任务：漂移时新任务落在主屏，虚拟屏上可能残留旧任务。
+      */
+-    private fun getAppDisplayId(packageName: String): Int? {
+-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+-        if (taskDisplayIdField == null) return null
++    private fun getAppDisplayId(packageName: String, diagnostic: String? = null): Int? {
++        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || taskDisplayIdField == null) {
++            if (diagnostic != null) Ln.w("taskLocation: phase=$diagnostic package=$packageName query=unavailable sdk=${Build.VERSION.SDK_INT} field=${taskDisplayIdField != null}")
++            return null
++        }
+         return runCatching {
+-            val task = findRecentTask(packageName) ?: return@runCatching DISPLAY_NO_TASK
+-            getTaskDisplayId(task).takeIf { it >= 0 }
++            val task = findRecentTask(packageName, diagnostic) ?: return@runCatching DISPLAY_NO_TASK
++            getTaskDisplayId(task).takeIf { it >= 0 }.also { result ->
++                if (diagnostic != null && result == null) Ln.w("taskLocation: phase=$diagnostic package=$packageName query=invalid-display")
++            }
++        }.onFailure {
++            if (diagnostic != null) Ln.w("taskLocation: phase=$diagnostic package=$packageName query=failed", it)
+         }.getOrNull()
+     }
+ 
+-    private fun findRecentTask(packageName: String): ActivityManager.RunningTaskInfo? {
+-        val am = FakeContext.get().getSystemService(ActivityManager::class.java) ?: return null
++    private fun findRecentTask(packageName: String, diagnostic: String? = null): ActivityManager.RunningTaskInfo? {
++        val am = FakeContext.get().getSystemService(ActivityManager::class.java) ?: run {
++            if (diagnostic != null) Ln.w("taskLocation: phase=$diagnostic package=$packageName query=no-service")
++            return null
++        }
+         @Suppress("DEPRECATION")
+-        return am.getRunningTasks(100).firstOrNull { task ->
++        val tasks = am.getRunningTasks(100)
++        val matching = tasks.filter { task ->
+             task.topActivity?.packageName == packageName
+                     || task.baseActivity?.packageName == packageName
+         }
++        if (diagnostic != null) {
++            val snapshot = matching.joinToString("; ") { task ->
++                "task=${task.taskId},stack=${TaskDisplayMoveTarget.resolve(task, false)},display=${getTaskDisplayId(task)}" +
++                        ",top=${task.topActivity},base=${task.baseActivity}"
++            }
++            Ln.i("taskLocation: phase=$diagnostic package=$packageName tasks=${tasks.size} matches=${matching.size} [$snapshot]")
++        }
++        return matching.firstOrNull()
+     }
+ 
+-    private fun moveAppTaskToDisplay(packageName: String, displayId: Int): Boolean {
+-        val taskId = findTaskId(packageName) ?: run {
++    private fun moveAppTaskToDisplay(packageName: String, displayId: Int, stillActive: BooleanSupplier): Boolean {
++        if (!stillActive.asBoolean) return false
++        val task = findRecentTask(packageName, "repin-before-move") ?: run {
+             Ln.w("moveAppTaskToDisplay: no running task of $packageName")
+             return false
+         }
+-        moveTaskToDisplayMethod?.let { method ->
++        val method = moveTaskToDisplayMethod
++        val useRootTask = method?.name == "moveRootTaskToDisplay" ||
++                (method == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
++        // Android 10/11 moveStackToDisplay 和 am display move-stack 收的是 stackId，
++        // 不能拿 taskId 猜；编号碰巧属于别的栈时会误移无关应用。
++        val moveId = TaskDisplayMoveTarget.resolve(task, useRootTask) ?: run {
++            Ln.w("moveAppTaskToDisplay: cannot resolve ${if (useRootTask) "root task" else "stack"} of $packageName")
++            return false
++        }
++        method?.let {
+             runCatching {
+-                method.invoke(activityTaskManager, taskId, displayId)
+-                Ln.i("moveAppTaskToDisplay: ${method.name}($taskId, $displayId) invoked")
+-                return true
++                if (!stillActive.asBoolean) return false
++                method.invoke(activityTaskManager, moveId, displayId)
++                Ln.i("moveAppTaskToDisplay: ${method.name}($moveId, $displayId) invoked")
++                return stillActive.asBoolean
+             }.onFailure { Ln.w("moveAppTaskToDisplay: ${method.name} failed", it) }
+         }
+-        return moveTaskViaAmCommand(taskId, displayId)
++        return moveTaskViaAmCommand(moveId, displayId, stillActive)
+     }
+ 
+     private val activityTaskManager by lazy {
+@@ -337,10 +440,12 @@ object ActivityUtils {
+         }
+     }
+ 
+-    private fun moveTaskViaAmCommand(taskId: Int, displayId: Int): Boolean {
++    private fun moveTaskViaAmCommand(moveId: Int, displayId: Int, stillActive: BooleanSupplier): Boolean {
++        if (!stillActive.asBoolean) return false
+         return try {
+-            val args = arrayOf("am", "display", "move-stack", taskId.toString(), displayId.toString())
++            val args = arrayOf("am", "display", "move-stack", moveId.toString(), displayId.toString())
+             Ln.i("moveTaskViaAmCommand: exec: ${args.joinToString(" ")}")
++            if (!stillActive.asBoolean) return false
+             val process = Runtime.getRuntime().exec(args)
+             val exitCode = process.waitFor()
+             val stderr = process.errorStream.bufferedReader().use { it.readText() }.trim()
+@@ -349,7 +454,7 @@ object ActivityUtils {
+                 Ln.w("moveTaskViaAmCommand: am exited with code $exitCode")
+                 return false
+             }
+-            true
++            stillActive.asBoolean
+         } catch (e: Exception) {
+             Ln.e("moveTaskViaAmCommand: am command failed", e)
+             false
+@@ -357,7 +462,7 @@ object ActivityUtils {
+     }
+ 
+     private val taskDisplayIdField by lazy {
+-        runCatching {
++        val resolved = runCatching {
+             var cls: Class<*>? = ActivityManager.RunningTaskInfo::class.java
+             var field: java.lang.reflect.Field? = null
+             while (cls != null && field == null) {
+@@ -366,12 +471,16 @@ object ActivityUtils {
+             }
+             field?.also { it.isAccessible = true }
+         }.onFailure { Ln.w("taskDisplayIdField: reflection failed", it) }.getOrNull()
++        if (resolved == null) Ln.w("taskDisplayIdField: unavailable sdk=${Build.VERSION.SDK_INT}")
++        else Ln.i("taskDisplayIdField: resolved ${resolved.declaringClass.name}.${resolved.name}")
++        resolved
+     }
+ 
+     private fun getTaskDisplayId(task: ActivityManager.RunningTaskInfo): Int =
+         runCatching { taskDisplayIdField?.getInt(task) ?: -1 }.getOrDefault(-1)
+ 
+-    private fun startViaAmCommand(intent: Intent, displayId: Int): Boolean {
++    private fun startViaAmCommand(intent: Intent, displayId: Int, stillActive: BooleanSupplier): Boolean {
++        if (!stillActive.asBoolean) return false
+         try {
+             val intentUri = intent.toUri(Intent.URI_INTENT_SCHEME)
+             val args = if (displayId == Display.DEFAULT_DISPLAY) {
+@@ -380,6 +489,7 @@ object ActivityUtils {
+                 arrayOf("am", "start", "--display", displayId.toString(), intentUri)
+             }
+             Ln.i("startViaAmCommand: displayId=$displayId, exec: ${args.joinToString(" ")}")
++            if (!stillActive.asBoolean) return false
+             val process = Runtime.getRuntime().exec(args)
+             val exitCode = process.waitFor()
+             // am start 输出量极小（远小于管道缓冲），先 waitFor 再读不会死锁
+@@ -392,7 +502,7 @@ object ActivityUtils {
+                 return false
+             }
+             Ln.i("startViaAmCommand: success (exitCode=0)")
+-            return true
++            return stillActive.asBoolean
+         } catch (e: Exception) {
+             Ln.e("startViaAmCommand: am command fallback failed", e)
+             return false
+diff --git a/app/src/main/java/com/aliothmoon/maafw/remote/internal/AppWatchdog.kt b/app/src/main/java/com/aliothmoon/maafw/remote/internal/AppWatchdog.kt
+index a2d3cae..e304da5 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/remote/internal/AppWatchdog.kt
++++ b/app/src/main/java/com/aliothmoon/maafw/remote/internal/AppWatchdog.kt
+@@ -4,8 +4,8 @@ import com.aliothmoon.maafw.MaaDispatchers
+ import android.os.SystemClock
+ import com.aliothmoon.maafw.constant.DefaultDisplayConfig
+ import com.aliothmoon.maafw.third.Ln
++import java.util.function.BooleanSupplier
+ import kotlinx.coroutines.CoroutineScope
+-import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.Job
+ import kotlinx.coroutines.SupervisorJob
+ import kotlinx.coroutines.delay
+@@ -16,11 +16,10 @@ import kotlinx.coroutines.isActive
+ import kotlinx.coroutines.launch
+ 
+ /**
+- * 盯虚拟屏上的目标 app：从 [VirtualDisplayManager] 的 displayId 反推顶层包名作为目标，
++ * 盯虚拟屏上的目标 app：优先接收 DriverClass 已知的启动包名，无 StartApp 时才从屏上反推，
+  * 离屏则用 [ActivityUtils.repinAppToDisplay] 拉回；状态经 RemoteService.watchdogState() 暴露给 app。
+  *
+- * 与 MaaMeow 的差异：目标包不是外部告知，而是 [ActivityUtils.probeDisplay] 自取；
+- * 判活与 onDisplay 合成一步（屏上有 app 即活）。全程 runCatching 宽松，不抛不误伤
++ * 判活与 onDisplay 合成一步（屏上有目标 app 即活）。全程 runCatching 宽松，不抛不误伤
+  */
+ object AppWatchdog {
+ 
+@@ -40,48 +39,116 @@ object AppWatchdog {
+     /** PI 自己重启目标应用时会有一拍查不到进程，连续两拍都查不到才算没了 */
+     private const val DEAD_CONFIRM_POLLS = 2
+ 
+-    private val scope = CoroutineScope(SupervisorJob() + MaaDispatchers.IO.limitedParallelism(1))
++    private val scope = CoroutineScope(SupervisorJob())
+ 
+     private val _state = MutableStateFlow(STATE_IDLE)
+     val state: StateFlow<Int> = _state.asStateFlow()
+ 
+     private var job: Job? = null
+-    /** 运行期反推出来的目标包名；收尾要关它，而 app 侧不维护包名表 */
++    private var watchedDisplayId = DefaultDisplayConfig.DISPLAY_NONE
++    private var explicitTarget = false
++    private var runGeneration = 0L
++    private var targetGeneration = 0L
++    private var activeToken: TargetToken? = null
++
++    class TargetToken internal constructor(
++        val runGeneration: Long,
++        val targetGeneration: Long,
++        val packageName: String,
++        val displayId: Int,
++    )
++
++    private data class Snapshot(
++        val runGeneration: Long,
++        val displayId: Int,
++        val token: TargetToken?,
++        val explicitTarget: Boolean,
++    )
++    /** 本轮正在监控的目标；停止后不再保留可用于拉回的旧目标。 */
+     @Volatile
+     var targetPackage: String? = null
+         private set
++    /** 收尾关游戏单独保存；时长上限先 stopRun 再 stopTargetApp，不能被 stopWatching 清掉。 */
++    @Volatile
++    var cleanupTargetPackage: String? = null
++        private set
+     private var driftFirstSeenMs = 0L
+     private var driftRepinAttempts = 0
+     private var driftNotified = false
+     private var diedNotified = false
+     private var deadPolls = 0
+ 
+-    /**
+-     * [isRunActive] 返回 false 后自己收摊：一轮自然跑完没有人来调 [stopWatching]，
+-     * 不收的话用户事后在主屏打开目标应用，会被当成「窗口飘了」拉回虚拟屏
+-     *
+-     * 收摊不清 [targetPackage]：收尾的 stopTargetApp 还要用它
+-     */
++    /** Run setup happens before runner.start(), whose worker can already call DriverClass. */
+     @Synchronized
+-    fun startWatching(isRunActive: () -> Boolean) {
++    fun prepareRun(displayId: Int) {
+         stopWatching()
++        cleanupTargetPackage = null
++        watchedDisplayId = displayId.takeIf { it > 0 } ?: DefaultDisplayConfig.DISPLAY_NONE
++    }
++
++    @JvmStatic
++    @Synchronized
++    fun registerTarget(packageName: String, displayId: Int): TargetToken? {
++        if (displayId != watchedDisplayId || displayId <= 0 || packageName.isBlank()) return null
++        if (targetPackage != packageName) resetTargetState()
++        explicitTarget = true
++        targetPackage = packageName
++        cleanupTargetPackage = packageName
++        Ln.i("AppWatchdog: launch target registered: $packageName on display $displayId")
++        return TargetToken(runGeneration, ++targetGeneration, packageName, displayId).also { activeToken = it }
++    }
++
++    @JvmStatic
++    @Synchronized
++    fun isTargetActive(token: TargetToken): Boolean =
++        activeToken == token && watchedDisplayId == token.displayId && runGeneration == token.runGeneration
++
++    @JvmStatic
++    @Synchronized
++    fun clearTarget(token: TargetToken) {
++        if (!isTargetActive(token)) return
+         targetPackage = null
++        activeToken = null
++        if (cleanupTargetPackage == token.packageName) cleanupTargetPackage = null
++        explicitTarget = false
++        resetTargetState()
++    }
++
++    private fun resetTargetState() {
+         driftFirstSeenMs = 0L
+         driftRepinAttempts = 0
+         driftNotified = false
+         diedNotified = false
+         deadPolls = 0
+         _state.value = STATE_IDLE
+-        Ln.i("AppWatchdog: start watching display ${VirtualDisplayManager.getDisplayId()}")
+-        job = scope.launch {
++    }
++
++    /**
++     * Keep any target already registered by the worker during runner.start().
++     * Natural completion keeps only the cleanup target for stopTargetApp.
++     */
++    @Synchronized
++    fun startWatching(isRunActive: () -> Boolean) {
++        job?.cancel()
++        job = null
++        if (watchedDisplayId == DefaultDisplayConfig.DISPLAY_NONE) return
++        val generation = runGeneration
++        Ln.i("AppWatchdog: start watching display $watchedDisplayId")
++        job = scope.launch(MaaDispatchers.IO.limitedParallelism(1)) {
+             while (isActive && isRunActive()) {
+                 delay(POLL_INTERVAL_MS)
+                 if (!isRunActive()) break
+                 tick()
+             }
+-            if (isActive) {
+-                Ln.i("AppWatchdog: run finished, stop watching")
+-                _state.value = STATE_IDLE
++            synchronized(this@AppWatchdog) {
++                if (isActive && runGeneration == generation) {
++                    Ln.i("AppWatchdog: run finished, stop watching")
++                    watchedDisplayId = DefaultDisplayConfig.DISPLAY_NONE
++                    targetPackage = null
++                    explicitTarget = false
++                    activeToken = null
++                    _state.value = STATE_IDLE
++                }
+             }
+         }
+     }
+@@ -90,78 +157,104 @@ object AppWatchdog {
+     fun stopWatching() {
+         job?.cancel()
+         job = null
+-        _state.value = STATE_IDLE
++        ++runGeneration
++        watchedDisplayId = DefaultDisplayConfig.DISPLAY_NONE
++        targetPackage = null
++        explicitTarget = false
++        activeToken = null
++        resetTargetState()
+     }
+ 
+     private fun tick() {
++        // Only state snapshots/commits hold our monitor. Binder queries, pidof and reparenting
++        // can block; stopWatching must invalidate their token without waiting for any of them.
++        val snapshot = synchronized(this) {
++            if (watchedDisplayId == DefaultDisplayConfig.DISPLAY_NONE) return
++            Snapshot(runGeneration, watchedDisplayId, activeToken, explicitTarget)
++        }
+         val displayId = VirtualDisplayManager.getDisplayId()
+-        if (displayId == DefaultDisplayConfig.DISPLAY_NONE) {
+-            _state.value = STATE_IDLE
++        if (displayId == DefaultDisplayConfig.DISPLAY_NONE || displayId != snapshot.displayId) {
++            synchronized(this) { if (isCurrent(snapshot)) _state.value = STATE_IDLE }
+             return
+         }
+-        val top = (ActivityUtils.probeDisplay(displayId) as? ActivityUtils.DisplayOccupancy.Occupied)?.topPackage
+-        if (top != null) {
+-            if (targetPackage == null) Ln.i("AppWatchdog: target acquired: $top")
+-            targetPackage = top
+-            driftFirstSeenMs = 0L
+-            driftRepinAttempts = 0
+-            driftNotified = false
+-            diedNotified = false
+-            deadPolls = 0
+-            _state.value = STATE_WATCHING
++        val occupancy = ActivityUtils.probeDisplay(displayId)
++        // A ROM/API permission failure is not evidence that the game left its display.
++        if (occupancy == ActivityUtils.DisplayOccupancy.Unknown) return
++        val top = (occupancy as? ActivityUtils.DisplayOccupancy.Occupied)?.topPackage
++        if (top != null && (!snapshot.explicitTarget || top == snapshot.token?.packageName)) {
++            synchronized(this) {
++                if (!isCurrent(snapshot)) return
++                if (targetPackage == null) Ln.i("AppWatchdog: target acquired: $top")
++                if (activeToken?.packageName != top) {
++                    activeToken = TargetToken(runGeneration, ++targetGeneration, top, displayId)
++                }
++                targetPackage = top
++                cleanupTargetPackage = top
++                resetTargetState()
++                _state.value = STATE_WATCHING
++            }
+             return
+         }
+ 
+-        val pkg = targetPackage
+-        if (pkg == null) {
+-            _state.value = STATE_IDLE
+-            return
+-        }
++        val token = snapshot.token ?: return
++        val pkg = token.packageName
++        if (!isTargetActive(token)) return
+ 
+         // 屏上空了先问进程还在不在：被杀和"窗口跑到主屏去了"是两回事，
+         // 拿后者的文案去讲前者，用户会照着去改前台模式而问题根本不在那
+-        when (ProcessLiveness.probe(pkg)) {
+-            ProcessLiveness.DEAD -> {
+-                if (++deadPolls < DEAD_CONFIRM_POLLS) {
+-                    Ln.i("AppWatchdog: $pkg not found, confirming on next poll")
++        val liveness = ProcessLiveness.probe(pkg)
++        val shouldRepin = synchronized(this) {
++            if (!isCurrent(snapshot)) return
++            when (liveness) {
++                ProcessLiveness.DEAD -> {
++                    if (++deadPolls < DEAD_CONFIRM_POLLS) {
++                        Ln.i("AppWatchdog: $pkg not found, confirming on next poll")
++                        return
++                    }
++                    if (!diedNotified) {
++                        diedNotified = true
++                        _state.value = STATE_APP_DIED
++                        Ln.w("AppWatchdog: $pkg process is gone")
++                    }
+                     return
+                 }
+-                if (!diedNotified) {
+-                    diedNotified = true
+-                    _state.value = STATE_APP_DIED
+-                    Ln.w("AppWatchdog: $pkg process is gone")
+-                }
++                ProcessLiveness.UNKNOWN -> return
++                ProcessLiveness.ALIVE -> deadPolls = 0
++            }
++            if (driftRepinAttempts >= MAX_REPIN_ATTEMPTS) return
++            val now = SystemClock.elapsedRealtime()
++            if (driftFirstSeenMs == 0L) {
++                driftFirstSeenMs = now
++                Ln.i("AppWatchdog: $pkg left the virtual display, grace ${REPIN_GRACE_MS}ms")
+                 return
+             }
+-            // 判不出就不下结论，等下一拍
+-            ProcessLiveness.UNKNOWN -> return
+-            ProcessLiveness.ALIVE -> deadPolls = 0
+-        }
+-
+-        // 进程还在，那就是窗口飘了 → 宽限后 repin，超限上报
+-        if (driftRepinAttempts >= MAX_REPIN_ATTEMPTS) return
+-        val now = SystemClock.elapsedRealtime()
+-        if (driftFirstSeenMs == 0L) {
+-            driftFirstSeenMs = now
+-            Ln.i("AppWatchdog: $pkg left the virtual display, grace ${REPIN_GRACE_MS}ms")
+-            return
++            if (now - driftFirstSeenMs < REPIN_GRACE_MS) return
++            Ln.w("AppWatchdog: $pkg drifted, repin attempt ${driftRepinAttempts + 1}/$MAX_REPIN_ATTEMPTS")
++            true
+         }
+-        if (now - driftFirstSeenMs < REPIN_GRACE_MS) return
+-
+-        Ln.w("AppWatchdog: $pkg drifted, repin attempt ${driftRepinAttempts + 1}/$MAX_REPIN_ATTEMPTS")
+-        val ok = runCatching { ActivityUtils.repinAppToDisplay(pkg, displayId) }.getOrDefault(false)
+-        val back = ok && runCatching { ActivityUtils.isAppOnDisplay(pkg, displayId) }.getOrDefault(true)
+-        if (back) {
+-            Ln.i("AppWatchdog: $pkg moved back to the virtual display")
+-            driftFirstSeenMs = 0L
+-            driftRepinAttempts = 0
+-            return
+-        }
+-        driftRepinAttempts++
+-        if (driftRepinAttempts >= MAX_REPIN_ATTEMPTS && !driftNotified) {
+-            driftNotified = true
+-            _state.value = STATE_DISPLAY_DRIFT
+-            Ln.w("AppWatchdog: $pkg left the virtual display and repin failed")
++        if (!shouldRepin) return
++        val stillActive = BooleanSupplier { isTargetActive(token) }
++        val ok = runCatching { ActivityUtils.repinAppToDisplay(pkg, displayId, stillActive) }.getOrDefault(false)
++        val back = ok && stillActive.asBoolean &&
++                runCatching { ActivityUtils.isAppOnDisplay(pkg, displayId) }.getOrDefault(true)
++        synchronized(this) {
++            if (!isCurrent(snapshot)) return
++            if (back) {
++                Ln.i("AppWatchdog: $pkg moved back to the virtual display")
++                driftFirstSeenMs = 0L
++                driftRepinAttempts = 0
++                return
++            }
++            driftRepinAttempts++
++            if (driftRepinAttempts >= MAX_REPIN_ATTEMPTS && !driftNotified) {
++                driftNotified = true
++                _state.value = STATE_DISPLAY_DRIFT
++                Ln.w("AppWatchdog: $pkg left the virtual display and repin failed")
++            }
+         }
+     }
++
++    /** Called only under this object's monitor. */
++    private fun isCurrent(snapshot: Snapshot): Boolean =
++        runGeneration == snapshot.runGeneration && watchedDisplayId == snapshot.displayId && activeToken == snapshot.token
+ }
+diff --git a/app/src/main/java/com/aliothmoon/maafw/third/wrappers/ActivityManager.java b/app/src/main/java/com/aliothmoon/maafw/third/wrappers/ActivityManager.java
+index fd357c4..f86d309 100644
+--- a/app/src/main/java/com/aliothmoon/maafw/third/wrappers/ActivityManager.java
++++ b/app/src/main/java/com/aliothmoon/maafw/third/wrappers/ActivityManager.java
+@@ -146,7 +146,8 @@ public final class ActivityManager {
+                     /* userId */ /* UserHandle.USER_CURRENT */ -2);
+         } catch (Throwable e) {
+             Ln.e("Could not invoke method", e);
+-            return 0;
++            // 0 is START_SUCCESS; let ActivityUtils retry through `am start --display`.
++            return -1;
+         }
+     }
+ 
+diff --git a/app/src/main/java/com/aliothmoon/maafw/remote/internal/TaskDisplayMoveTarget.kt b/app/src/main/java/com/aliothmoon/maafw/remote/internal/TaskDisplayMoveTarget.kt
+new file mode 100644
+index 0000000..ebf6c63
+--- /dev/null
++++ b/app/src/main/java/com/aliothmoon/maafw/remote/internal/TaskDisplayMoveTarget.kt
+@@ -0,0 +1,27 @@
++package com.aliothmoon.maafw.remote.internal
++
++/** Hidden TaskInfo fields differ across Android releases; never substitute a task ID for a stack. */
++internal object TaskDisplayMoveTarget {
++    fun resolve(task: Any, useRootTask: Boolean): Int? {
++        if (!useRootTask) return readInt(task, "stackId")?.takeIf { it >= 0 }
++        // On Android 12+ a fullscreen task is itself a root task. A child task ID is not a
++        // root-task ID: leave nested/unknown hierarchies to the launch-intent fallback.
++        val parentId = readInt(task, "parentTaskId") ?: return null
++        if (parentId >= 0) return null
++        return readInt(task, "taskId")?.takeIf { it >= 0 }
++    }
++
++    private fun readInt(instance: Any, name: String): Int? {
++        var type: Class<*>? = instance.javaClass
++        while (type != null) {
++            val currentType = type
++            val field = runCatching { currentType.getDeclaredField(name) }.getOrNull()
++            if (field != null) return runCatching {
++                field.isAccessible = true
++                field.getInt(instance)
++            }.getOrNull()
++            type = type.superclass
++        }
++        return null
++    }
++}
+diff --git a/app/src/main/java/com/aliothmoon/maafw/remote/internal/DisplayPinStability.kt b/app/src/main/java/com/aliothmoon/maafw/remote/internal/DisplayPinStability.kt
+new file mode 100644
+index 0000000..083b9fc
+--- /dev/null
++++ b/app/src/main/java/com/aliothmoon/maafw/remote/internal/DisplayPinStability.kt
+@@ -0,0 +1,25 @@
++package com.aliothmoon.maafw.remote.internal
++
++/** Bounded startup guard: a brief launcher activity on the VD is not yet a stable game task. */
++internal class DisplayPinStability(
++    private val targetDisplay: Int,
++    private val startedAtMs: Long,
++    private val timeoutMs: Long,
++    private val stableForMs: Long,
++) {
++    enum class Result { WAIT, READY, MOVE, UNKNOWN, TIMEOUT }
++
++    private var stableSinceMs: Long? = null
++
++    fun observe(displayId: Int?, nowMs: Long): Result {
++        if (displayId == null) return Result.UNKNOWN
++        if (displayId == targetDisplay) {
++            val since = stableSinceMs ?: nowMs.also { stableSinceMs = it }
++            if (nowMs - since >= stableForMs) return Result.READY
++        } else {
++            stableSinceMs = null
++        }
++        if (nowMs - startedAtMs >= timeoutMs) return Result.TIMEOUT
++        return if (displayId >= 0 && displayId != targetDisplay) Result.MOVE else Result.WAIT
++    }
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/remote/internal/TaskDisplayMoveTargetTest.kt b/app/src/test/java/com/aliothmoon/maafw/remote/internal/TaskDisplayMoveTargetTest.kt
+new file mode 100644
+index 0000000..3777cb6
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/remote/internal/TaskDisplayMoveTargetTest.kt
+@@ -0,0 +1,34 @@
++package com.aliothmoon.maafw.remote.internal
++
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNull
++import org.junit.Test
++
++class TaskDisplayMoveTargetTest {
++    private open class LegacyTaskInfo(@JvmField val taskId: Int, @JvmField val stackId: Int)
++    private class RunningLegacyTask : LegacyTaskInfo(2953, 45)
++    private class ModernTaskInfo(@JvmField val taskId: Int, @JvmField val parentTaskId: Int)
++    private class MissingStack(@JvmField val taskId: Int)
++
++    @Test
++    fun `Android 10 and 11 move the real inherited stack not the unrelated task number`() {
++        assertEquals(45, TaskDisplayMoveTarget.resolve(RunningLegacyTask(), useRootTask = false))
++    }
++
++    @Test
++    fun `unreadable stack cannot fall back to a task ID`() {
++        assertNull(TaskDisplayMoveTarget.resolve(MissingStack(2953), useRootTask = false))
++        assertNull(TaskDisplayMoveTarget.resolve(LegacyTaskInfo(2953, -1), useRootTask = false))
++    }
++
++    @Test
++    fun `Android 12 fullscreen task remains a root task target`() {
++        assertEquals(2953, TaskDisplayMoveTarget.resolve(ModernTaskInfo(2953, -1), useRootTask = true))
++    }
++
++    @Test
++    fun `nested task and unreadable root hierarchy are never moved as roots`() {
++        assertNull(TaskDisplayMoveTarget.resolve(ModernTaskInfo(2953, 45), useRootTask = true))
++        assertNull(TaskDisplayMoveTarget.resolve(MissingStack(2953), useRootTask = true))
++    }
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/remote/internal/AppWatchdogTargetTest.kt b/app/src/test/java/com/aliothmoon/maafw/remote/internal/AppWatchdogTargetTest.kt
+new file mode 100644
+index 0000000..5b777d7
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/remote/internal/AppWatchdogTargetTest.kt
+@@ -0,0 +1,165 @@
++package com.aliothmoon.maafw.remote.internal
++
++import android.os.SystemClock
++import com.aliothmoon.maafw.MaaDispatchers
++import com.aliothmoon.maafw.third.Ln
++import java.util.concurrent.CountDownLatch
++import java.util.concurrent.TimeUnit
++import kotlin.concurrent.thread
++import io.mockk.Runs
++import io.mockk.every
++import io.mockk.just
++import io.mockk.mockkObject
++import io.mockk.mockkStatic
++import io.mockk.unmockkAll
++import io.mockk.verify
++import kotlinx.coroutines.ExperimentalCoroutinesApi
++import kotlinx.coroutines.test.StandardTestDispatcher
++import kotlinx.coroutines.test.TestCoroutineScheduler
++import org.junit.After
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Before
++import org.junit.Test
++
++@OptIn(ExperimentalCoroutinesApi::class)
++class AppWatchdogTargetTest {
++    private val scheduler = TestCoroutineScheduler()
++    private var now = 100L
++
++    @Before
++    fun setUp() {
++        mockkObject(MaaDispatchers, VirtualDisplayManager, ActivityUtils, ProcessLiveness.Companion)
++        // @JvmStatic repinAppToDisplay is emitted as a real JVM static method; object mocking
++        // covers probeDisplay/isAppOnDisplay only. Mock both without entering FakeContext.
++        mockkStatic(ActivityUtils::class, Ln::class, SystemClock::class)
++        every { Ln.i(any()) } just Runs
++        every { Ln.w(any<String>()) } just Runs
++        every { MaaDispatchers.IO } returns StandardTestDispatcher(scheduler)
++        every { VirtualDisplayManager.getDisplayId() } returns 3
++        every { SystemClock.elapsedRealtime() } answers { now }
++        every { ActivityUtils.probeDisplay(3) } returns ActivityUtils.DisplayOccupancy.Empty
++        every { ProcessLiveness.probe("game.fgo") } returns ProcessLiveness.ALIVE
++        every { ActivityUtils.repinAppToDisplay("game.fgo", 3, any()) } returns true
++        every { ActivityUtils.isAppOnDisplay("game.fgo", 3) } returns true
++        AppWatchdog.stopWatching()
++    }
++
++    @After
++    fun tearDown() {
++        AppWatchdog.stopWatching()
++        scheduler.runCurrent()
++        unmockkAll()
++    }
++
++    @Test
++    fun `launch registered before first poll can be recovered after immediate display drift`() {
++        AppWatchdog.prepareRun(3)
++        AppWatchdog.registerTarget("game.fgo", 3)
++        AppWatchdog.startWatching { true }
++        assertEquals("game.fgo", AppWatchdog.targetPackage)
++        scheduler.advanceTimeBy(5_001)
++        now += 5_000
++        scheduler.advanceTimeBy(5_000)
++        verify(exactly = 1) { ActivityUtils.repinAppToDisplay("game.fgo", 3, any()) }
++    }
++
++    @Test
++    fun `foreground stale display and post-stop launches cannot acquire targets`() {
++        AppWatchdog.prepareRun(-1)
++        AppWatchdog.registerTarget("game.fgo", 3)
++        assertNull(AppWatchdog.targetPackage)
++        AppWatchdog.prepareRun(3)
++        AppWatchdog.registerTarget("game.fgo", 4)
++        assertNull(AppWatchdog.targetPackage)
++        AppWatchdog.registerTarget("game.fgo", 3)
++        AppWatchdog.stopWatching()
++        AppWatchdog.registerTarget("game.other", 3)
++        assertNull(AppWatchdog.targetPackage)
++    }
++
++    @Test
++    fun `new run and failed launch clear previous targets`() {
++        AppWatchdog.prepareRun(3)
++        AppWatchdog.registerTarget("game.fgo", 3)
++        AppWatchdog.prepareRun(3)
++        assertNull(AppWatchdog.targetPackage)
++        assertNull(AppWatchdog.cleanupTargetPackage)
++        val old = AppWatchdog.registerTarget("game.fgo", 3)!!
++        val current = AppWatchdog.registerTarget("game.other", 3)!!
++        AppWatchdog.clearTarget(old)
++        assertEquals("game.other", AppWatchdog.targetPackage)
++        AppWatchdog.clearTarget(current)
++        assertNull(AppWatchdog.targetPackage)
++        assertNull(AppWatchdog.cleanupTargetPackage)
++    }
++
++    @Test
++    fun `unknown display observation never moves a registered game`() {
++        every { ActivityUtils.probeDisplay(3) } returns ActivityUtils.DisplayOccupancy.Unknown
++        AppWatchdog.prepareRun(3)
++        AppWatchdog.registerTarget("game.fgo", 3)
++        AppWatchdog.startWatching { true }
++        scheduler.advanceTimeBy(20_001)
++        verify(exactly = 0) { ActivityUtils.repinAppToDisplay(any(), any(), any()) }
++    }
++
++    @Test
++    fun `completed run closes registration while retaining only cleanup target`() {
++        AppWatchdog.prepareRun(3)
++        AppWatchdog.registerTarget("game.fgo", 3)
++        AppWatchdog.startWatching { false }
++        scheduler.runCurrent()
++        assertNull(AppWatchdog.targetPackage)
++        assertEquals("game.fgo", AppWatchdog.cleanupTargetPackage)
++        AppWatchdog.registerTarget("game.other", 3)
++        assertNull(AppWatchdog.targetPackage)
++        assertEquals("game.fgo", AppWatchdog.cleanupTargetPackage)
++    }
++
++    @Test
++    fun `stop invalidates token and old completion cannot clear a new run of same package`() {
++        AppWatchdog.prepareRun(3)
++        val previous = AppWatchdog.registerTarget("game.fgo", 3)!!
++        assertTrue(AppWatchdog.isTargetActive(previous))
++        AppWatchdog.stopWatching()
++        assertFalse(AppWatchdog.isTargetActive(previous))
++        AppWatchdog.prepareRun(3)
++        val next = AppWatchdog.registerTarget("game.fgo", 3)!!
++        AppWatchdog.clearTarget(previous)
++        assertEquals("game.fgo", AppWatchdog.targetPackage)
++        assertEquals("game.fgo", AppWatchdog.cleanupTargetPackage)
++        assertTrue(AppWatchdog.isTargetActive(next))
++    }
++
++    @Test
++    fun `stop never waits for a blocked task query and stale query cannot repin`() {
++        val entered = CountDownLatch(1)
++        val release = CountDownLatch(1)
++        val stopped = CountDownLatch(1)
++        AppWatchdog.prepareRun(3)
++        val token = AppWatchdog.registerTarget("game.fgo", 3)!!
++        every { ActivityUtils.probeDisplay(3) } answers {
++            entered.countDown()
++            check(release.await(5, TimeUnit.SECONDS))
++            ActivityUtils.DisplayOccupancy.Empty
++        }
++        val poll = thread {
++            AppWatchdog::class.java.getDeclaredMethod("tick").also { it.isAccessible = true }
++                .invoke(AppWatchdog)
++        }
++        try {
++            assertTrue(entered.await(2, TimeUnit.SECONDS))
++            val stop = thread { AppWatchdog.stopWatching(); stopped.countDown() }
++            assertTrue("stop must not wait for the binder-like query", stopped.await(1, TimeUnit.SECONDS))
++            stop.join(2_000)
++            assertFalse(AppWatchdog.isTargetActive(token))
++        } finally {
++            release.countDown()
++            poll.join(2_000)
++        }
++        verify(exactly = 0) { ActivityUtils.repinAppToDisplay(any(), any(), any()) }
++    }
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/remote/internal/ActivityStartFailureTest.kt b/app/src/test/java/com/aliothmoon/maafw/remote/internal/ActivityStartFailureTest.kt
+new file mode 100644
+index 0000000..731dae6
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/remote/internal/ActivityStartFailureTest.kt
+@@ -0,0 +1,30 @@
++package com.aliothmoon.maafw.remote.internal
++
++import android.content.Intent
++import android.os.IInterface
++import com.aliothmoon.maafw.third.Ln
++import com.aliothmoon.maafw.third.wrappers.ActivityManager
++import io.mockk.Runs
++import io.mockk.every
++import io.mockk.just
++import io.mockk.mockk
++import io.mockk.mockkStatic
++import io.mockk.unmockkAll
++import org.junit.After
++import org.junit.Assert.assertTrue
++import org.junit.Test
++
++class ActivityStartFailureTest {
++    @After
++    fun tearDown() = unmockkAll()
++
++    @Test
++    fun `unavailable binder start method is negative so caller can use am fallback`() {
++        mockkStatic(Ln::class)
++        every { Ln.e(any<String>(), any<Throwable>()) } just Runs
++        val constructor = ActivityManager::class.java.getDeclaredConstructor(IInterface::class.java)
++        constructor.isAccessible = true
++        val wrapper = constructor.newInstance(mockk<IInterface>(relaxed = true))
++        assertTrue(wrapper.startActivity(mockk<Intent>(), null) < 0)
++    }
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/remote/internal/DisplayPinStabilityTest.kt b/app/src/test/java/com/aliothmoon/maafw/remote/internal/DisplayPinStabilityTest.kt
+new file mode 100644
+index 0000000..c0aa1ba
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/remote/internal/DisplayPinStabilityTest.kt
+@@ -0,0 +1,51 @@
++package com.aliothmoon.maafw.remote.internal
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++class DisplayPinStabilityTest {
++    private fun guard(stableMs: Long = 2_000) = DisplayPinStability(4, 100, 10_000, stableMs)
++
++    @Test
++    fun `brief launcher presence cannot hide SDK display jump`() {
++        val guard = guard()
++        assertEquals(DisplayPinStability.Result.WAIT, guard.observe(4, 100))
++        assertEquals(DisplayPinStability.Result.MOVE, guard.observe(0, 600))
++        assertEquals(DisplayPinStability.Result.WAIT, guard.observe(4, 1_600))
++        assertEquals(DisplayPinStability.Result.WAIT, guard.observe(4, 3_100))
++        assertEquals(DisplayPinStability.Result.READY, guard.observe(4, 3_600))
++    }
++
++    @Test
++    fun `a second jump resets continuous stability`() {
++        val guard = guard()
++        guard.observe(4, 100)
++        guard.observe(0, 600)
++        guard.observe(4, 1_600)
++        assertEquals(DisplayPinStability.Result.MOVE, guard.observe(0, 3_100))
++        assertEquals(DisplayPinStability.Result.WAIT, guard.observe(4, 4_100))
++        assertEquals(DisplayPinStability.Result.READY, guard.observe(4, 6_100))
++    }
++
++    @Test
++    fun `unknown remains lenient and no-task waits only within total budget`() {
++        val guard = guard()
++        assertEquals(DisplayPinStability.Result.UNKNOWN, guard.observe(null, 100))
++        assertEquals(DisplayPinStability.Result.WAIT, guard.observe(-2, 9_600))
++        assertEquals(DisplayPinStability.Result.TIMEOUT, guard.observe(-2, 10_100))
++    }
++
++    @Test
++    fun `continued drift and late unstable arrival cannot restart total deadline`() {
++        val guard = guard()
++        assertEquals(DisplayPinStability.Result.MOVE, guard.observe(0, 9_100))
++        assertEquals(DisplayPinStability.Result.WAIT, guard.observe(4, 9_600))
++        assertEquals(DisplayPinStability.Result.TIMEOUT, guard.observe(4, 10_100))
++        assertEquals(DisplayPinStability.Result.TIMEOUT, guard.observe(0, 10_600))
++    }
++
++    @Test
++    fun `existing or foreground app retains immediate success behavior`() {
++        assertEquals(DisplayPinStability.Result.READY, guard(0).observe(4, 100))
++    }
++}
+diff --git a/app/src/test/java/com/aliothmoon/maafw/remote/internal/ActivityLaunchCancellationTest.kt b/app/src/test/java/com/aliothmoon/maafw/remote/internal/ActivityLaunchCancellationTest.kt
+new file mode 100644
+index 0000000..e2c65af
+--- /dev/null
++++ b/app/src/test/java/com/aliothmoon/maafw/remote/internal/ActivityLaunchCancellationTest.kt
+@@ -0,0 +1,79 @@
++package com.aliothmoon.maafw.remote.internal
++
++import android.os.SystemClock
++import com.aliothmoon.maafw.third.Ln
++import io.mockk.Runs
++import io.mockk.every
++import io.mockk.just
++import io.mockk.mockkObject
++import io.mockk.mockkStatic
++import io.mockk.unmockkAll
++import io.mockk.verify
++import java.util.function.BooleanSupplier
++import org.junit.After
++import org.junit.Assert.assertFalse
++import org.junit.Before
++import org.junit.Test
++
++/** Exercises real startup/recovery methods; private task queries replace the Android binder. */
++class ActivityLaunchCancellationTest {
++    private var active = true
++    private val stillActive = BooleanSupplier { active }
++
++    @Before
++    fun setUp() {
++        mockkObject(ActivityUtils, recordPrivateCalls = true)
++        mockkStatic(ActivityUtils::class, Ln::class, SystemClock::class)
++        every { Ln.i(any()) } just Runs
++        every { Ln.w(any<String>()) } just Runs
++        every { SystemClock.uptimeMillis() } returns 100L
++    }
++
++    @After
++    fun tearDown() = unmockkAll()
++
++    @Test
++    fun `already cancelled initial launch never reaches Android context or launcher`() {
++        active = false
++        assertFalse(ActivityUtils.startApp("game.fgo", 3, true, true, stillActive))
++    }
++
++    @Test
++    fun `stop during force-stop task query prevents later binder force-stop`() {
++        every { ActivityUtils["getAppDisplayId"]("game.fgo", any<String>()) } answers {
++            active = false
++            0
++        }
++        assertFalse(ActivityUtils.forceStop("game.fgo", 3, stillActive))
++    }
++
++    @Test
++    fun `cancelled task query cannot start a repin from ensure`() {
++        every { ActivityUtils["getAppDisplayId"]("game.fgo", "ensure") } answers {
++            active = false
++            0
++        }
++        every { ActivityUtils.repinAppToDisplay(any(), any(), any()) } returns true
++        assertFalse(ActivityUtils.ensureAppOnDisplay("game.fgo", 3, stillActive))
++        verify(exactly = 0) { ActivityUtils.repinAppToDisplay(any(), any(), any()) }
++    }
++
++    @Test
++    fun `stop during failed move prevents fallback launcher access`() {
++        every { ActivityUtils["moveAppTaskToDisplay"]("game.fgo", 3, stillActive) } answers {
++            active = false
++            false
++        }
++        // FakeContext is deliberately not initialized or mocked: reaching the launcher fallback
++        // would fail the test on the host JVM rather than silently passing through a stub.
++        assertFalse(ActivityUtils.repinAppToDisplay("game.fgo", 3, stillActive))
++    }
++
++    @Test
++    fun `stop while successful move settles prevents query and fallback relaunch`() {
++        every { ActivityUtils["moveAppTaskToDisplay"]("game.fgo", 3, stillActive) } returns true
++        every { SystemClock.sleep(1_000) } answers { active = false }
++        assertFalse(ActivityUtils.repinAppToDisplay("game.fgo", 3, stillActive))
++        verify(exactly = 0) { ActivityUtils["getAppDisplayId"]("game.fgo", "repin-after-move") }
++    }
++}
