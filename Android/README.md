@@ -57,15 +57,15 @@ python tools/build_android.py --skip-runtime
 python tools/build_android.py --abi x86_64 --skip-runtime
 ```
 
-正式签名包使用 `python tools/build_android.py --release`，需设置 `KEYSTORE_PATH`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`。密钥不要提交到仓库。Actions 使用当前调试签名，安卓应用内更新源和 Mirror酱 发布仍需另行配置。
+正式签名包使用 `python tools/build_android.py --release`，需设置 `KEYSTORE_PATH`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`。tag 构建通过 GitHub Secrets 使用固定正式密钥，签名及验证说明见 [signing/README.md](signing/README.md)。安卓应用内更新源和 Mirror酱发布仍需另行配置。
 
 ## Tag 构建与发布
 
 推送 `v*` tag 会由统一发布流程同时构建 Windows / MXU、ARM64 安卓和 x86_64 安卓。三个构建均通过后，Windows ZIP 和两个 APK 一起上传到同一个 GitHub Release；`beta` 等预发布标记与 Windows 包一致。任一架构构建或回归失败时，本次 Release 不会发布。
 
-安卓下载文件为 `MaaFGO-android-arm64-v8a-<tag>-debug.apk` 和 `MaaFGO-android-x86_64-<tag>-debug.apk`，手机选 ARM64，MuMu 等 x86_64 模拟器选 x86_64。`debug` 表示 APK 使用调试签名，正式版本 tag 也不会自动切换为正式签名。
+安卓下载文件为 `MaaFGO-android-arm64-v8a-<tag>.apk` 和 `MaaFGO-android-x86_64-<tag>.apk`，手机选 ARM64，MuMu 等 x86_64 模拟器选 x86_64。正式版和 beta tag 均使用正式签名的 Release APK，并验证签名、非调试标志、架构及版本。
 
-原有分支、PR 和手动安卓构建仍会生成 Actions 附件，用于开发验证。已发布的旧 tag 不会自动补上 APK；该流程在修改合入后推送的新 tag 上生效，也可在包含修改的 tag 上手动运行统一发布流程。
+原有分支和 PR 继续构建 debug APK。手动安卓构建默认 debug，维护者可启用 `release` 输入验证正式签名构建，产物保存在 Actions 附件。已发布的旧 tag 不会自动补上 APK；该流程在修改合入后推送的新 tag 上生效，也可在包含修改的 tag 上手动运行统一发布流程。
 
 ## 目录和依赖
 
