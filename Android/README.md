@@ -6,7 +6,9 @@
 
 ## 下载与设备要求
 
-目前提供 [本仓库 GitHub Actions 构建附件](https://github.com/dingi8528/MaaFgo_NEW/actions/workflows/android.yml)，尚未接入安卓正式 Release 或 Mirror酱更新源。登录 GitHub，选择 `main` 分支最近一次成功的构建，在页面底部 **Artifacts** 下载对应架构的附件，解压后安装其中的 APK。
+新版 `v*` tag 会将 ARM64 与 x86_64 APK 和 Windows 包一起发布到 [主项目 GitHub Releases](https://github.com/xlxyvergil/MaaFgo/releases)。选择带 APK 附件的版本，直接下载对应架构的 `MaaFGO-android-<abi>-<tag>-debug.apk`；该流程接入前的旧 tag 不会自动补包。
+
+开发构建也可从 [主项目 GitHub Actions 构建附件](https://github.com/xlxyvergil/MaaFgo/actions/workflows/android.yml) 下载。登录 GitHub，选择 `main` 分支最近一次成功的构建，在页面底部 **Artifacts** 下载下表对应附件，解压后安装其中的 APK。安卓尚未接入 Mirror酱更新源。
 
 | 设备 | 下载附件 | 使用要求 |
 | --- | --- | --- |
@@ -125,7 +127,15 @@ python tools/build_android.py --skip-runtime
 python tools/build_android.py --abi x86_64 --skip-runtime
 ```
 
-正式签名使用 `python tools/build_android.py --release`，需设置 `KEYSTORE_PATH`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`；密钥不要提交仓库。当前 Actions 仍只产出调试附件，正式发布和更新源需另行配置。
+正式签名使用 `python tools/build_android.py --release`，需设置 `KEYSTORE_PATH`、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`；密钥不要提交仓库。Actions 使用当前调试签名，安卓应用内更新源和 Mirror酱发布仍需另行配置。
+
+## Tag 构建与发布
+
+推送 `v*` tag 会由统一发布流程同时构建 Windows / MXU、ARM64 安卓和 x86_64 安卓。三个构建均通过后，Windows ZIP 和两个 APK 一起上传到同一个 GitHub Release；`beta` 等预发布标记与 Windows 包一致。任一架构构建或回归失败时，本次 Release 不会发布。
+
+安卓下载文件为 `MaaFGO-android-arm64-v8a-<tag>-debug.apk` 和 `MaaFGO-android-x86_64-<tag>-debug.apk`，手机选 ARM64，MuMu 等 x86_64 模拟器选 x86_64。`debug` 表示 APK 使用调试签名，正式版本 tag 也不会自动切换为正式签名。
+
+原有分支、PR 和手动安卓构建仍会生成 Actions 附件，用于开发验证。已发布的旧 tag 不会自动补上 APK；该流程在修改合入后推送的新 tag 上生效，也可在包含修改的 tag 上手动运行统一发布流程。
 
 ## 从 MXU 移植时的维护要点
 
