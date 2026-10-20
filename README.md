@@ -250,6 +250,8 @@ git diff --check
 `MAAFW_BINARY_PATH` 指定库目录。Linux 运行原生框架前需安装 `libpipewire-0.3-0`。
 GitHub Actions 已配置这两个测试作业；实机识图与操作仍需单独验证。
 
+资源检查固定使用 MaaFramework 5.14.3，检查工具失败时最多重试三次，最终失败仍会阻止检查通过；JSON Schema 校验会独立继续执行，便于区分资源错误与工具依赖下载问题。检查日志若只到 `preparing maafw / download-binary / finish`，表示框架准备失败，尚未开始资源检查，不能据此认定缺图。
+
 发布校验要求主界面的所有导入文件已加入 Git 索引。仅本机使用的开发入口可保存在被忽略的
 `assets/interface.local.json`，由开发启动方式显式加载；正式发布使用 `assets/interface.json`。
 本地副本不会自动跟随主配置更新，不要直接把它复制到打包版覆盖正式入口。
