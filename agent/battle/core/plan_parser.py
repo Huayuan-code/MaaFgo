@@ -222,4 +222,3 @@ def _parse_battle_policy(param: dict) -> BattlePolicy:
     )
 
     return BattlePolicy(card=card, skill=skill)
-
