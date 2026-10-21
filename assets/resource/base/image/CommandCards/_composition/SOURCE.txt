@@ -1,0 +1,31 @@
+Command-card composition layers (experimental, not enabled in battle recognition)
+
+shared/: FGO Japanese client's Battle/Common CommandAtlas sprites. RGB comes
+from CommandAtlas, alpha from CommandAtlas_alpha's red channel, using matching
+UV coordinates. Original sprite dimensions retained; no game bundle, decryptor,
+font or Unity runtime is distributed here. card_bg_np* is 140x177 source pixels
+but the tested composer displays it at 133x170 local UI units.
+
+Chinese variants are in resource/cn/image/CommandCards/_composition, using
+the SAME shared/ and np/<id>/ filenames as base. Regional roots take priority.
+Common portraits/backgrounds/icons may fall back to base; localized Chinese
+labels and non-JP NP names must never fall back to Japanese text.
+
+np/<servant_id>/card_servant_np.png: Japanese default NP-name sheets from
+Atlas Academy's static FGO asset mirror. These are NAME images (including ruby),
+not portraits. See extensionless manifest for exact source URLs, original and
+packaged hashes, and available top/bottom name rows. Each pack has its own
+extensionless schema-v2 manifest with region/shared/np_names/missing fields.
+Missing regional assets
+are recorded; never substitute Japanese names for Chinese names or vice versa.
+
+All packaged PNGs here use Pillow FASTOCTREE 256 colours, no dithering,
+optimize=True, compress_level=9. Dimensions retained. The manifest records
+whether quantization changes any alpha>=128 mask pixels.
+
+Game artwork and text belong to the respective Fate/Grand Order rights holders.
+Atlas Academy is the source mirror, not the artwork copyright owner.
+
+Maintenance: tools/prepare_command_card_composition_assets.py
+Runtime: agent/battle/card_composer.py (OpenCV + NumPy only, no network)
+Details: docs/指令卡归属识别.md

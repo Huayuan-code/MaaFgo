@@ -1,0 +1,12 @@
+{
+    "截图": {
+        "action": {
+            "type": "Screencap"
+        },
+        "pre_delay": 0,
+        "post_delay": 0,
+        "focus": {
+            "Node.Action.Succeeded": "截图已保存至 debug/screencap/"
+        }
+    }
+}
