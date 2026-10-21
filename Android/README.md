@@ -104,11 +104,12 @@ Android 对 `Android/data` 的访问限制因系统而异；这些是手机数�
 
 ## 开发构建
 
-本工程参考 [MaaEnd Android 接入](https://github.com/MaaEnd/MaaEnd/tree/v2/Android)，使用固定公开提交的 [MaaFwApp](https://github.com/Aliothmoon/MaaFwApp) 子模块。安卓已合入主干，Windows / MXU 继续使用原来的打包流程。
+本工程参考 [MaaEnd Android 接入](https://github.com/MaaEnd/MaaEnd/tree/v2/Android)，使用 [dingi8528/MaaFwApp](https://github.com/dingi8528/MaaFwApp/tree/codex/maafgo) 的 `codex/maafgo` 分支维护安卓外壳，原始上游为 [Aliothmoon/MaaFwApp](https://github.com/Aliothmoon/MaaFwApp)。主工程通过子模块固定具体提交，普通构建不会自动跟随分支更新。安卓已合入主干，Windows / MXU 继续使用原来的打包流程。
 
 需要完整 JDK 17+（含 `javac`、`jlink`，本机实测 JDK 21）、Python 3.12+、Android SDK。设置 `JAVA_HOME`、`ANDROID_HOME`（或 `ANDROID_SDK_ROOT`）；NDK 默认从 SDK 下寻找，也可设置 `ANDROID_NDK_ROOT`。以下命令在项目根目录执行：
 
 ```powershell
+git submodule sync -- Android/MaaFwApp
 git submodule update --init Android/MaaFwApp assets/MaaCommonAssets
 sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0" "cmake;3.22.1" "ndk;29.0.14206865"
 python tools/build_android.py --check-env
@@ -120,7 +121,9 @@ python tools/build_android.py --abi x86_64
 
 SDK Manager 使用 command-line tools 19.0（13114758），与 CI 一致；MaaFramework、Python 内核及 NDK 版本见 [versions.json](versions.json)。MaaFramework 与 Python 内核中的 maafw 版本必须匹配。
 
-构建自动应用 [0001–0007 外壳补丁](patches/README.md)，重复运行跳过已应用项，冲突明确报错。直接运行子模块 Gradle 前须先执行 `python tools/apply_android_patches.py`。补丁应用后子模块显示有修改是预期状态；主工程记录公开上游提交和补丁，不依赖本机私有提交。
+原有 0001–0008 外壳补丁已逐项迁为 fork 中的正式提交，构建及直接运行 Gradle 均无需应用补丁。迁移对应关系和既有修复说明见 [外壳迁移记录](patches/README.md)。全新检出、构建和测试后，外壳源码应保持干净；CI 会检查这一点。
+
+后续修改外壳时，在 `Android/MaaFwApp` 中提交并推送到自己的 fork，再在主工程提交更新后的子模块指针；只提交主工程不能上传子模块内部的代码。同步上游时，将原作者仓库配置为子模块的 `upstream`，在 fork 的维护分支合并并完成回归后，再更新主工程指针。不要用重置或清理命令处理尚未保存的本地修改。
 
 产物为 `Android/out/MaaFGO-android-<abi>-debug.apk`，已用 Android 调试证书签名。只改任务、图片或 Python 代码且已有同架构运行时时，可用 `--skip-runtime`：
 
@@ -156,17 +159,17 @@ python tools/build_android.py --abi x86_64 --skip-runtime
 | 共享 Pipeline | 检查 DirectHit 的显式区域、转场确认、零尺寸点击和失败传播；共享修复会同时影响桌面，应保留组件回归 |
 | 构建与更新 | 分别构建 ARM64/x86_64，递增 APK versionCode；安卓签名与更新源独立配置。源 interface 版本保留，桌面打包同步仍遵守原版本保护约定 |
 
-新增 MXU 专属字段时，同时补充 `tools/prepare_android.py` 的转换、打包回归与真实 Kotlin PI/执行计划检查；新增外壳定制更新补丁。逐项兼容行为和主干合并时的桌面核验见 [COMPATIBILITY.md](COMPATIBILITY.md)。
+新增 MXU 专属字段时，同时补充 `tools/prepare_android.py` 的转换、打包回归与真实 Kotlin PI/执行计划检查；新增外壳定制提交到 MaaFwApp fork，并更新子模块指针。逐项兼容行为和主干合并时的桌面核验见 [COMPATIBILITY.md](COMPATIBILITY.md)。
 
 ### 目录与依赖
 
 | 位置 | 内容 |
 | --- | --- |
-| `MaaFwApp/` | 固定提交的安卓外壳，包含 Shizuku / Root、虚拟屏、任务配置 UI |
+| `MaaFwApp/` | 自有 fork 中固定提交的安卓外壳，包含 Shizuku / Root、虚拟屏、任务配置 UI |
 | `profile.yaml` | 资源、Python 启动参数、图标、应用名和分辨率 |
 | `assets/` | 从根目录 `assets/` 生成的安卓副本，忽略提交 |
 | `agent-dist/<abi>/bundle/` | CPython、NumPy、maafw、交叉编译的 cv2 |
-| `patches/` | 可重放的 MaaFwApp 定制补丁 |
+| `patches/README.md` | 原 8 个补丁到 fork 提交的迁移记录及修复说明 |
 | `.cache/`、`sdk/` | 本地下载、编译缓存和可选 SDK，忽略提交 |
 | `out/` | APK、构建审计与资源 SHA-256 清单，忽略提交 |
 

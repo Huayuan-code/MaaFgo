@@ -79,7 +79,6 @@ def main():
         return 0
     if args.release and not all(os.environ.get(name) for name in ("KEYSTORE_PATH", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD")):
         parser.error("release 需要 KEYSTORE_PATH、KEYSTORE_PASSWORD、KEY_ALIAS、KEY_PASSWORD；日常测试使用默认 debug")
-    run([sys.executable, ROOT / "tools/apply_android_patches.py"])
     if not args.skip_runtime:
         run([sys.executable, SHELL / "scripts/build_agent_bundle.py", "--out", ROOT / "Android/agent-dist",
              "--abi", args.abi, "--core-tag", VERSIONS["python_core"]])

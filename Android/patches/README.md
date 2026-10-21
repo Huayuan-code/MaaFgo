@@ -1,14 +1,21 @@
-# MaaFGO 的 MaaFwApp 补丁
+# MaaFGO 的 MaaFwApp 外壳迁移记录
 
-子模块继续指向公开可获取的固定上游提交；项目差异以本目录按文件名排序的补丁保存，不依赖仅存在于开发电脑上的子模块提交。
+2026-10-22，原有 8 个补丁从上游基线 `bc55dac4c8231ab73e7ee42bd38c43e322838b14` 逐项重放并提交到 [dingi8528/MaaFwApp](https://github.com/dingi8528/MaaFwApp/tree/codex/maafgo) 的 `codex/maafgo` 分支。迁移末端提交为 `f37da16f529c97231e8c9e155a363cb990c28cdb`。重放结果与迁移前本地外壳的 Git 文件树完全一致，包含原先未跟踪的新增源码和测试。
 
-常规 `python tools/build_android.py` 构建会自动运行 `tools/apply_android_patches.py`。手动运行外壳 Gradle 前，先在主工程根目录执行：
+主工程现直接固定 fork 中的提交。构建不再应用补丁，原 `.patch` 文件、应用器及其专用测试已移除，历史版本仍可通过 Git 查阅。今后外壳修改在 fork 中正常提交、测试并推送，再更新主工程子模块指针；构建和测试不应留下外壳源码改动。具体维护方式见 [开发构建](../README.md#开发构建)。
 
-```powershell
-python tools/apply_android_patches.py
-```
+| 原补丁 | fork 提交 |
+| --- | --- |
+| 0001-preserve-user-config-on-reinstall.patch | [799e4bb：重解保留用户数据](https://github.com/dingi8528/MaaFwApp/commit/799e4bbf0e9592ba34ffe52cefef2c980932b5f6) |
+| 0002-bind-screen-saver-to-default-display.patch | [22356da：主屏屏保](https://github.com/dingi8528/MaaFwApp/commit/22356daf62b9419d0af68a39118892d436341383) |
+| 0003-skip-unconfigured-startup-update.patch | [57a7e24：跳过未配置的启动更新](https://github.com/dingi8528/MaaFwApp/commit/57a7e24b62146214a99780218d9c415141c1d8ae) |
+| 0004-refresh-controller-for-capture-size.patch | [02e26eb：采集尺寸与控制器](https://github.com/dingi8528/MaaFwApp/commit/02e26eb7d5c96586a437b75afb4600889d758ea6) |
+| 0005-fix-legacy-background-task-placement.patch | [dc3f926：后台任务迁移](https://github.com/dingi8528/MaaFwApp/commit/dc3f926786519c559bab15917a5c8c66301aec0e) |
+| 0006-drain-capture-images-before-reader-close.patch | [714dc65：采集图像释放](https://github.com/dingi8528/MaaFwApp/commit/714dc65a44b1ca9b5f5c3f97e119acc2b89044ba) |
+| 0007-guard-foreground-orientation-and-input.patch | [50436e8：前台方向与输入保护](https://github.com/dingi8528/MaaFwApp/commit/50436e81aceed31f3784b657b0c749d8bb7fe4b0) |
+| 0008-pad-android-taps-by-fps.patch | [f37da16：低帧率点击补时](https://github.com/dingi8528/MaaFwApp/commit/f37da16f529c97231e8c9e155a363cb990c28cdb) |
 
-应用器先用独立临时 Git 索引逆序验证已应用的补丁前缀，支持后续补丁修改先前新增的文件，不更改真实索引、文件或时间戳。剩余补丁执行 `git apply --check`，单个已应用补丁也通过反向检查跳过，因此重复构建不会叠加修改。遇到上游升级或本地修改冲突时明确失败并保留现有文件；应检查差异并重新生成补丁，勿自动重置子模块。补丁修改后的子模块工作区显示为脏状态是预期行为，主工程只提交补丁文件和应用器。
+以下保留各项修复的行为和历史验收边界，文中的补丁名称用于对应上表，已不代表当前构建步骤。
 
 `0001-preserve-user-config-on-reinstall.patch` 修复手动“重新解压资源”清空本地数据的问题。它保留完整的 `pi/config/`，包括 `Inventory`、`Battle`、`BondCompletion`，其余 PI 资源和临时记录仍重新生成。`config` 不被遍历或搬运；清理其他条目时不跟随符号链接。旧版本的 `pi.roots` 即使误列了 `config`，升级和失败重试也会保留它。APK 内禁止带 `config` 根条目，避免今后误改配方覆盖用户库存；当前 `profile.yaml` 本就不打包该目录。
 
@@ -36,10 +43,10 @@ python tools/apply_android_patches.py
 
 `0008-pad-android-taps-by-fps.patch` 在安卓自动触摸的共用抬起入口调整最短按住时长：有效帧率不超过 30 FPS 时，目标为 `min(300, ceil(3000 / FPS))` 毫秒，即 30 FPS 为 100 毫秒、20 FPS 为 150 毫秒、10 FPS 及以下为 300 毫秒；更高或未知帧率不补时。只补足已经按住时间的差额，不缩短原有长按、滑动或战斗按钮的 500 毫秒配置。前台启动采集时也开启帧率监测，可接手没有经过 StartApp 的游戏；成功启动前台游戏后按游戏包重新选择帧率来源。前台、后台以及 Root/Shizuku 使用相同触摸策略。旧系统使用采集合成帧率作为近似值，不能将其等同于游戏输入采样率；不同游戏仍需分别验证参数。
 
-验证补丁应用器与外壳 Kotlin 回归：
+验证主工程安卓转换与外壳 Kotlin 回归：
 
 ```powershell
-python -m unittest discover -s tests -p test_android_patches.py -v
+python -m unittest discover -s tests -p "test_android*.py" -v
 Android/MaaFwApp/gradlew.bat -p Android/MaaFwApp :app:testDebugUnitTest --tests "com.aliothmoon.maafw.project.PiInstaller*" --tests "com.aliothmoon.maafw.remote.MaaRunnerControllerTargetTest"
 ```
 
