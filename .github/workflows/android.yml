@@ -52,6 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
+          # MaaFGO 外壳修复已提交到 fork；按主工程记录的提交检出，不再应用补丁。
           submodules: true
           fetch-depth: 0
           persist-credentials: false
@@ -143,6 +144,11 @@ jobs:
           --tests 'com.aliothmoon.maafw.bridge.DriverPrimaryInputGuardTest'
           --tests 'com.aliothmoon.maafw.bridge.InputControlGestureDisplayTest'
           --tests 'com.aliothmoon.maafw.runner.MaaFrameworkRunnerPortTest'
+      - name: Verify Android shell source stays clean
+        working-directory: Android/MaaFwApp
+        run: |
+          git diff --exit-code HEAD
+          test -z "$(git ls-files --others --exclude-standard)"
       - uses: actions/upload-artifact@v7
         with:
           name: MaaFGO-android-${{ matrix.abi }}-${{ env.APK_BUILD_TYPE }}
