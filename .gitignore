@@ -4,6 +4,26 @@
 # 更新日志
 UPDATE_*.md
 
+# 本地测试截图与识别样本
+/assets/resource/cn/image/test.png
+/assets/resource/cn/image/test2.png
+/assets/resource/cn/image/test3.png
+/assets/resource/cn/image/test4.png
+/assets/resource/cn/image/test5.png
+/assets/resource/cn/image/术.png
+
+# B站编辑草稿、截图与本地记录
+/bilibili_android_guide_saved.png
+/bilibili_draft_before_qr.html
+/bilibili_quark_qrcode.webp
+/bilibili_update_20261017.html
+/bilibili_update_20261017_saved.png
+/bilibili_update_20261017_top.png
+/bilibili_update_publish_settings.png
+/bilibili_update_qr_and_eric.png
+/docs/B站更新公告编辑规范.md
+/docs/安卓使用指南_B站_20261018.html
+
 # docs
 docs/node_modules
 docs/.vuepress/.temp

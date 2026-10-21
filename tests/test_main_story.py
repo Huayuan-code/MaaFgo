@@ -212,6 +212,63 @@ class RoutingTests(unittest.TestCase):
                         support_name: {"next": [], "on_error": []}
                     })
 
+    def test_auto_formation_popup_has_priority_over_visible_formation(self):
+        popup = "进本-自动编队确认"
+        formation = "进本-队伍确认"
+        for support in ("进本-选择助战", "助战action", "Chaldea助战action"):
+            with self.subTest(support=support):
+                r, c = runner([{support}, {popup, formation},
+                               {formation}, {formation}, {formation}])
+                c.nodes["进本流程"]["next"] = [support, formation]
+                r.reach_formation()
+                self.assertEqual([n for n, _ in c.actions].count(popup), 1)
+                self.assertEqual([n for n, _ in c.tasks].count("自动编队-编队决定"), 1)
+                self.assertNotIn("进本流程", [n for n, _ in c.tasks])
+
+    def test_auto_formation_not_handled_during_settlement(self):
+        r, c = runner()
+        self.assertFalse(r.interrupt({"进本-自动编队确认"}))
+        self.assertEqual(c.actions, [])
+        self.assertTrue(r.interrupt({"进本-自动编队确认"}, entering=True))
+        self.assertEqual([n for n, _ in c.actions], ["进本-自动编队确认"])
+        self.assertEqual([n for n, _ in c.tasks], ["自动编队-编队决定"])
+
+    def test_auto_formation_decide_failure_stops_handoff(self):
+        r, c = runner([{"进本-自动编队确认"}, {"进本-队伍确认"}])
+        with patch.object(c, 'run_task', return_value=NS(status=NS(succeeded=False))):
+            with self.assertRaisesRegex(StoryStopped, "自动编队-编队决定"):
+                r.reach_formation()
+
+    def test_formation_notice_and_auto_popup_can_appear_in_either_order(self):
+        notice, auto, formation = "进本-编成条件提示", "进本-自动编队确认", "进本-队伍确认"
+        for order in ((notice, auto), (auto, notice), (notice,)):
+            with self.subTest(order=order):
+                r, c = runner([{n, formation} for n in order] + [{formation}] * 4)
+                r.reach_formation()
+                self.assertEqual([n for n, _ in c.actions], list(order))
+                expected_tasks = ["自动编队-编队决定"] if auto in order else []
+                self.assertEqual([n for n, _ in c.tasks], expected_tasks)
+
+    def test_formation_notice_is_not_closed_during_settlement(self):
+        r, c = runner()
+        self.assertFalse(r.interrupt({"进本-编成条件提示"}))
+        self.assertEqual(c.actions, [])
+
+    def test_strategy_hint_is_closed_before_visible_formation(self):
+        popup,formation="进本-攻略提示关闭","进本-队伍确认"
+        r,c=runner([{popup,formation}]+[{formation}]*4)
+        r.reach_formation()
+        self.assertEqual([n for n,_ in c.actions],[popup])
+        self.assertEqual(c.tasks,[])
+
+    def test_strategy_hint_only_participates_in_entry_interrupts(self):
+        r,c=runner()
+        popup={"进本-攻略提示关闭"}
+        self.assertFalse(r.interrupt(popup))
+        self.assertTrue(r.interrupt(popup,entering=True))
+        self.assertTrue(r.interrupt(popup,forming=True))
+        self.assertEqual([n for n,_ in c.actions],["进本-攻略提示关闭"]*2)
+
     def test_ambiguous_support_configuration_stops_before_click(self):
         r, c = runner([{"进本-选择助战", "助战action"}])
         c.nodes["进本流程"]["next"] = ["进本-选择助战", "助战action"]

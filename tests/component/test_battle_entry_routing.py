@@ -147,10 +147,64 @@ class EntryRoutingTests(unittest.TestCase):
                 self.assertIn(support, seen)
                 self.assertEqual(seen[-1], MAIN)
 
+    def test_auto_formation_popup_returns_before_formation_for_all_supports(self):
+        popup = "进本-自动编队确认"
+        formation = "进本-队伍确认"
+        for support in ("进本-选择助战", "助战action", "Chaldea助战action"):
+            with self.subTest(support=support):
+                seen = self.run_graph(self.entry_graph(support), "进本流程",
+                                      [{support}, {popup, formation}, {"自动编队-编队决定"}, {formation}])
+                self.assertEqual(seen.count(popup), 1)
+                self.assertEqual(seen.count("自动编队-编队决定"), 1)
+                self.assertLess(seen.index(popup), seen.index("自动编队-编队决定"))
+                self.assertLess(seen.index("自动编队-编队决定"), seen.index(formation))
+                self.assertLess(seen.index(popup), seen.index(formation))
+                self.assertEqual(seen[-1], formation)
+                self.assertNotIn(BLIND, seen)
+
+    def test_no_auto_formation_popup_does_not_click(self):
+        for support in ("进本-选择助战", "助战action", "Chaldea助战action"):
+            with self.subTest(support=support):
+                seen = self.run_graph(self.entry_graph(support), "进本流程",
+                                      [{support}, {"进本-队伍确认"}])
+                self.assertNotIn("进本-自动编队确认", seen)
+                self.assertNotIn("自动编队-编队决定", seen)
+                self.assertNotIn(BLIND, seen)
+
+    def test_auto_formation_missing_decide_never_starts_battle(self):
+        seen = self.run_graph(self.entry_graph(), "进本-自动编队确认",
+                              [{"进本-自动编队确认"}, set()], succeeds=False)
+        self.assertNotIn("进本-队伍确认", seen)
+        self.assertNotIn(MAIN, seen)
+        self.assertNotIn(BLIND, seen)
+
+    def test_formation_notice_and_auto_formation_have_no_required_order(self):
+        notice, auto, decide, formation = ("进本-编成条件提示", "进本-自动编队确认",
+                                           "自动编队-编队决定", "进本-队伍确认")
+        for support in ("进本-选择助战", "助战action", "Chaldea助战action"):
+            for order in ((notice, auto, decide), (auto, decide, notice), (notice,)):
+                with self.subTest(support=support, order=order):
+                    screens = [{support}] + [{n} for n in order] + [{formation}]
+                    seen = self.run_graph(self.entry_graph(support), "进本流程", screens)
+                    self.assertEqual([n for n in seen if n in order], list(order))
+                    self.assertEqual(seen[-1], formation)
+                    self.assertNotIn(BLIND, seen)
+
     def test_unknown_screen_fails_after_budget_and_retries(self):
         seen = self.run_graph(self.entry_graph(), "进本流程", succeeds=False)
         self.assertEqual(seen.count(BLIND), 3)
         self.assertEqual(seen.count("进本流程-超时重试"), 2)
+
+    def test_strategy_hint_is_parallel_to_other_entry_popups(self):
+        hint,notice,formation="进本-攻略提示关闭","进本-编成条件提示","进本-队伍确认"
+        for support in ("进本-选择助战","助战action","Chaldea助战action"):
+            for order in ((hint,notice),(notice,hint),(hint,)):
+                with self.subTest(support=support,order=order):
+                    screens=[{support}]+[{n} for n in order]+[{formation}]
+                    seen=self.run_graph(self.entry_graph(support),"进本流程",screens)
+                    self.assertEqual([n for n in seen if n in order],list(order))
+                    self.assertEqual(seen[-1],formation)
+                    self.assertNotIn(BLIND,seen)
 
     def test_positive_screen_is_allowed_after_budget_exhaustion(self):
         seen = self.run_graph(self.entry_graph(), "进本流程", [set()] * 3 + [{MAIN}])
