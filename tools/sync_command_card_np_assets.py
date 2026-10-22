@@ -30,6 +30,8 @@ if str(TOOLS) not in sys.path:
     sys.path.insert(0, str(TOOLS))
 from sync_command_card_assets_from_csv import API, DEFAULT_CSV, ROOT, digest, existing_ok, read_csv, read_manifest
 from prepare_command_card_composition_assets import deploy_packs, palette_png
+from command_card_palette import PROFILE, transform_metadata
+from command_card_metadata import walk, transformed_ids
 
 NAME = re.compile(r'[A-Za-z0-9_-]+\.png\Z')
 ASSET = re.compile(r'/(JP|CN)/Servants/Commands/([1-9][0-9]*)/([A-Za-z0-9_-]+\.png)\Z')
@@ -106,16 +108,6 @@ def downloader(proxy=None, transport='urllib', static_ip=None):
     return fetch
 
 
-def walk(value):
-    yield value
-    if isinstance(value, dict):
-        for child in value.values():
-            yield from walk(child)
-    elif isinstance(value, list):
-        for child in value:
-            yield from walk(child)
-
-
 def name_assets(record, region):
     """Only names declared as NP icons or overwrite TD filename resources."""
     values = [np.get('icon') for np in record.get('noblePhantasms', [])]
@@ -140,21 +132,6 @@ def name_assets(record, region):
             raise ValueError(f'Conflicting NP sources: {relative}')
         assets[relative] = url
     return assets
-
-
-def transformed_ids(record):
-    result = set()
-    for node in walk(record):
-        if not isinstance(node, dict) or node.get('funcType') != 'transformServant':
-            continue
-        for key, value in node.items():
-            if re.fullmatch(r'svals[0-9]*', key):
-                for row in value:
-                    sid = row.get('Value')
-                    if type(sid) is not int or sid <= 0:
-                        raise ValueError('Invalid transformServant target')
-                    result.add(str(sid))
-    return result
 
 
 def sync(project, csv_path, *, write=False, proxy=None, metadata_cache=None, raw_cache=None, transport='urllib', static_ip=None, selected_ids=(), fetcher=None):
@@ -270,7 +247,7 @@ def sync(project, csv_path, *, write=False, proxy=None, metadata_cache=None, raw
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_bytes(data)
             return job, {'file': job['file'], 'source': job['source'], 'source_sha256': digest(raw), 'sha256': digest(data),
-                         'size': [256, 256], 'mode': 'P', 'name_rows': name_rows, 'alpha_mask_changed_pixels': changed}
+                         'size': [256, 256], 'mode': 'P', 'name_rows': name_rows, 'alpha_mask_changed_pixels': changed, 'fully_transparent_changed_pixels': 0, 'quantization_profile': PROFILE}
 
         prepared, errors = [], []
         with ThreadPoolExecutor(max_workers=2) as pool:
@@ -299,6 +276,7 @@ def sync(project, csv_path, *, write=False, proxy=None, metadata_cache=None, raw
                 manifest.setdefault('np_extra_names', {}).setdefault(sid, {})[Path(job['file']).name] = entry
             manifest.get('np_missing', {}).pop(job['file'], None)
             report['downloaded'].append(job)
+            manifest['transform'] = transform_metadata()
         packs = []
         for region, manifest in manifests.items():
             current = read_manifest(roots[region] / 'manifest', {'schema_version': 2, 'region': region, 'shared': {}, 'np_names': {}, 'missing': {}}, region=region)
