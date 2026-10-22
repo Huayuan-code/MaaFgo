@@ -27,5 +27,10 @@ Game artwork and text belong to the respective Fate/Grand Order rights holders.
 Atlas Academy is the source mirror, not the artwork copyright owner.
 
 Maintenance: tools/prepare_command_card_composition_assets.py
+Additional NP sheets: tools/sync_command_card_np_assets.py discovers NP icons,
+ascension/costume name overrides and explicit transformServant targets from
+Atlas NiceServant metadata. Original owner folders and PNG basenames remain
+unchanged. Extra filenames are recorded in np_extra_names; per-file HTTP 404s
+are recorded in np_missing. Existing default sheets are not overwritten.
 Runtime: agent/battle/card_composer.py (OpenCV + NumPy only, no network)
 Details: docs/指令卡归属识别.md
