@@ -322,6 +322,8 @@ class StoryRunner:
                     # run_action 单独执行 Custom 节点时 reco_id=0，Agent 无法读取识别详情。
                     # 单节点任务重新识别并执行动作；清空 next，避免进入通用进本流程。
                     self.task(support_name, {support_name: {"next": [], "on_error": []}})
+                    # 自定义筛选可能刷新多次；返回后仍需给编队页面完整的等待时间。
+                    deadline = self.clock() + self.timeout
                 else:
                     self.action(support_name, support)
                 support_clicks += 1
@@ -335,12 +337,12 @@ class StoryRunner:
         if self.mode == "bbc":
             self.task("bbc战斗", {"执行BBC任务": {"attach": {"run_count": 1, "battle_type": 0}}})
             return
-        self.reach_formation()
         root = self.ctx.get_task_job().job_id
         token = sessions.begin(root)
         try:
             if not self.ctx.override_pipeline(session_override(token)):
                 raise StoryStopped("无法初始化本场编队会话")
+            self.reach_formation()
             for name in _BATTLE_RESET:
                 self.ctx.clear_hit_count(name)
             self.task("进本流程")

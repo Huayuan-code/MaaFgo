@@ -52,6 +52,7 @@ import mfaalog
 from chaldea import fetch_share_data
 from chaldea.servant_aliases import build_servant_lookup
 from chaldea.support_criteria import build_support_criteria
+from battle.runtime.formation_session import context_session, sessions
 
 # ---------------- 路径常量 ----------------
 _AGENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -144,8 +145,9 @@ SWIPE_START = (559, 669)        # 滑动起点(全屏): 点击后单指移动到
 SWIPE_END = (559, 349)           # 滑动终点(全屏): 垂直向上滑动 320px（较原 400px 缩小 20%）
 SWIPE_DURATION = 500            # 滑动持续时间(ms)
 SWIPE_SETTLE = 1              # 滑动结束后等待列表稳定再识别(秒), 避免惯性滚动导致识别不准
-MAX_SWIPE_BEFORE_REFRESH = 12    # 连续滑动6次未匹配 -> 执行"助战刷新"流水线
+MAX_SWIPE_BEFORE_REFRESH = 12    # 连续滑动12次未匹配 -> 执行"助战刷新"流水线
 REFRESH_TASK = "助战刷新"        # 刷新流水线(由外部提供, 直接 run_task 调用)
+FALLBACK_REFRESH_LIMIT = 10
 CONNECT_ROI = (1158, 623, 101, 86)  # 连接中检测区域: x1158-1259 y623-709
 TH_WHITE = 245                  # 纯白判定阈值(灰度 >= 该值视为白)
 # 实测: 正常助战列表该区域白占比 0-0.3%, 连接中约 33%; 阈值取 10% 区分度充足
@@ -699,6 +701,21 @@ class SupportAction(CustomAction):
         return white >= WHITE_RATIO
 
     # ---------- 主流程 ----------
+    def _select_fallback(self, context, controller, root, token):
+        """撤销职介筛选并复用首个助战入口，不在本子任务中执行编队。"""
+        if context.tasker.stopping:
+            return CustomAction.RunResult(success=False)
+        mfaalog.info("[SupportAction] 刷新10次仍未找到目标，改用首个助战并跳过 Chaldea 配置")
+        detail = context.run_task(
+            "助战兜底-选择首个助战",
+            pipeline_override={"进本-选择助战": {"next": [], "on_error": []}},
+        )
+        if context.tasker.stopping or detail is None or not detail.status.succeeded:
+            mfaalog.error("[SupportAction] 首个助战选择失败，停止任务")
+            return CustomAction.RunResult(success=False)
+        sessions.set_support_fallback(root, token, True)
+        return CustomAction.RunResult(success=True)
+
     def run(self, context: Context, argv: CustomAction.RunArg) -> CustomAction.RunResult:
         try:
             param = {}
@@ -710,6 +727,13 @@ class SupportAction(CustomAction):
             source_mode = param.get("source_mode")
             node = context.get_node_data(argv.node_name)
             attach = node.get("attach") or {}
+            fallback_enabled = attach.get("fallback_after_refresh") is True
+            root, token = None, ""
+            if fallback_enabled:
+                root, token = context_session(context)
+                if not sessions.valid(root, token):
+                    mfaalog.error("[SupportAction] 助战兜底需要有效的原生战斗会话")
+                    return CustomAction.RunResult(success=False)
             if source_mode == "chaldea":
                 if attach.get("chaldea_enabled") is not True:
                     mfaalog.error("[SupportAction] 使用 Chaldea 配置需要先开启‘是否使用 Chaldea 队伍’")
@@ -820,6 +844,8 @@ class SupportAction(CustomAction):
 
             # 识别一次: 截图->YOLO检测->逐个框判定; 命中点击条目并返回 True(未命中 False)
             def try_match():
+                if context.tasker.stopping:
+                    return False
                 img = self._shot_base(controller)
                 if img is None:
                     mfaalog.error("[SupportAction] 截图失败")
@@ -852,6 +878,8 @@ class SupportAction(CustomAction):
                     if not passive_need:
                         cx, cy = (bx + bx2) // 2, (by + by2) // 2
                         self._tap(controller, cx, cy)
+                        if fallback_enabled:
+                            sessions.set_support_fallback(root, token, False)
                         mfaalog.info(f"[SupportAction] 点击条目 ({cx},{cy})")
                         return True
 
@@ -873,6 +901,8 @@ class SupportAction(CustomAction):
                         continue
                     cx, cy = (bx + bx2) // 2, (by + by2) // 2
                     self._tap(controller, cx, cy)
+                    if fallback_enabled:
+                        sessions.set_support_fallback(root, token, False)
                     mfaalog.info(f"[SupportAction] 点击条目 ({cx},{cy})")
                     return True
 
@@ -882,9 +912,10 @@ class SupportAction(CustomAction):
             if try_match():
                 return CustomAction.RunResult(success=True)
 
-            # 整体未匹配: 滑动->重新识别循环; 连续滑动6次未匹配 -> 执行"助战刷新"
+            # 每轮先查顶部再滑动查完整列表；刷新10次后的列表也完整查找后才兜底。
             mfaalog.info("[SupportAction] 首次识别无匹配, 进入滑动/刷新循环")
             swipe_count = 0
+            refresh_count = 0
             while True:
                 # 监听停止信号: MXU 点停止后立即中断查找流程
                 if context.tasker.stopping:
@@ -898,8 +929,14 @@ class SupportAction(CustomAction):
                     return CustomAction.RunResult(success=True)
                 if swipe_count >= MAX_SWIPE_BEFORE_REFRESH:
                     swipe_count = 0
+                    if fallback_enabled and refresh_count >= FALLBACK_REFRESH_LIMIT:
+                        return self._select_fallback(context, controller, root, token)
                     mfaalog.info(f"[SupportAction] 连续{MAX_SWIPE_BEFORE_REFRESH}次滑动未匹配, 执行{REFRESH_TASK}")
-                    context.run_task(REFRESH_TASK)
+                    detail = context.run_task(REFRESH_TASK)
+                    if context.tasker.stopping or detail is None or not detail.status.succeeded:
+                        mfaalog.error("[SupportAction] 助战刷新失败，停止查找")
+                        return CustomAction.RunResult(success=False)
+                    refresh_count += 1
                     # 刷新后持续检测连接状态: 连接区白像素占比>=10%(WHITE_RATIO) 时不能继续检测, 等待其消失
                     mfaalog.info("[SupportAction] 等待刷新连接完成...")
                     while self._is_connecting(controller):
@@ -908,8 +945,8 @@ class SupportAction(CustomAction):
                             return CustomAction.RunResult(success=False)
                         time.sleep(0.5)
                     mfaalog.info("[SupportAction] 刷新完成, 继续检测")
-                    # 说明: 本循环仅在命中助战条目时 return True 退出;
-                    # 持续未命中时靠任务停止/中断机制结束, 不会走到循环外
+                    if try_match():
+                        return CustomAction.RunResult(success=True)
         except Exception as e:
             import traceback
             mfaalog.error(f"[SupportAction] 异常: {e}\n{traceback.format_exc()}")

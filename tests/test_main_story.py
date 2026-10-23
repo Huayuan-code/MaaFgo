@@ -356,6 +356,27 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(c.cleared.count("自动编队-礼装筛找满破"), 2)
         self.assertEqual(c.cleared.count("羁绊补齐-礼装筛找满破"), 2)
 
+    def test_slow_custom_support_keeps_session_and_allows_formation_handoff(self):
+        formation = {"进本-队伍确认"}
+        r, c = runner([{"助战action"}, formation, formation, formation,
+                       {"进本-战斗主界面已出现"}], {"transition_timeout": 10})
+        c.nodes["进本流程"]["next"] = ["助战action", "进本-队伍确认"]
+        original = r.task
+        tokens = []
+        def task(name, override=None):
+            token = c.override["编队身份-会话"]["attach"]["session_id"]
+            if name == "助战action":
+                tokens.append(token)
+                sessions.set_support_fallback(c.get_task_job().job_id, token, True)
+                r.sleep(60)
+            elif name == "原生自动战斗入口":
+                self.assertEqual(token, tokens[0])
+                self.assertTrue(sessions.support_fallback(c.get_task_job().job_id, token))
+            return original(name, override)
+        with patch.object(r, "task", side_effect=task):
+            r.fight()
+        self.assertFalse(sessions.valid(c.get_task_job().job_id, tokens[0]))
+
     def test_failed_shared_pipeline_does_not_continue(self):
         r, c = runner(config={"battle_mode": "bbc"})
         c.run_task = lambda *args, **kwargs: NS(status=NS(succeeded=False))
