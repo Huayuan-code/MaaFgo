@@ -134,18 +134,21 @@ _CARD_TEXT_MAP = {
     "力击": CardColor.BUSTER,
     "技击": CardColor.ARTS,
     "迅击": CardColor.QUICK,
+    "buster": CardColor.BUSTER,
+    "arts": CardColor.ARTS,
+    "quick": CardColor.QUICK,
 }
 
 
 def _detect_card(context, img, ui_slot: int) -> CommandCard:
-    # OCR 识别卡牌文字（力击/迅击/技击）
+    # 国服卡牌文字为中文，日服为英文；只接受完整卡色词，不猜测 OCR 噪声。
     node = config.CARD_NODE.format(ui_slot=ui_slot)
     r = _reco(context, node, img)
     if not r or not r.hit or not r.best_result:
         return CommandCard(ui_slot, CardColor.BUSTER, None, Confidence(0.0, "ocr"))
     text = getattr(r.best_result, "text", "") or ""
     score = getattr(r.best_result, "score", 1.0) or 1.0
-    color = _CARD_TEXT_MAP.get(text.strip())
+    color = _CARD_TEXT_MAP.get(text.strip().casefold())
     if color is None:
         return CommandCard(ui_slot, CardColor.BUSTER, None, Confidence(0.0, "ocr"))
     return CommandCard(ui_slot, color, owner_slot=None, confidence=Confidence(float(score), "ocr"))
