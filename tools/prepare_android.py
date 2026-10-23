@@ -51,7 +51,12 @@ ANDROID_TRANSITION_TIMEOUTS = {
         "跳过剧情-点击跳过": 15000,
         "跳过剧情-直接点击跳过": 15000,
     },
-    "jp/pipeline/run_FGO.json": {"如果要SKIP": 15000, "点击是": 15000},
+    "jp/pipeline/run_FGO.json": {
+        "自动登录": 60000,
+        "自动登录2": 60000,
+        "如果要SKIP": 15000,
+        "点击是": 15000,
+    },
 }
 
 
@@ -107,6 +112,23 @@ def adapt_wait_freezes(value):
     elif isinstance(value, list):
         for child in value:
             adapt_wait_freezes(child)
+
+
+def adapt_screencap_focus(value):
+    """安卓外壳将截图保存在全局日志目录 log/screencap 下。"""
+    if isinstance(value, dict):
+        focus = value.get("focus")
+        if isinstance(focus, str):
+            value["focus"] = focus.replace("debug/screencap/", "log/screencap/")
+        elif isinstance(focus, dict):
+            for event, message in focus.items():
+                if isinstance(message, str):
+                    focus[event] = message.replace("debug/screencap/", "log/screencap/")
+        for child in value.values():
+            adapt_screencap_focus(child)
+    elif isinstance(value, list):
+        for child in value:
+            adapt_screencap_focus(child)
 
 
 def copy_agent(source: Path, target: Path):
@@ -244,6 +266,8 @@ def adapt_interface(data: dict, assets: Path) -> dict:
             if not doc.is_relative_to(assets.parent.resolve()):
                 raise ValueError(f"任务说明越出工程目录: {doc}")
             task["description"] = task.get("description", "") + "\n\n" + doc.read_text(encoding="utf-8-sig")
+        if task["name"] == "截图" and isinstance(task.get("description"), str):
+            task["description"] = task["description"].replace("debug/screencap/", "log/screencap/")
     for preset in data.get("preset", []):
         preset["task"] = [t for t in preset["task"] if t["name"] not in REMOVED_TASKS]
 
@@ -293,6 +317,7 @@ def prepare(root: Path = ROOT, output: Path = OUTPUT) -> dict:
     interface = adapt_interface(interface_source, assets)
     adapt_android_start_apps(interface)
     adapt_wait_freezes(interface)
+    adapt_screencap_focus(interface)
     output = output.resolve()
     # 此目录只放生成文件；不接受任意用户目录，避免清理误删其他工程文件。
     if output != (root / "Android" / "assets").resolve():
@@ -329,6 +354,7 @@ def prepare(root: Path = ROOT, output: Path = OUTPUT) -> dict:
         original = copy.deepcopy(pipeline)
         adapt_android_start_apps(pipeline)
         adapt_wait_freezes(pipeline)
+        adapt_screencap_focus(pipeline)
         adapt_transition_timeouts(pipeline, path.relative_to(output / "resource").as_posix())
         if pipeline != original:
             write_json(path, pipeline)

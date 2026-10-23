@@ -15,8 +15,11 @@ Exact original URLs, source/packaged SHA-256 and available name rows are in
 this pack's extensionless schema-v2 manifest (region=CN). Missing names are
 recorded in missing; never substitute Japanese names or ordinary labels.
 
-All PNGs: FASTOCTREE 256 colours, no dithering, optimize=True, compress_level=9.
-The manifest records any alpha>=128 mask changes. No Unity/game bundle,
+All PNGs: guarded libimagequant 256 colours, no dithering, optimize=True, compress_level=9.
+Alpha classes 0, 1..127 and 128..255 are repaired against the original source,
+preserving fully transparent positions and the alpha>=128 mask; intermediate
+alpha is lossy. Uses tools/command_card_palette.py for offline maintenance only.
+No Unity/game bundle,
 decryptor, font or new runtime dependency is included.
 
 Game artwork/text belong to the respective Fate/Grand Order rights holders;

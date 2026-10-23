@@ -28,6 +28,7 @@ from battle.core.plan_parser import (_load_action_param, _parse_battle_policy,
                                     _parse_plan, _parse_strategy_profile)
 from battle.core.policy import StrategyProfile
 from battle.data.chaldea_converter import convert_chaldea_actions_to_battle_plan
+from battle.data.servant_identity import canonical_servant_id
 from battle.runtime.runtime import AutoBattleRuntime
 from battle.runtime.formation_session import context_session, session_override, sessions
 from chaldea import fetch_share_data
@@ -183,20 +184,21 @@ def _build_plan_from_share(share: dict) -> BattlePlan:
 
 def _roster_from_share(share: dict) -> tuple[str | None, ...] | None:
     """Extract six semantic formation slots from Chaldea BattleShareData."""
-    members = (share.get("team") or {}).get("onFieldSvts")
-    if not isinstance(members, list):
+    team = share.get("team")
+    if not isinstance(team, dict):
         return None
-    roster: list[str | None] = []
-    for index in range(6):
-        member = members[index] if index < len(members) else None
-        servant_id = member.get("svtId") if isinstance(member, dict) else None
-        if isinstance(servant_id, int) and not isinstance(servant_id, bool) and servant_id > 0:
-            roster.append(str(servant_id))
-        elif isinstance(servant_id, str) and servant_id.strip().isdigit() and int(servant_id) > 0:
-            roster.append(str(int(servant_id)))
-        else:
-            roster.append(None)
-    return tuple(roster)
+    groups = (team.get("onFieldSvts"), team.get("backupSvts"))
+    if not any(isinstance(group, list) for group in groups):
+        return None
+    # 前排与候补各占三槽，空位不能让后续成员的位置前移。
+    members = []
+    for group in groups:
+        slots = group[:3] if isinstance(group, list) else []
+        members.extend(slots + [None] * (3 - len(slots)))
+    return tuple(
+        canonical_servant_id(member.get("svtId")) if isinstance(member, dict) else None
+        for member in members
+    )
 
 
 def _merge_rosters(
@@ -207,9 +209,11 @@ def _merge_rosters(
     visual = None
     if initial_formation is not None:
         visual = tuple(
-            slot.servant_id if slot.status == "identified" else None
+            canonical_servant_id(slot.servant_id) if slot.status == "identified" else None
             for slot in initial_formation.slots
         )
+    if chaldea_roster is not None:
+        chaldea_roster = tuple(canonical_servant_id(sid) for sid in chaldea_roster)
     if visual is None:
         return chaldea_roster or (None,) * 6
     if chaldea_roster is None:
