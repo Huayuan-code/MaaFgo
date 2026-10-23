@@ -11,18 +11,13 @@ from pathlib import Path
 import unittest
 
 import cv2
+import maa
 import numpy as np
-
-try:
-    import maa
-    from maa.controller import CustomController
-    from maa.define import LoggingLevelEnum
-    from maa.library import Library
-    from maa.resource import Resource
-    from maa.tasker import Tasker
-    MAA_AVAILABLE = True
-except Exception:
-    MAA_AVAILABLE = False
+from maa.controller import CustomController
+from maa.define import LoggingLevelEnum
+from maa.library import Library
+from maa.resource import Resource
+from maa.tasker import Tasker
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -51,41 +46,39 @@ def read_image(path):
     return cv2.imdecode(np.fromfile(str(path), dtype=np.uint8), cv2.IMREAD_COLOR)
 
 
-if MAA_AVAILABLE:
-    class PopupController(CustomController):
-        def __init__(self, image, disappear_after=None):
-            self.image = image
-            self.blank = np.zeros((720, 1280, 3), dtype=np.uint8)
-            self.disappear_after = disappear_after
-            self.clicks = []
-            super().__init__()
+class PopupController(CustomController):
+    def __init__(self, image, disappear_after=None):
+        self.image = image
+        self.blank = np.zeros((720, 1280, 3), dtype=np.uint8)
+        self.disappear_after = disappear_after
+        self.clicks = []
+        super().__init__()
 
-        def connect(self):
-            return True
+    def connect(self):
+        return True
 
-        def request_uuid(self):
-            return "4399-popup-memory"
+    def request_uuid(self):
+        return "4399-popup-memory"
 
-        def get_features(self):
-            return 0
+    def get_features(self):
+        return 0
 
-        def screencap(self):
-            return self.image
+    def screencap(self):
+        return self.image
 
-        def click(self, x, y):
-            self.clicks.append((x, y))
-            if self.disappear_after is not None and len(self.clicks) >= self.disappear_after:
-                self.image = self.blank
-            return True
+    def click(self, x, y):
+        self.clicks.append((x, y))
+        if self.disappear_after is not None and len(self.clicks) >= self.disappear_after:
+            self.image = self.blank
+        return True
 
-        def reject_input(self, *args):
-            return False
+    def reject_input(self, *args):
+        return False
 
-        start_app = stop_app = swipe = touch_down = touch_move = touch_up = reject_input
-        click_key = input_text = key_down = key_up = reject_input
+    start_app = stop_app = swipe = touch_down = touch_move = touch_up = reject_input
+    click_key = input_text = key_down = key_up = reject_input
 
 
-@unittest.skipUnless(MAA_AVAILABLE, "maafw 未安装")
 class PopupReplayTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
