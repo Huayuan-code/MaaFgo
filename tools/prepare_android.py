@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / "Android" / "assets"
 ANDROID_OPTION_TYPES = {"select", "switch", "checkbox", "input"}
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
-REMOVED_TASKS = {"启动bbc", "关闭bbc", "BBC 配置转 Chaldea 本地队伍"}
+REMOVED_TASKS = {"启动bbc", "关闭bbc", "BBC 配置转 Chaldea 本地队伍", "打开编队与战斗编辑器"}
 BILIBILI_ANDROID_LAUNCHERS = {
     "com.bilibili.fatego",
     "com.bilibili.fatego/.EmptyClass",
@@ -134,8 +134,10 @@ def adapt_screencap_focus(value):
 def copy_agent(source: Path, target: Path):
     def ignore(folder, names):
         patterns = ["__pycache__", "*.pyc"]
+        if Path(folder) == source:
+            patterns += ["battle_editor"]
         if Path(folder) == source / "custom":
-            patterns += ["bbc*.py", "chaldea_import_action.py"]
+            patterns += ["bbc*.py", "chaldea_import_action.py", "battle_editor_action.py"]
         return shutil.ignore_patterns(*patterns)(folder, names)
     # chaldea/bbc_formatter.py 是公共包的纯 Python 依赖，不能按文件名前缀全局剔除。
     shutil.copytree(source, target, ignore=ignore)
@@ -247,6 +249,21 @@ def compatibility_report(source: dict, converted: dict) -> dict:
 
 def adapt_interface(data: dict, assets: Path) -> dict:
     data = copy.deepcopy(data)
+    # The local desktop editor is not served by the APK. Keep mobile descriptions
+    # free of loopback links while preserving every unrelated guide and option.
+    def remove_desktop_editor_links(value):
+        if isinstance(value, dict):
+            description = value.get("description")
+            if isinstance(description, str) and "http://127.0.0.1:18765/" in description:
+                value["description"] = "\n".join(
+                    line for line in description.splitlines() if "http://127.0.0.1:18765/" not in line
+                ).strip()
+            for item in value.values():
+                remove_desktop_editor_links(item)
+        elif isinstance(value, list):
+            for item in value:
+                remove_desktop_editor_links(item)
+    remove_desktop_editor_links(data)
     data["description"] = "FGO 安卓自动化助手；使用 Shizuku 或 Root，后台画面固定为 1280×720。"
     # APK 的更新来源由 profile.yaml 显式配置，不继承桌面更新字段。
     data.pop("mirrorchyan_rid", None)
@@ -346,7 +363,7 @@ def prepare(root: Path = ROOT, output: Path = OUTPUT) -> dict:
         pipeline.pop("关闭bbc", None)
         pipeline["关闭游戏"].pop("next", None)
         write_json(close, pipeline)
-    for name in ("bbc战斗.json", "BBC配置转Chaldea本地队伍.json", "启动bbc.json", "更新bbc配置文件.json"):
+    for name in ("bbc战斗.json", "BBC配置转Chaldea本地队伍.json", "启动bbc.json", "更新bbc配置文件.json", "编队与战斗编辑器.json"):
         (output / "resource/base/pipeline" / name).unlink(missing_ok=True)
 
     for path in (output / "resource").glob("*/pipeline/**/*.json"):

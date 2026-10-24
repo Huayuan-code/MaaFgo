@@ -9,7 +9,7 @@ from typing import Tuple
 
 from battle.core.enums import CardColor
 from battle.core.models import (BattlePlan, MasterSkillAction, OrderChangeAction,
-                                ServantSkillAction, TurnPlan)
+                                ServantSkillAction, TurnPlan, is_slot)
 from battle.core.policy import (BattlePolicy, CardPolicy, Goal, SkillPolicy,
                                 StrategyProfile)
 
@@ -74,10 +74,14 @@ def _parse_plan(param: dict | None) -> BattlePlan | None:
             target_ally = s.get("target_ally")
             if target_ally is not None and (not isinstance(target_ally, int) or not 1 <= target_ally <= 3):
                 continue
+            target_enemy = s.get("target_enemy")
+            if target_enemy is not None and not is_slot(target_enemy, 1, 3):
+                continue
             svts = (*svts, ServantSkillAction(
                 servant_slot=s["servant_slot"],
                 skill_index=s["skill_index"],
                 target_ally=target_ally,
+                target_enemy=target_enemy,
             ))
 
         masters: tuple[MasterSkillAction, ...] = ()
@@ -89,9 +93,13 @@ def _parse_plan(param: dict | None) -> BattlePlan | None:
             target_ally = m.get("target_ally")
             if target_ally is not None and (not isinstance(target_ally, int) or not 1 <= target_ally <= 3):
                 continue
+            target_enemy = m.get("target_enemy")
+            if target_enemy is not None and not is_slot(target_enemy, 1, 3):
+                continue
             masters = (*masters, MasterSkillAction(
                 skill_index=m["skill_index"],
                 target_ally=target_ally,
+                target_enemy=target_enemy,
             ))
 
         oc = None

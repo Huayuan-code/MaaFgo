@@ -49,6 +49,7 @@ _SKILL_ANIM_TIMEOUT_S = platform_timeout(15.0, 30.0)        # 施放技能后动
 _MASTER_SKILL_RETURN_TIMEOUT_S = platform_timeout(10.0, 20.0)  # 御主技能后回主界面或进换人界面
 _ORDER_CHANGE_OPEN_TIMEOUT_S = platform_timeout(10.0, 20.0)    # 换人界面出现
 _ORDER_CHANGE_RETURN_TIMEOUT_S = platform_timeout(25.0, 45.0)  # 换人完成后回主界面
+_ENEMY_TARGET_READY_TIMEOUT_S = platform_timeout(5.0, 20.0)   # 动画收尾后敌方目标可确认
 
 _TERMINAL_OR_MAIN = (Scene.MAIN_BATTLE, Scene.VICTORY, Scene.DEFEAT)
 _KNOWN_SCENES = (Scene.MAIN_BATTLE, Scene.COMMAND_SELECTION, Scene.ORDER_CHANGE, Scene.VICTORY, Scene.DEFEAT)
@@ -491,14 +492,56 @@ class AutoBattleRuntime:
         """点击敌人后确认职介框蓝色选中态已经出现。"""
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
+            if self.ctx.tasker.stopping:
+                return False
             state = self._observe()
+            if self.ctx.tasker.stopping:
+                return False
             enemy = next((e for e in state.enemies if e.slot == slot and e.alive), None)
-            if enemy is not None and enemy.targeted:
+            if (state.scene is Scene.MAIN_BATTLE
+                    and state.scene_confidence.passes(self.profile.min_scene_confidence)
+                    and enemy is not None and enemy.targeted
+                    and enemy.confidence.passes(self.profile.min_enemy_confidence)):
                 mfaalog.info(f"[AutoBattle] enemy {slot} target confirmed")
                 return True
             time.sleep(0.5)
         mfaalog.info(f"[AutoBattle] enemy {slot} target confirmation timed out")
         return False
+
+    def _ensure_enemy_target(self, slot: int, *, label: str = "select_skill_enemy",
+                             required: bool = True,
+                             timeout_s: float = _ENEMY_TARGET_READY_TIMEOUT_S) -> bool:
+        """等待动画收尾再选敌；技能严格确认，普攻恢复保持既有尽力选怪行为。"""
+        if not is_slot(slot, 1, 3) or self.ctx.tasker.stopping:
+            return False
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            if self.ctx.tasker.stopping:
+                return False
+            state = self._observe()
+            if self.ctx.tasker.stopping:
+                return False
+            if (state.scene is Scene.MAIN_BATTLE
+                    and state.scene_confidence.passes(self.profile.min_scene_confidence)):
+                enemy = next((e for e in state.enemies if e.slot == slot and e.alive), None)
+                if enemy is not None and enemy.confidence.passes(self.profile.min_enemy_confidence):
+                    if enemy.targeted:
+                        mfaalog.info(f"[AutoBattle] {label}: enemy {slot} already targeted")
+                        return True
+                    self._mark_action(label)
+                    if not self.executor.select_enemy(slot):
+                        return not required and not self.ctx.tasker.stopping
+                    confirmed = self._wait_until_enemy_targeted(slot)
+                    return not self.ctx.tasker.stopping and (confirmed or not required)
+                if not required:
+                    # 伤害/即死技能可能已经击倒原攻击目标。普攻沿用游戏当前
+                    # 的存活目标，不因无法恢复已消失的敌人中止整场战斗。
+                    mfaalog.info(f"[AutoBattle] {label}: enemy {slot} unavailable; keep current attack target")
+                    return True
+            # 主界面模板在技能动画收尾可能仅弱命中（如0.82）；有界等强帧。
+            time.sleep(0.5)
+        mfaalog.info(f"[AutoBattle] {label}: enemy {slot} readiness timed out")
+        return not required and not self.ctx.tasker.stopping
 
     def _execute_skills(self, action) -> bool:
         # 日志：输出实际要执行的技能队列（安全门过滤后）
@@ -511,9 +554,11 @@ class AutoBattleRuntime:
             for step in sequence:
                 if isinstance(step, ServantSkillAction):
                     target = f"->从者{step.target_ally}" if step.target_ally else ""
+                    target += f"->敌人{step.target_enemy}" if step.target_enemy else ""
                     parts.append(f"从者{step.servant_slot}技能{step.skill_index}{target}")
                 elif isinstance(step, MasterSkillAction):
                     target = f"->从者{step.target_ally}" if step.target_ally else ""
+                    target += f"->敌人{step.target_enemy}" if step.target_enemy else ""
                     parts.append(f"御主技能{step.skill_index}{target}")
                 elif isinstance(step, OrderChangeAction):
                     parts.append(f"换人: {step.starting_member_idx}↔{step.sub_member_idx}")
@@ -529,6 +574,8 @@ class AutoBattleRuntime:
                 ):
                     mfaalog.info(f"[AutoBattle] invalid servant skill skipped: {sk}")
                     continue
+                if sk.target_enemy is not None and not self._ensure_enemy_target(sk.target_enemy):
+                    return False
                 mfaalog.info(f"[AutoBattle] cast_servant_skill(slot={sk.servant_slot}, idx={sk.skill_index})")
                 if not self._execute_skill_cast(
                     "cast_servant_skill",
@@ -553,6 +600,8 @@ class AutoBattleRuntime:
                 ):
                     mfaalog.info(f"[AutoBattle] invalid master skill skipped: {sk}")
                     continue
+                if sk.target_enemy is not None and not self._ensure_enemy_target(sk.target_enemy):
+                    return False
                 next_is_swap = (
                     index + 1 < len(sequence)
                     and isinstance(sequence[index + 1], OrderChangeAction)
@@ -587,8 +636,9 @@ class AutoBattleRuntime:
             self._mark_action("order_change")
             if not self.executor.order_change(oc.starting_member_idx, oc.sub_member_idx):
                 return False
-            # 等待回到主界面
-            if not self._wait_until((Scene.MAIN_BATTLE,), _ORDER_CHANGE_RETURN_TIMEOUT_S):
+            # 主界面模板可能在换人动画尚未结束时已命中；先确认技能栏稳定，
+            # 再变更身份并发送新成员的技能，避免把点击发进动画。
+            if not self._wait_order_change_settled():
                 return False
             front = oc.starting_member_idx - 1
             back = oc.sub_member_idx - 1
@@ -600,7 +650,45 @@ class AutoBattleRuntime:
                 f"{tuple(self.roster_servant_ids)}"
             )
 
+        # run() retains the original pre-skill attack-target selection. A new
+        # per-skill override can change it; try restoring the attack group's
+        # chosen target after all skills, before opening the command cards. Old plans
+        # without a per-skill target keep their original observation/click path.
+        if action.target_enemy is not None and any(
+            isinstance(step, (ServantSkillAction, MasterSkillAction))
+            and step.target_enemy is not None for step in sequence
+        ):
+            return self._ensure_enemy_target(action.target_enemy, label="restore_attack_enemy", required=False)
         return True
+
+    def _wait_order_change_settled(self) -> bool:
+        """只为换人等待主界面/技能栏稳定；失败或停止时不提交新阵容。"""
+        if self.ctx.tasker.stopping:
+            return False
+        deadline = time.monotonic() + _ORDER_CHANGE_RETURN_TIMEOUT_S
+        try:
+            mfaalog.info("[AutoBattle] order change waiting for stable skill bar")
+            detail = self.ctx.run_task("战斗_换人后等待技能栏稳定")
+            if self.ctx.tasker.stopping or not detail or not detail.status.succeeded:
+                return False
+            node = self.ctx.get_node_object("战斗_换人后主界面与技能栏稳定")
+            param = node.post_wait_freezes
+            remaining_ms = int((deadline - time.monotonic()) * 1000)
+            if (self.ctx.tasker.stopping or param is None or param.time <= 0
+                    or param.timeout <= 0 or remaining_ms < param.time):
+                return False
+            # MFW 5.14.3 的节点 post_wait_freezes 超时不会使 run_task 失败。
+            # 用相同 Pipeline 参数再做有明确 bool 结果的严格确认，预算共用。
+            stable = self.ctx.wait_freezes(
+                wait_freezes_param=replace(param, timeout=min(param.timeout, remaining_ms)),
+            )
+            if not stable or self.ctx.tasker.stopping or time.monotonic() > deadline:
+                return False
+            mfaalog.info("[AutoBattle] order change skill bar stable")
+            return True
+        except Exception as exc:
+            mfaalog.warning(f"[AutoBattle] order change stability check failed: {exc}")
+            return False
 
     # 特殊技能子流水线入口与分支归类（自动战斗_特殊技能.json）
     _SPECIAL_SKILL_PIPELINE = "战斗_特殊技能处理"

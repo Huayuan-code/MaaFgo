@@ -68,8 +68,8 @@ class AndroidInterfaceTests(unittest.TestCase):
             source["option"]["native_setting"]["pipeline_override"] = {
                 "repeat_launch": {"action": {"type": "StartApp", "param": {"package": "com.bilibili.fatego"}}},
             }
+            self.write_prepare_support(root)
             android.write_json(root / "assets/interface.json", source)
-            android.write_json(root / "assets/resource/base/pipeline/日常战斗.json", {"通用战斗调度": {}})
             cn_login = {
                 "打开游戏": {"action": {"type": "StartApp", "param": {"package": "com.bilibili.fatego"}},
                            "next": ["阶段判断循环"]},
@@ -79,20 +79,6 @@ class AndroidInterfaceTests(unittest.TestCase):
             jp_login = {"打开游戏": {"action": {"type": "StartApp", "param": {
                 "package": "com.aniplex.fategrandorder/jp.delightworks.Fgo.player.AndroidPlugin"}}}}
             android.write_json(root / "assets/resource/jp/pipeline/run_FGO.json", jp_login)
-            for server, package in (("cn", "com.bilibili.fatego"), ("jp", "com.aniplex.fategrandorder")):
-                android.write_json(root / f"assets/resource/{server}/pipeline/关闭游戏.json", {
-                    "关闭游戏": {"action": {"type": "StopApp", "param": {"package": package}}, "next": ["关闭bbc"]},
-                    "关闭bbc": {},
-                })
-            (root / "assets/i18n").mkdir()
-            (root / "agent").mkdir()
-            (root / "Android").mkdir()
-            (root / "Android/Announcement.md").write_text("fixture", encoding="utf-8")
-            (root / "LICENSE").write_text("fixture", encoding="utf-8")
-            ocr = root / "assets/resource/model/ocr"
-            ocr.mkdir(parents=True)
-            for name in ("rec.onnx", "det.onnx", "keys.txt"):
-                (ocr / name).write_bytes(b"fixture")
             originals = {path: path.read_bytes() for path in (root / "assets").rglob("*") if path.is_file()}
 
             output = root / "Android/assets"
@@ -108,6 +94,83 @@ class AndroidInterfaceTests(unittest.TestCase):
             repeat = interface["option"]["native_setting"]["pipeline_override"]["repeat_launch"]
             self.assertEqual(repeat["action"]["param"]["package"], android.BILIBILI_ANDROID_GAME_ACTIVITY)
             self.assertEqual(interface["version"], source["version"])
+            for path, data in originals.items():
+                self.assertEqual(path.read_bytes(), data, str(path.relative_to(root)))
+
+    def write_prepare_support(self, root):
+        android.write_json(root / "assets/resource/base/pipeline/日常战斗.json", {"通用战斗调度": {}})
+        for server, package in (("cn", "com.bilibili.fatego"), ("jp", "com.aniplex.fategrandorder")):
+            android.write_json(root / f"assets/resource/{server}/pipeline/关闭游戏.json", {
+                "关闭游戏": {"action": {"type": "StopApp", "param": {"package": package}}, "next": ["关闭bbc"]},
+                "关闭bbc": {},
+            })
+        for directory in ("assets/i18n", "agent", "Android", "assets/resource/model/ocr"):
+            (root / directory).mkdir(parents=True, exist_ok=True)
+        (root / "Android/Announcement.md").write_text("fixture", encoding="utf-8")
+        (root / "LICENSE").write_text("fixture", encoding="utf-8")
+        for name in ("rec.onnx", "det.onnx", "keys.txt"):
+            (root / "assets/resource/model/ocr" / name).write_bytes(b"fixture")
+
+    def test_prepare_omits_desktop_editor_but_preserves_native_formation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write_prepare_support(root)
+            source = self.fixture()
+            source["task"].append({
+                "name": "打开编队与战斗编辑器", "option": ["编队编辑器操作"],
+                "doc": "docs/desktop-only-guide.md",
+            })
+            source["preset"][0]["task"].append({"name": "打开编队与战斗编辑器"})
+            source["option"]["编队编辑器操作"] = {"type": "select", "cases": [{"name": "open"}]}
+            description = "保留移动端说明\n\n[打开编队编辑器](http://127.0.0.1:18765/)"
+            source["task"][0]["description"] = description
+            source["option"]["native_setting"]["description"] = description
+            android.write_json(root / "assets/interface.json", source)
+            android.write_json(root / "assets/resource/base/pipeline/编队与战斗编辑器.json", {
+                "打开编队与战斗编辑器": {"action": {"type": "Custom", "param": {
+                    "custom_action": "open_battle_editor"}}},
+            })
+            desktop_files = (
+                "assets/web/battle-editor/index.html", "assets/web/battle-editor/assets/app.js",
+                "agent/custom/battle_editor_action.py", "agent/battle_editor/server.py",
+                "agent/battle_editor/data/catalog.json", "agent/battle_editor/data/np_cards.json",
+                "agent/battle_editor/data/ui/media/formation_100100_0123456789abcdef.webp",
+                "打开编队编辑器.cmd",
+            )
+            runtime_files = (
+                "agent/custom/formation_action.py", "agent/custom/bond_completion_action.py",
+                "agent/custom/auto_battle_action.py", "agent/battle/runtime/formation_session.py",
+                "agent/battle/core/validator.py", "agent/chaldea/bbc_formatter.py",
+                "assets/resource/base/image/ServantFaces/team/100100.png",
+                "assets/resource/base/image/EquipFaces/team/f_94000100.png",
+            )
+            for relative in desktop_files + runtime_files:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"fixture")
+            for name in ("自动编队", "羁绊补齐自动编队"):
+                android.write_json(root / f"assets/resource/base/pipeline/{name}.json", {name: {}})
+            originals = {path: path.read_bytes() for folder in (root / "assets", root / "agent")
+                         for path in folder.rglob("*") if path.is_file()}
+
+            output = root / "Android/assets"
+            android.prepare(root, output)
+            for relative in ("web", "agent/battle_editor", "agent/custom/battle_editor_action.py",
+                             "resource/base/pipeline/编队与战斗编辑器.json", "打开编队编辑器.cmd"):
+                self.assertFalse((output / relative).exists(), relative)
+            for relative in runtime_files:
+                packaged = relative.removeprefix("assets/")
+                self.assertEqual((output / packaged).read_bytes(), (root / relative).read_bytes(), packaged)
+            for name in ("自动编队", "羁绊补齐自动编队"):
+                self.assertTrue((output / f"resource/base/pipeline/{name}.json").is_file())
+            converted = android.read_json(output / "interface.json")
+            self.assertNotIn("打开编队与战斗编辑器", {task["name"] for task in converted["task"]})
+            self.assertNotIn("打开编队与战斗编辑器", {task["name"] for task in converted["preset"][0]["task"]})
+            self.assertNotIn("编队编辑器操作", converted["option"])
+            self.assertNotIn("127.0.0.1:18765", json.dumps(converted, ensure_ascii=False))
+            self.assertEqual(converted["task"][0]["description"], "保留移动端说明")
+            self.assertEqual(converted["option"]["native_setting"]["description"], "保留移动端说明")
+            self.assertEqual(converted["version"], source["version"])
             for path, data in originals.items():
                 self.assertEqual(path.read_bytes(), data, str(path.relative_to(root)))
 
@@ -227,6 +290,23 @@ class AndroidInterfaceTests(unittest.TestCase):
             for case in option["cases"]:
                 self.assertTrue((ROOT / "assets" / case["icon"]).is_file())
                 self.assertEqual(case["pipeline_override"]["助战action"]["attach"][name], case["name"])
+
+    def test_project_interface_omits_editor_without_mutating_desktop(self):
+        source = android.load_interface(ROOT / "assets")
+        original = copy.deepcopy(source)
+        self.assertIn("打开编队与战斗编辑器", {task["name"] for task in source["task"]})
+        self.assertIn("编队编辑器操作", source["option"])
+        self.assertIn("127.0.0.1:18765", json.dumps(source, ensure_ascii=False))
+
+        converted = android.adapt_interface(source, ROOT / "assets")
+        self.assertEqual(source, original)
+        self.assertEqual(android.load_interface(ROOT / "assets"), original)
+        self.assertEqual(converted["version"], source["version"])
+        self.assertNotIn("打开编队与战斗编辑器", {task["name"] for task in converted["task"]})
+        self.assertNotIn("编队编辑器操作", converted["option"])
+        for marker in ("127.0.0.1:18765", "open_battle_editor", "打开编队与战斗编辑器"):
+            self.assertNotIn(marker, json.dumps(converted, ensure_ascii=False))
+        self.assertIn("Chaldea 自动编队", {task["name"] for task in converted["task"]})
 
     def test_unsupported_option_type_fails_instead_of_disappearing(self):
         source = self.fixture()

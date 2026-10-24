@@ -22373,6 +22373,246 @@
         "target": "",
         "effect_desc": ""
       }
+    },
+    {
+      "id": "9401340",
+      "collection_no": 178,
+      "name": "个人训练",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94013400.png"
+      ],
+      "name_jp": "パーソナル・トレーニング",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9401710",
+      "collection_no": 242,
+      "name": "单人教学",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94017100.png"
+      ],
+      "name_jp": "パーソナル・レッスン",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9403300",
+      "collection_no": 861,
+      "name": "秉持风雅",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94033000.png"
+      ],
+      "name_jp": "風雅たれ",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9403870",
+      "collection_no": 1012,
+      "name": "私人指导",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94038700.png"
+      ],
+      "name_jp": "パーソナル・コーチング",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9404540",
+      "collection_no": 1214,
+      "name": "自由坐席",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94045400.png"
+      ],
+      "name_jp": "フリー・シーティング",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9404630",
+      "collection_no": 1273,
+      "name": "偶像培育者",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94046300.png"
+      ],
+      "name_jp": "アイドル・メイカー",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9404870",
+      "collection_no": 1314,
+      "name": "享用浪漫",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94048700.png"
+      ],
+      "name_jp": "テイク・ロマンス",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9405120",
+      "collection_no": 1384,
+      "name": "穿过乌云",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94051200.png"
+      ],
+      "name_jp": "雨雲を越えて",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9405630",
+      "collection_no": 1504,
+      "name": "寻求悠久的尽头",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94056300.png"
+      ],
+      "name_jp": "悠久の果てを求めて",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9406960",
+      "collection_no": 1797,
+      "name": "迦勒底的男人",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94069600.png"
+      ],
+      "name_jp": "カルデアの男",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9407060",
+      "collection_no": 1828,
+      "name": "暮景冥想",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94070600.png"
+      ],
+      "name_jp": "トワイライト・メディテーション",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9407360",
+      "collection_no": 1922,
+      "name": "总统之海洋",
+      "rarity": 5,
+      "important": 1,
+      "images": [
+        "f_94073600.png"
+      ],
+      "name_jp": "プレジデント・オーシャン",
+      "acquisition_category_jp": "マナプリズム交換",
+      "filter_tag": "达芬奇工坊",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
     }
   ]
 }

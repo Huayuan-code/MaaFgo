@@ -376,7 +376,10 @@
                     1160,
                     445
                 ],
-                "template": "从者技能强化/卸下.png",
+                "template": [
+                    "从者技能强化/卸下.png",
+                    "EquipFaces/卸下_日服.png"
+                ],
                 "threshold": 0.9
             }
         },

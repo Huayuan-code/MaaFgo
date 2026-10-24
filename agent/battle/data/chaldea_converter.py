@@ -5,8 +5,9 @@
 执行技能 / 面卡与宝具 / 换人。
 
 Chaldea actions 数据结构（与 bbc_formatter.convert_actions_to_bbc_rounds 同源）：
-- {"type":"skill","svt":0..5|None,"skill":0..2,"options":{"playerTarget":N}}
+- {"type":"skill","svt":0..5|None,"skill":0..2,"options":{"playerTarget":N,"enemyTarget":N}}
     svt=None 表示御主技能；svt=0..2 对应前排从者槽位 1..3。
+    enemyTarget 为 Chaldea 从右向左 0..2；仅作用于此技能，施放前单独切敌并确认。
 - {"type":"attack","attacks":[{"isTD":bool,"svt":0..5}, ...]}
     一次攻击组：把此前的技能累积成"一个回合"；attacks 里的 isTD 条目是宝具。
 
@@ -31,6 +32,22 @@ from ..core.models import (BattlePlan, MasterSkillAction, OrderChangeAction,
 _ORDER_CHANGE_MYSTIC_CODE_IDS = {20, 210, 440}
 
 
+def _parse_card_color(value: object) -> Optional[CardColor]:
+    """接受 Chaldea 正式整数、数字字符串及历史小写色名。
+
+    bool 是 Python int 的子类，但不是合法色卡；特殊牌种和其他值
+    保持未知，不能因为类型强转而误选普通面卡。
+    """
+    if type(value) is int:
+        return {1: CardColor.ARTS, 2: CardColor.BUSTER, 3: CardColor.QUICK}.get(value)
+    if isinstance(value, str):
+        return {
+            "1": CardColor.ARTS, "2": CardColor.BUSTER, "3": CardColor.QUICK,
+            "arts": CardColor.ARTS, "buster": CardColor.BUSTER, "quick": CardColor.QUICK,
+        }.get(value)
+    return None
+
+
 def _is_order_change_mystic_code(mystic_code_id: Optional[int]) -> bool:
     """是否是换人礼装。"""
     return (
@@ -46,6 +63,15 @@ def _parse_target(options: Optional[dict]) -> Optional[int]:
     target = options.get("playerTarget")
     if isinstance(target, int) and 0 <= target <= 5:
         return target + 1
+    return None
+
+
+def _parse_enemy_target(options: Optional[dict]) -> Optional[int]:
+    """Chaldea 从右向左 0..2 -> 原生界面从左向右 1..3。"""
+    if isinstance(options, dict):
+        target = options.get("enemyTarget")
+        if type(target) is int and 0 <= target <= 2:
+            return 3 - target
     return None
 
 
@@ -157,6 +183,7 @@ def convert_chaldea_actions_to_battle_plan(
             if not isinstance(skill_idx, int) or not (0 <= skill_idx <= 2):
                 continue
             target = _parse_target(action.get("options"))
+            enemy_target = _parse_enemy_target(action.get("options"))
 
             svt_idx = action.get("svt")
             if svt_idx is None:
@@ -169,11 +196,12 @@ def convert_chaldea_actions_to_battle_plan(
                         starting_member_idx=front_slot,
                         sub_member_idx=sub_slot,
                     )
-                    master = MasterSkillAction(skill_idx + 1)
+                    master = MasterSkillAction(skill_idx + 1, target_enemy=enemy_target)
                     cur_masters.append(master)
                     cur_sequence.extend((master, cur_order_change))
                 else:
-                    master = MasterSkillAction(skill_idx + 1, target_ally=target)
+                    master = MasterSkillAction(skill_idx + 1, target_ally=target,
+                                               target_enemy=enemy_target)
                     cur_masters.append(master)
                     cur_sequence.append(master)
             elif isinstance(svt_idx, int) and 0 <= svt_idx <= 2:
@@ -181,16 +209,13 @@ def convert_chaldea_actions_to_battle_plan(
                     servant_slot=svt_idx + 1,
                     skill_index=skill_idx + 1,
                     target_ally=target,
+                    target_enemy=enemy_target,
                 )
                 cur_skills.append(servant)
                 cur_sequence.append(servant)
 
         elif action_type == "attack":
-            options = action.get("options") or {}
-            enemy = options.get("enemyTarget")
-            if type(enemy) is int and 0 <= enemy <= 2:
-                # Chaldea 敌方索引从右往左，原生 ROI 则从左往右编号。
-                cur_enemy = 3 - enemy
+            cur_enemy = _parse_enemy_target(action.get("options"))
             attacks = action.get("attacks")
             if isinstance(attacks, list):
                 for atk in attacks:
@@ -205,10 +230,14 @@ def convert_chaldea_actions_to_battle_plan(
                             cur_np.append(np_slot)
                             cur_cards.append(PlannedCard(PrimitiveKind.SELECT_NP, np_slot))
                     else:
-                        color = {"buster": CardColor.BUSTER, "arts": CardColor.ARTS,
-                                 "quick": CardColor.QUICK}.get(atk.get("cardType"))
+                        color = _parse_card_color(atk.get("cardType"))
                         if color is not None:
                             cur_cards.append(PlannedCard(PrimitiveKind.SELECT_CARD, svt_pos + 1, color))
+                        else:
+                            mfaalog.warning(
+                                "[chaldea_converter] 忽略不支持的面卡色种: "
+                                f"cardType={atk.get('cardType')!r}, svt={svt_pos}"
+                            )
             _flush()
 
     # 末尾未结算的技能 -> 补最后一回合

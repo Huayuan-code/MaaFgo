@@ -1,0 +1,393 @@
+"""Non-mutating checks for Chaldea's JSON contract and the current MaaFGO executor.
+
+The reference is chaldea-center/chaldea e656fa4b3e23228805efdec851358e0ab319aeeb,
+lib/models/userdata/battle.dart and its generated battle.g.dart. Optional fields
+remain optional; this module never materializes Chaldea's simulation defaults.
+"""
+from __future__ import annotations
+
+from typing import Any
+
+ORDER_CHANGE_IDS = {20, 210, 440}
+CARD_TYPES = {1: "arts", 2: "buster", 3: "quick", "1": "arts", "2": "buster", "3": "quick", "arts": "arts", "buster": "buster", "quick": "quick"}
+DEFAULTS = {
+    "newBattle": {"team": {"name": "未命名方案", "onFieldSvts": [None, None, None], "backupSvts": [None, None, None], "mysticCode": {"mysticCodeId": 210, "level": 10}}, "actions": []},
+    "servant": {"supportType": "none", "skillLvs": [10, 10, 10], "appendLvs": [0, 0, 0, 0, 0]}, "equip": {}, "mysticCode": {},
+    "description": {"lv": "未指定，不新增等级要求", "tdLv": "未指定，不新增宝具要求", "skillLvs": "空槽新选从者预设 10/10/10；导入未指定时保持缺失，不新增技能要求", "appendLvs": "空槽新选从者预设 0/0/0/0/0，0 表示不要求；导入保留原字段与数组长度", "taskSkillDefaults": "任务技能预设只在新选空槽或显式补齐空项时使用；更换已有从者及切换助战类型不自动补值，预设不是游戏内实际等级", "mysticCode.level": "未指定，仅记录属性", "playerTarget": "未指定，省略该字段", "emptyAttack": "attacks: []，其余由当前默认选卡策略补齐"},
+}
+
+
+def card_color(value: Any) -> str | None:
+    if type(value) not in (str, int):
+        return None
+    return CARD_TYPES.get(value)
+
+
+def validate_battle(data: Any, catalog: dict | None = None) -> dict:
+    """Return an actionable report, preserving every field and JSON value supplied."""
+    issues: list[dict] = []
+    summary = {"turns": 0, "actions": 0, "skills": 0, "masterSkills": 0, "orderChanges": 0, "noblePhantasms": 0, "cards": 0, "servants": 0}
+
+    def issue(severity, path, code, message, **location):
+        issues.append({"severity": severity, "path": path, "code": code, "message": message, **location})
+
+    def error(path, code, message, **location):
+        issue("error", path, code, message, **location)
+
+    def warning(path, code, message, **location):
+        issue("warning", path, code, message, **location)
+
+    def unknown(node, known, path, **location):
+        for key in node:
+            if key not in known:
+                warning(f"{path}.{key}" if path else str(key), "preserved_field", "未识别的字段将原样保留，当前执行器可能不使用它", **location)
+
+    def integer(node, key, path, minimum=0, maximum=None, nullable=True, **location):
+        if key not in node or (node[key] is None and nullable):
+            return
+        value = node[key]
+        if type(value) is not int or value < minimum or (maximum is not None and value > maximum):
+            bound = f"{minimum}–{maximum}" if maximum is not None else f"≥ {minimum}"
+            error(f"{path}.{key}", "invalid_integer", f"{key} 必须是 {bound} 的整数", **location)
+
+    def boolean(node, key, path, **location):
+        if node.get(key) is not None and type(node[key]) is not bool:
+            error(f"{path}.{key}", "invalid_boolean", f"{key} 必须是布尔值", **location)
+
+    def result():
+        return {"valid": not any(i["severity"] == "error" for i in issues), "issues": issues, "summary": summary}
+
+    if not isinstance(data, dict):
+        error("$", "invalid_root", "需要 Chaldea BattleShareData JSON 对象")
+        return result()
+    unknown(data, {"minBuild", "appBuild", "quest", "options", "team", "delegate", "actions", "isCritTeam"}, "")
+    for key in ("minBuild", "appBuild"):
+        integer(data, key, "$", 0)
+    boolean(data, "isCritTeam", "$")
+    if data.get("quest") is not None:
+        quest = data["quest"]
+        if not isinstance(quest, dict):
+            error("quest", "invalid_object", "quest 必须是对象或 null")
+        else:
+            for key in ("id", "phase"):
+                if key not in quest:
+                    error(f"quest.{key}", "required_field", "关卡信息需要 id 和 phase")
+                integer(quest, key, "quest", 1, nullable=False)
+            if quest.get("enemyHash") is not None and not isinstance(quest["enemyHash"], str):
+                error("quest.enemyHash", "invalid_string", "enemyHash 必须是字符串或 null")
+            if quest.get("region") is not None and quest["region"] not in ("JP", "CN", "NA", "TW", "KR", "jp", "cn", "na", "tw", "kr"):
+                error("quest.region", "invalid_region", "未知的 Chaldea 区服")
+            unknown(quest, {"id", "phase", "enemyHash", "region"}, "quest")
+    if data.get("options") is not None:
+        options = data["options"]
+        if not isinstance(options, dict):
+            error("options", "invalid_object", "顶层 options 必须是对象或 null")
+        else:
+            for key in ("mightyChain", "disableEvent", "simulateAi"):
+                boolean(options, key, "options")
+            unknown(options, {"mightyChain", "disableEvent", "pointBuffs", "simulateAi", "enemyRateUp"}, "options")
+            if options:
+                warning("options", "simulation_only", "顶层 options 是 Chaldea 模拟参数，保存保留；它们不会改变 MaaFGO 选卡策略")
+
+    team = data.get("team")
+    if not isinstance(team, dict):
+        error("team", "required_team", "缺少 Chaldea team 对象")
+        return result()
+    unknown(team, {"name", "onFieldSvts", "backupSvts", "mysticCode", "svts"}, "team")
+    if team.get("name") is not None and not isinstance(team["name"], str):
+        error("team.name", "invalid_string", "队名必须是字符串或 null")
+    if team.get("svts") is not None and not isinstance(team["svts"], list):
+        error("team.svts", "invalid_array", "svts 必须是数组或 null")
+    elif team.get("svts"):
+        error("team.svts", "unsupported_formation", "当前 MaaFGO 使用 onFieldSvts / backupSvts；新版 svts 会覆盖官方阵容解释，请保留草稿并先明确转换")
+    catalog_rows = (catalog or {}).get("servants", [])
+    by_id = {row.get("id", row.get("svtId")): row for row in catalog_rows if isinstance(row, dict)} if isinstance(catalog_rows, list) else {}
+    for row in catalog_rows if isinstance(catalog_rows, list) else []:
+        if not isinstance(row, dict):
+            continue
+        for alias in row.get("aliases", []):
+            if type(alias) is int:
+                by_id.setdefault(alias, row)
+    members = []
+    owned_servants: dict[int, int] = {}
+    supports = 0
+    servant_keys = {"svtId", "limitCount", "transformVal", "skillLvs", "skillIds", "appendLvs", "tdId", "tdLv", "lv", "atkFou", "hpFou", "fixedAtk", "fixedHp", "ceId", "ceLimitBreak", "ceLv", "equip1", "equip2", "equip3", "supportType", "cardStrengthens", "commandCodeIds", "disabledExtraSkills", "allowedExtraSkills", "customPassives", "customPassiveLvs", "grandSvt", "classBoardData"}
+    for group in ("onFieldSvts", "backupSvts"):
+        raw_slots = team.get(group)
+        if not isinstance(raw_slots, list) or len(raw_slots) != 3:
+            error(f"team.{group}", "invalid_slots", "首发和候补都必须保留三槽数组，空位使用 null")
+        slots = raw_slots if isinstance(raw_slots, list) else []
+        for index in range(3):
+            slot = index + (0 if group == "onFieldSvts" else 3)
+            member = slots[index] if index < len(slots) else None
+            members.append(member if isinstance(member, dict) else None)
+            path = f"team.{group}[{index}]"
+            loc = {"slot": slot}
+            if member is None:
+                continue
+            if not isinstance(member, dict):
+                error(path, "invalid_servant", "从者槽位必须是对象或 null", **loc)
+                continue
+            summary["servants"] += 1
+            if member.get("svtId") is None:
+                error(path + ".svtId", "missing_servant", "请选择从者或将空位写为 null", **loc)
+            integer(member, "svtId", path, 1, **loc)
+            for key, lo, hi in (("lv", 1, 120), ("tdLv", 1, 5), ("tdId", 0, None), ("limitCount", 0, None), ("transformVal", 0, None), ("atkFou", 0, None), ("hpFou", 0, None), ("fixedAtk", 0, None), ("fixedHp", 0, None), ("ceId", 0, None), ("ceLv", 0, 100)):
+                integer(member, key, path, lo, hi, **loc)
+            for key in ("ceLimitBreak", "grandSvt"):
+                boolean(member, key, path, **loc)
+            for key, lengths, lo, hi, nullable_items in (("skillLvs", (3,), 0, 10, False), ("appendLvs", (3, 5), 0, 10, False), ("skillIds", (3,), 0, None, True), ("cardStrengthens", (5,), 0, None, False), ("commandCodeIds", (5,), 0, None, True)):
+                values = member.get(key)
+                if values is None:
+                    continue
+                if not isinstance(values, list):
+                    error(path + "." + key, "invalid_array", f"{key} 必须是数组或 null", **loc)
+                    continue
+                if values and len(values) not in lengths:
+                    warning(path + "." + key, "legacy_array_length", f"保留 {key} 的原数组长度；Chaldea 会补齐或截取，当前 MaaFGO 仅使用对应的技能/卡槽", **loc)
+                for vi, value in enumerate(values):
+                    if value is None and nullable_items:
+                        continue
+                    if type(value) is not int or value < lo or (hi is not None and value > hi):
+                        error(f"{path}.{key}[{vi}]", "invalid_level", "该值必须是范围内的整数", **loc)
+            support_type = member.get("supportType", "none")
+            if support_type not in (None, "none", "friend", "npc", "fixed"):
+                error(path + ".supportType", "invalid_support", "助战类型应为 none / friend / npc", **loc)
+            if support_type in ("friend", "npc", "fixed"):
+                supports += 1
+            if support_type == "fixed":
+                warning(path + ".supportType", "legacy_support", "保留历史 fixed 助战类型；Chaldea 官方类型为 none / friend / npc", **loc)
+            sid = member.get("svtId")
+            if support_type in (None, "none") and type(sid) is int and sid > 0:
+                meta = by_id.get(sid, {})
+                identity = meta.get("id", meta.get("svtId", sid))
+                if type(identity) is not int or identity <= 0:
+                    identity = sid
+                if identity in owned_servants:
+                    name = meta.get("name") or meta.get("nameJp")
+                    if not isinstance(name, str):
+                        name = f"从者 #{sid}"
+                    first_slot = owned_servants[identity]
+                    error(path + ".svtId", "duplicate_servant", f"槽位 {slot + 1} 的「{name}」与槽位 {first_slot + 1} 为同一名自有从者；请更换从者，或将其中一名正确标记为助战（队伍最多一名助战）", **loc)
+                else:
+                    owned_servants[identity] = slot
+            for key in ("equip1", "equip2", "equip3"):
+                equip = member.get(key)
+                if equip is None:
+                    continue
+                ep = path + "." + key
+                if not isinstance(equip, dict):
+                    error(ep, "invalid_equip", "礼装必须是对象或 null", **loc)
+                    continue
+                integer(equip, "id", ep, 0, **loc)
+                integer(equip, "lv", ep, 0, 100, **loc)
+                boolean(equip, "limitBreak", ep, **loc)
+                unknown(equip, {"id", "lv", "limitBreak"}, ep, **loc)
+            if member.get("grandSvt"):
+                warning(path, "grand_equip_boundary", "冠位三礼装会保存；当前自动编队跳过冠位从者礼装修改，助战礼装显示也受现有羁绊效果逻辑限制", **loc)
+            if member.get("classBoardData") is not None and not isinstance(member["classBoardData"], dict):
+                error(path + ".classBoardData", "invalid_object", "classBoardData 必须是对象或 null", **loc)
+            unknown(member, servant_keys, path, **loc)
+    if supports > 1:
+        error("team", "multiple_supports", "当前自动编队只支持一个助战槽位")
+    if supports == 0:
+        warning("team", "missing_support", "队伍中未设置助战，请核对成员类型；无助战关卡可忽略此提醒，仍允许保存方案")
+    if not any(members[:3]):
+        error("team.onFieldSvts", "empty_frontline", "至少选择一位前排从者")
+
+    mystic = team.get("mysticCode")
+    mystic_id = None
+    if mystic is not None:
+        if not isinstance(mystic, dict):
+            error("team.mysticCode", "invalid_object", "御主礼装必须是对象或 null")
+        else:
+            integer(mystic, "mysticCodeId", "team.mysticCode", 0)
+            integer(mystic, "level", "team.mysticCode", 0, 10)
+            mystic_id = mystic.get("mysticCodeId")
+            unknown(mystic, {"mysticCodeId", "level"}, "team.mysticCode")
+
+    delegate = data.get("delegate")
+    swaps = []
+    if delegate is not None:
+        if not isinstance(delegate, dict):
+            error("delegate", "invalid_object", "delegate 必须是对象或 null")
+        else:
+            known = {"actWeightSelections", "skillActSelectSelections", "tdTypeChanges", "ptRandomIndexes", "canActivateDecisions", "damageSelections", "replaceMemberIndexes"}
+            unknown(delegate, known, "delegate")
+            for key in known - {"replaceMemberIndexes"}:
+                if delegate.get(key) is not None and not isinstance(delegate[key], list):
+                    error("delegate." + key, "invalid_array", "特殊选项必须是数组或 null")
+                elif delegate.get(key):
+                    error("delegate." + key, "unsupported_delegate", "当前执行器不消费此类特殊选择；原值保留，可保存草稿或下载保真副本")
+            raw_swaps = delegate.get("replaceMemberIndexes")
+            if raw_swaps is not None and not isinstance(raw_swaps, list):
+                error("delegate.replaceMemberIndexes", "invalid_array", "换人配置必须是数组")
+            elif isinstance(raw_swaps, list):
+                for si, swap in enumerate(raw_swaps):
+                    path = f"delegate.replaceMemberIndexes[{si}]"
+                    if not isinstance(swap, list) or len(swap) != 2 or any(type(v) is not int for v in swap) or not 0 <= swap[0] <= 2 or not 0 <= swap[1] <= 5:
+                        error(path, "invalid_swap", "换人为 [前排0–2, 候补0–2]；兼容历史绝对候补3–5")
+                        swaps.append(None)
+                    else:
+                        swaps.append((swap[0], swap[1] + 3 if swap[1] <= 2 else swap[1]))
+                        if swap[1] >= 3:
+                            warning(path, "legacy_swap", "保留历史绝对候补索引；新建方案使用相对候补 0–2")
+
+    mystic_rows = (catalog or {}).get("mysticCodes", [])
+    mystic_meta = next((row for row in mystic_rows if row.get("id") == mystic_id), {}) if isinstance(mystic_rows, list) else {}
+
+    def requires_target(member, skill_index, master=False):
+        if type(skill_index) is not int or not 0 <= skill_index <= 2:
+            return False
+        if master:
+            candidates = [row for row in mystic_meta.get("skills", []) if row.get("num") == skill_index + 1]
+        else:
+            sid = member.get("svtId") if isinstance(member, dict) else None
+            meta = by_id.get(sid, {}) if type(sid) is int else {}
+            explicit = member.get("skillIds") if isinstance(member, dict) else None
+            chosen_id = explicit[skill_index] if isinstance(explicit, list) and len(explicit) > skill_index else None
+            variants = meta.get("skillVariants") or meta.get("skills", [])
+            if chosen_id:
+                candidates = [row for row in variants if row.get("id") == chosen_id]
+            else:
+                # Requiring a target must be valid for all possible skill strengthenings.
+                candidates = [row for row in variants if row.get("num") == skill_index + 1]
+        return bool(candidates) and all(row.get("target") == "ally" for row in candidates)
+
+    actions = data.get("actions", [])
+    if actions is None:  # accepted by the official optional-list deserializer
+        actions = []
+    if not isinstance(actions, list):
+        error("actions", "invalid_actions", "actions 必须是数组")
+        return result()
+    if len(actions) > 5000:
+        error("actions", "too_many_actions", "动作超过 5000 条，请拆分方案")
+        return result()
+    summary["actions"] = len(actions)
+    swap_pointer = 0
+    trailing_skill = False
+    for ai, action in enumerate(actions):
+        path, loc = f"actions[{ai}]", {"actionIndex": ai}
+        if not isinstance(action, dict):
+            error(path, "invalid_action", "动作必须是对象", **loc)
+            continue
+        unknown(action, {"type", "svt", "skill", "attacks", "options"}, path, **loc)
+        kind = action.get("type")
+        options = action.get("options")
+        if options is not None and not isinstance(options, dict):
+            error(path + ".options", "invalid_object", "动作 options 必须是对象或 null", **loc)
+            options = {}
+        options = options or {}
+        for key in ("playerTarget", "enemyTarget"):
+            integer(options, key, path + ".options", 0, 2, **loc)
+        for key in ("random", "threshold"):
+            if options.get(key) is not None and type(options[key]) not in (int, float):
+                error(path + ".options." + key, "invalid_number", f"{key} 必须是数值或 null", **loc)
+        unknown(options, {"playerTarget", "enemyTarget", "random", "threshold"}, path + ".options", **loc)
+        if kind == "skill":
+            trailing_skill = True
+            skill, svt = action.get("skill"), action.get("svt")
+            if type(skill) is not int or not 0 <= skill <= 2:
+                error(path + ".skill", "invalid_skill", "技能索引必须是 0–2", **loc)
+            if svt is not None and (type(svt) is not int or not 0 <= svt <= 2):
+                error(path + ".svt", "invalid_front_slot", "技能执行者必须是当前前排 0–2，御主技能省略 svt", **loc)
+            elif svt is not None:
+                summary["skills"] += 1
+                if not members[svt]:
+                    error(path + ".svt", "empty_actor", "该动作时点的前排槽位为空", **loc)
+                elif requires_target(members[svt], skill) and options.get("playerTarget") is None:
+                    error(path + ".options.playerTarget", "required_ally_target", "该技能的已知元数据要求选择我方目标", **loc)
+            else:
+                summary["masterSkills"] += 1
+                if not mystic_id:
+                    error(path + ".svt", "missing_mystic_code", "御主技能需要明确选择御主礼装", **loc)
+                if requires_target(None, skill, master=True) and options.get("playerTarget") is None:
+                    error(path + ".options.playerTarget", "required_ally_target", "该御主技能的已知元数据要求选择我方目标", **loc)
+                if skill == 2 and type(mystic_id) is int and mystic_id in ORDER_CHANGE_IDS:
+                    if swap_pointer >= len(swaps):
+                        error(path, "missing_swap", "换人服技能 3 缺少对应的换人配置", **loc)
+                    else:
+                        swap = swaps[swap_pointer]
+                        swap_pointer += 1
+                        if swap:
+                            front, back = swap
+                            if not members[front] or not members[back]:
+                                error(path, "empty_swap", "换人双方必须在此动作时点都有从者", **loc)
+                            members[front], members[back] = members[back], members[front]
+                            summary["orderChanges"] += 1
+            target = options.get("playerTarget")
+            if type(target) is int and 0 <= target <= 2 and not members[target]:
+                error(path + ".options.playerTarget", "empty_target", "该动作时点的我方目标槽位为空", **loc)
+        elif kind == "attack":
+            summary["turns"] += 1
+            trailing_skill = False
+            attacks = action.get("attacks")
+            if attacks is None:
+                attacks = []
+            if not isinstance(attacks, list):
+                error(path + ".attacks", "invalid_cards", "attacks 必须是数组或 null", **loc)
+                continue
+            if len(attacks) > 3:
+                error(path + ".attacks", "too_many_cards", "当前执行器每回合最多支持三张出卡意图", **loc)
+            seen_np = set()
+            seen_cards = set()
+            for ci, card in enumerate(attacks):
+                cp = f"{path}.attacks[{ci}]"
+                if not isinstance(card, dict):
+                    error(cp, "invalid_card", "出卡意图必须是对象", **loc)
+                    continue
+                unknown(card, {"svt", "card", "isTD", "critical", "cardType"}, cp, **loc)
+                svt = card.get("svt")
+                boolean(card, "isTD", cp, **loc)
+                boolean(card, "critical", cp, **loc)
+                if type(svt) is not int or not 0 <= svt <= 2:
+                    error(cp + ".svt", "invalid_front_slot", "出卡必须指向当前前排 0–2", **loc)
+                elif not members[svt]:
+                    error(cp + ".svt", "empty_actor", "出卡时的前排槽位为空", **loc)
+                if card.get("isTD") is True:
+                    summary["noblePhantasms"] += 1
+                    if type(svt) is int:
+                        if svt in seen_np:
+                            error(cp, "duplicate_np", "同一回合不能重复指定同一槽位的宝具", **loc)
+                        seen_np.add(svt)
+                    if card.get("card") is not None and (type(card["card"]) is not int or card["card"] != -1):
+                        error(cp + ".card", "invalid_np_card", "标准宝具 card 为 -1", **loc)
+                    elif card.get("card") is None:
+                        warning(cp + ".card", "legacy_np_card", "保留历史缺省宝具索引；新建宝具应写 card: -1", **loc)
+                else:
+                    summary["cards"] += 1
+                    index = card.get("card")
+                    if type(index) is not int or not 0 <= index <= 4:
+                        error(cp + ".card", "invalid_deck_index", "面卡 card 必须是从者五张牌组的索引 0–4，不能用屏幕位置代替", **loc)
+                    elif type(svt) is int and 0 <= svt <= 2:
+                        card_key = (svt, index)
+                        if card_key in seen_cards:
+                            error(cp + ".card", "duplicate_deck_card", "同一攻击组不能重复指定同一从者牌组中的同一张面卡", **loc)
+                        seen_cards.add(card_key)
+                    color = card_color(card.get("cardType"))
+                    if color is None:
+                        error(cp + ".cardType", "unsupported_card_color", "当前执行器只支持 Arts=1、Buster=2、Quick=3 及历史对应字符串", **loc)
+                    if type(svt) is int and 0 <= svt <= 2 and members[svt]:
+                        member_id = members[svt].get("svtId")
+                        meta = by_id.get(member_id, {}) if type(member_id) is int else {}
+                        deck = meta.get("cards")
+                        if isinstance(deck, list) and len(deck) == 5 and type(index) is int and 0 <= index <= 4 and color and card_color(deck[index]) != color:
+                            warning(cp + ".card", "card_deck_mismatch", "记录的面卡颜色与基础牌组不同，可能由技能改色；请核对当回合游戏状态。当前执行器按指定角色和目标颜色选卡", **loc)
+                        elif not isinstance(deck, list) or len(deck) != 5:
+                            warning(cp + ".card", "unknown_deck", "本地缺少该从者完整牌组，保留导入索引但无法核验色卡对应；新建面卡需补齐目录数据", **loc)
+                if card.get("critical"):
+                    warning(cp + ".critical", "critical_simulation_only", "暴击为模拟记录，当前实战无法保证暴击", **loc)
+        else:
+            error(path + ".type", "unsupported_action", f"当前执行器不支持动作 {kind!r}；保留原值，可存草稿或下载保真副本", **loc)
+    if swap_pointer < len(swaps):
+        error("delegate.replaceMemberIndexes", "unused_swap", "存在没有对应换人服技能 3 的换人配置，请检查御主礼装和动作")
+    if trailing_skill:
+        warning("actions", "trailing_skills", "末尾技能没有攻击边界，当前转换器将补一个回合并使用默认出卡")
+        summary["turns"] += 1
+    if not actions:
+        warning("actions", "default_battle", "方案没有固定回合，实战使用当前默认战斗策略")
+    return result()
+
+
+# A short alias is useful to scripts without creating a second validation policy.
+validate = validate_battle

@@ -193,12 +193,14 @@ class ServantSkillAction:
     servant_slot: int             # 1..3
     skill_index: int              # 1..3
     target_ally: Optional[int] = None   # 1..3
+    target_enemy: Optional[int] = None  # 1..3，施放此技能前切换敌方目标
 
 
 @dataclass(frozen=True)
 class MasterSkillAction:
     skill_index: int              # 1..3
     target_ally: Optional[int] = None   # 1..3
+    target_enemy: Optional[int] = None  # 1..3，施放此技能前切换敌方目标
 
 
 @dataclass(frozen=True)

@@ -3,7 +3,7 @@
         "chaldea_team_config": {
             "type": "input",
             "label": "Chaldea 队伍导入",
-            "description": "本地文件：config/Battle 下的缓存文件名。",
+            "description": "本地文件：config/Battle 下的队伍文件名。\n\n[打开编队与战斗编辑器](http://127.0.0.1:18765/)（首次先运行编辑器任务或软件目录的 CMD）",
             "inputs": [
                 {
                     "name": "chaldea_import_source",

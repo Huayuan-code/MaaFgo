@@ -1,0 +1,8 @@
+.card-intent-label {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;min-width:0;width:100%;}
+.card-intent-label .advanced-card-artwork {width:112px;max-width:100%;aspect-ratio:226/246;}
+.card-intent-label small {max-width:100%;overflow-wrap:anywhere;}
+.card-type-picker {grid-template-columns:repeat(4,minmax(0,1fr));align-items:stretch;}
+.card-type-picker:has(.card-artwork) > button {display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-width:0;padding:8px 3px;}
+.card-type-picker .picker-card-artwork {width:112px;max-width:100%;aspect-ratio:226/246;}
+.card-type-picker > button > span:last-child {font-size:12px;white-space:nowrap;}
+@media(max-width:640px){.card-intent-label .advanced-card-artwork {width:96px;}.card-type-picker .picker-card-artwork {width:90px;}.card-type-picker {grid-template-columns:repeat(2,minmax(0,1fr));}}
