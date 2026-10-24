@@ -1,4 +1,5 @@
 """Exercise the portable launcher against real local listeners and processes."""
+from http.client import HTTPConnection
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -16,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "agent"))
 
 from battle_editor.launcher import EditorLaunchError, open_editor, service_status, stop_editor
+from battle_editor.server import create_server
 
 
 class LauncherTest(unittest.TestCase):
@@ -63,6 +65,49 @@ class LauncherTest(unittest.TestCase):
         spawn.assert_not_called()
         self.assertTrue(result.reused)
         self.assertEqual(result.pid, 123)
+
+    def test_same_port_restarts_after_real_http_requests(self):
+        with tempfile.TemporaryDirectory(prefix="MaaFGO 服务重启 ") as temporary:
+            root = Path(temporary)
+            static = root / "web" / "battle-editor"
+            static.mkdir(parents=True)
+            (static / "index.html").write_text("<!doctype html><title>test</title>", encoding="utf-8")
+            port = 0
+            for attempt in range(3):
+                with self.subTest(restart=attempt):
+                    server = create_server(root, port, idle_timeout=60)
+                    port = server.server_port
+                    worker = threading.Thread(target=server.serve_forever,
+                                              kwargs={"poll_interval": 0.01}, daemon=True)
+                    worker.start()
+                    connection = HTTPConnection("127.0.0.1", port, timeout=3)
+                    try:
+                        connection.request("GET", "/health")
+                        response = connection.getresponse()
+                        self.assertEqual(response.status, 200)
+                        health = json.loads(response.read())
+                        self.assertEqual(health["service"], "maafgo-battle-editor")
+                        self.assertEqual(health["projectRoot"], str(root.resolve()))
+                    finally:
+                        connection.close()
+                        server.shutdown()
+                        worker.join(timeout=3)
+                        server.server_close()
+                    self.assertFalse(worker.is_alive())
+
+    def test_active_listener_still_rejects_second_server(self):
+        with tempfile.TemporaryDirectory(prefix="MaaFGO 端口占用 ") as temporary:
+            root = Path(temporary)
+            static = root / "web" / "battle-editor"
+            static.mkdir(parents=True)
+            (static / "index.html").write_text("<!doctype html><title>test</title>", encoding="utf-8")
+            server = create_server(root, 0)
+            try:
+                with self.assertRaises(OSError):
+                    with create_server(root, server.server_port):
+                        pass
+            finally:
+                server.server_close()
 
     def test_portable_unicode_install_and_both_lifecycles(self):
         with tempfile.TemporaryDirectory(prefix="MaaFGO 编队测试 ") as temporary:

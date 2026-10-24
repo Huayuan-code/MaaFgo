@@ -522,3 +522,13 @@ MXU打包新增`validate_editor_bundle`，在复制前及发行布局完成后�
 Android用独立工程副本执行真实prepare，并按profile/Gradle结构装配最终PI ZIP：13392项、展开303785273字节，ZIP283002857字节。编辑器模块、数据/大图、Web/CMD、入口任务/选项/Pipeline及回环URL泄漏均为0，原生自动编队、羁绊与战斗运行时保留，版本v1.2.28不变。未覆盖仓库Android/assets，也未重新编译APK；证据在`.workbuddy/editor-evidence/package-android-audit-20261024/audit.json`。
 
 全仓run_tests all执行751项，746通过、5因平台条件跳过；TypeScript、生产构建与149项前端测试通过，资源/任务Schema及已跟踪import检查通过。再从准确暂存index导出干净目录，所需元数据/媒体预检及189项相关回归执行185通过、4项Windows权限跳过，证明不依赖漏提交文件或开发config；真实MaaFramework配本地Dummy Controller的启动/复用/保持/停止集成通过，不向模拟器发送输入。原有63份正式方案和本轮前记录的所有草稿哈希保持。总体证据在`.workbuddy/editor-evidence/editor-release-20261024/`。
+
+## Linux CI同端口生命周期失败：修复方案（2026-10-24）
+
+用户反馈11534d08的GitHub check在Linux单元测试失败，唯一失败为中文目录双生命周期测试：独立服务启动/复用/停止后，立即用原端口启动绑定宿主的服务提前退出1；资源与前端job均成功。截图末尾import错误来自故意输入非法导入的负向用例，不能据此删除校验或跳过失败测试。
+
+结合失败位置和源码，重点检查EditorHTTPServer对所有平台强制allow_reuse_address=False：POSIX在已有HTTP连接关闭后可能保留TIME_WAIT，导致新服务无法立即bind；Windows本机不复现并不证明Linux正常。拟只在POSIX开启SO_REUSEADDR，Windows保持既有False，不开启SO_REUSEPORT，不降低安装根目录/会话/PID与创建时间校验，不调整宿主存活监视。补真实HTTP请求后同端口连续启动/停止及活动listener拒绝二次绑定的回归，保留原中文路径双生命周期测试；本机Windows验证后提交推送，用实际Linux CI确认结果。文档先行，不改其他线程正在维护的安卓分发配置或通用指令卡测试。
+
+已实施最小修复：`EditorHTTPServer.allow_reuse_address = os.name != "nt"`，不启用SO_REUSEPORT，也不修改Windows行为或宿主身份监测。新增2项真实套接字回归：同一端口三次HTTP请求后立即停止并重建；活动listener存在时第二个服务仍无法绑定。原中文目录独立/宿主双生命周期测试完整保留。Windows本机launcher/backend/entry合计65项执行64通过、1项符号链接权限跳过，新增两项复跑通过；Git空白检查通过。将修复独立提交并推送，由原Linux check执行同一测试确认；本机没有可用Linux/WSL环境，不以Windows结果冒充Linux验收。
+
+原失败run为`https://github.com/dingi8528/MaaFgo_NEW/actions/runs/40081981719`，完整unit日志已读取并保存在`.workbuddy/editor-evidence/launcher-ci-20261024/failed-unit.log`：psutil安装正常，失败位于停止后同端口的第二次启动，不是前端/资源job或依赖缺失。其他日志和运行元数据在同目录，未修改已运行服务、已有打包版或个人方案。

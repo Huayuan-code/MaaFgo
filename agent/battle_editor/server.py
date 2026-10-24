@@ -27,7 +27,9 @@ class EditorHTTPServer(ThreadingHTTPServer):
     # Closing the service waits for already accepted saves; their atomic writes finish.
     daemon_threads = False
     block_on_close = True
-    allow_reuse_address = False
+    # POSIX needs SO_REUSEADDR to restart while closed HTTP sockets are in
+    # TIME_WAIT. Keep Windows' existing bind behavior; never enable SO_REUSEPORT.
+    allow_reuse_address = os.name != "nt"
 
     def __init__(self, root: str | Path, port: int = DEFAULT_PORT, *, owner_pid: int | None = None, owner_created: float | None = None, idle_timeout: float = 3600):
         if owner_pid is not None and owner_created is None:
