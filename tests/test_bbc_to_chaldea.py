@@ -113,6 +113,7 @@ class BbcToChaldeaTest(unittest.TestCase):
         calls = []
         runtime._execute_skill_cast = lambda label, *_args, **_kwargs: calls.append(label) or True
         runtime._wait_until = lambda *_args: True
+        runtime._wait_order_change_settled = lambda: True
         runtime._mark_action = lambda label: calls.append(label)
         runtime.executor = SimpleNamespace(order_change=lambda *_args: True)
         turn = plan.turns[0]

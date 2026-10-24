@@ -1,6 +1,7 @@
 *
 !.gitignore
 !test_*.py
+!run_maa_battle_editor_integration.py
 !formation_test_support.py
 !requirements.txt
 !unit/

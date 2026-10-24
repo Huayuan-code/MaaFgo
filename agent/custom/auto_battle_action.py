@@ -18,6 +18,7 @@ if _AGENT_DIR not in sys.path:
 from maa.agent.agent_server import AgentServer
 from maa.context import Context
 from maa.custom_action import CustomAction
+from maa.custom_recognition import CustomRecognition
 from maa.event_sink import NotificationType
 from maa.tasker import TaskerEventSink
 
@@ -78,6 +79,11 @@ class AutoBattleAction(CustomAction):
                 mfaalog.error(f"[auto_battle] 初始编队会话无效: {exc}")
                 return CustomAction.RunResult(success=False)
         param = _load_action_param(argv.custom_action_param)
+        if token and sessions.support_fallback(root, token):
+            # 锁助战可能连带改变整队配置，不能读取旧攻略或旧编队身份。
+            param = {}
+            initial_formation = None
+            mfaalog.info("[auto_battle] 助战查找兜底：使用无配置的原生自动战斗")
         profile = _parse_strategy_profile(param)
         battle_policy = _parse_battle_policy(param)
         plan = _parse_plan(param)
@@ -120,6 +126,15 @@ class AutoBattleAction(CustomAction):
 
         # TODO(save_evidence)：失败时保存截图/状态证据
         return CustomAction.RunResult(success=result.ok)
+
+
+@AgentServer.custom_recognition("support_fallback_active")
+class SupportFallbackActive(CustomRecognition):
+    def analyze(self, context: Context, argv: CustomRecognition.AnalyzeArg):
+        root, token = context_session(context)
+        if token and sessions.valid(root, token) and sessions.support_fallback(root, token):
+            return CustomRecognition.AnalyzeResult(box=(0, 0, 1, 1), detail="support_fallback")
+        return None
 
 
 def _plan_from_chaldea_share(param: dict) -> BattlePlan | None:

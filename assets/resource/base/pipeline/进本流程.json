@@ -265,8 +265,32 @@
             }
         },
         "next": [
+            "进本-助战兜底跳过编队",
             "进本-编队处理"
         ],
+        "on_error": []
+    },
+    "进本-助战兜底跳过编队": {
+        "doc": "仅当前助战查找兜底时命中，跳过 Chaldea 手动检查、自动编队及身份采集，直接开始。2026-10-23日服MaaMCP实测：兜底后即使配置了无法读取的Chaldea来源，也可经此节点进入进本-实际点击队伍确认；不能改回进本-点击队伍确认，否则会重新采集编队。",
+        "recognition": {
+            "type": "Custom",
+            "param": {
+                "custom_recognition": "support_fallback_active"
+            }
+        },
+        "next": ["进本-实际点击队伍确认"],
+        "on_error": []
+    },
+    "助战兜底-选择首个助战": {
+        "doc": "兜底专用子任务入口，复用 support_action 的 ALL 筛选坐标并撤销职介限制；固定操作留在 pipeline。2026-10-23日服MaaMCP实测：12次滑动/轮、累计10次真实刷新后可从列表底部选择首个助战并进入编队。调用时清空进本-选择助战的 next，由外层继续编队或战斗。",
+        "action": {
+            "type": "Click",
+            "param": {"target": [91, 130, 1, 1]}
+        },
+        "repeat": 3,
+        "repeat_delay": 500,
+        "post_delay": 500,
+        "next": ["进本-选择助战"],
         "on_error": []
     },
     "进本-编队处理": {

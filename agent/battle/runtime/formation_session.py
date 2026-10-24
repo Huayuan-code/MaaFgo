@@ -29,6 +29,7 @@ class _Session:
     collecting: bool = False
     frames: list[tuple[FormationSlot, ...]] = field(default_factory=list)
     error: str = ""
+    support_fallback: bool = False
 
 
 class FormationSessions:
@@ -93,6 +94,18 @@ class FormationSessions:
         with self._lock:
             session = self._get(task_id, token)
             self._invalidate(session, "")
+
+    def set_support_fallback(self, task_id: int, token: str, active: bool) -> None:
+        """兜底状态随当前助战保留；重新选到目标助战或结束会话后恢复。"""
+        with self._lock:
+            session = self._get(task_id, token)
+            if session.support_fallback != active:
+                self._invalidate(session, "")
+            session.support_fallback = active
+
+    def support_fallback(self, task_id: int, token: str) -> bool:
+        with self._lock:
+            return self._get(task_id, token).support_fallback
 
     def begin_capture(self, task_id: int, token: str) -> int:
         with self._lock:
