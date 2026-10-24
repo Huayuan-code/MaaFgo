@@ -61,20 +61,87 @@ class SupportFallbackTests(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
 
-    def search(self, context, match=None):
+    def search(self, context, match=None, *, chaldea=False):
         action = SupportAction()
         detector = NS(detect=lambda img: [(0, 0, 100, 100, .99)])
         mocks = {
-            "_get_servant_map": {"test": {"images": ["test.png"]}},
+            "_get_servant_map": (SupportAction._get_servant_map() if chaldea else
+                                 {"test": {"images": ["test.png"]}}),
             "_get_detector": detector, "_init_scale": None, "_tap": None,
             "_swipe": None, "_shot_base": object(), "_ref_shift": (0, 0),
             "_match_ce": True, "_check_active_view": True, "_is_connecting": False,
+            "_match_bond": True, "_match_passive": True,
         }
         for name, result in mocks.items():
             setattr(action, name, Mock(return_value=result))
         action._match_servant = Mock(side_effect=match or (lambda *args: False))
-        result = action.run(context, NS(node_name="助战action", custom_action_param="{}"))
+        result = action.run(context, NS(
+            node_name="Chaldea助战action" if chaldea else "助战action",
+            custom_action_param='{"source_mode":"chaldea"}' if chaldea else "{}"))
         return result, action
+
+    def chaldea_context(self, enabled=True):
+        ctx = Context(enabled=enabled)
+        ctx.attach.update(chaldea_enabled=True, chaldea_import_source="test-share")
+        return ctx
+
+    def chaldea_share(self, grand=False):
+        filename = "太女尼_78119_94149837.json" if grand else "雨暗阿_21086_94061640.json"
+        return json.loads((ROOT / "tests/fixtures/chaldea" / filename).read_text("utf-8"))
+
+    def test_chaldea_normal_and_grand_ten_refreshes_then_fallback(self):
+        for grand in (False, True):
+            with self.subTest(grand=grand):
+                ctx = self.chaldea_context()
+                # 此处验证查找兜底而非模板预检，模板缺失另有反例测试。
+                with patch("support_action.fetch_share_data", return_value=(self.chaldea_share(grand), None, None)) as fetch, \
+                     patch("support_action.os.path.isfile", return_value=True):
+                    result, action = self.search(ctx, chaldea=True)
+                fetch.assert_called_once_with("test-share")
+                self.assertTrue(result.success)
+                self.assertEqual(ctx.refreshes, 10)
+                self.assertEqual(action._match_servant.call_count, 33)
+                self.assertEqual(ctx.entries[-1], "助战兜底-选择首个助战")
+                self.assertTrue(sessions.support_fallback(ctx.root, ctx.token))
+
+    def test_chaldea_match_on_last_refreshed_list_keeps_normal_flow(self):
+        ctx = self.chaldea_context()
+        sessions.set_support_fallback(ctx.root, ctx.token, True)
+        with patch("support_action.fetch_share_data", return_value=(self.chaldea_share(), None, None)):
+            result, _ = self.search(ctx, lambda *args: ctx.refreshes == 10, chaldea=True)
+        self.assertTrue(result.success)
+        self.assertEqual(ctx.refreshes, 10)
+        self.assertNotIn("助战兜底-选择首个助战", ctx.entries)
+        self.assertFalse(sessions.support_fallback(ctx.root, ctx.token))
+
+    def test_chaldea_default_disabled_does_not_fallback(self):
+        ctx = self.chaldea_context(enabled=False)
+        def match(*args):
+            if ctx.refreshes > 10:
+                ctx.tasker.stopping = True
+            return False
+        with patch("support_action.fetch_share_data", return_value=(self.chaldea_share(), None, None)):
+            result, _ = self.search(ctx, match, chaldea=True)
+        self.assertFalse(result.success)
+        self.assertEqual(ctx.refreshes, 11)
+        self.assertNotIn("助战兜底-选择首个助战", ctx.entries)
+
+    def test_chaldea_config_errors_do_not_fallback(self):
+        for error in ("disabled", "blank_source", "invalid_share", "missing_template"):
+            with self.subTest(error=error):
+                ctx = self.chaldea_context()
+                if error == "disabled":
+                    ctx.attach["chaldea_enabled"] = False
+                if error == "blank_source":
+                    ctx.attach["chaldea_import_source"] = ""
+                share = None if error == "invalid_share" else self.chaldea_share(grand=True)
+                with patch("support_action.fetch_share_data", return_value=(share, None, None)), \
+                     patch("support_action.os.path.isfile", return_value=False):
+                    result, action = self.search(ctx, chaldea=True)
+                self.assertFalse(result.success)
+                self.assertEqual(ctx.entries, [])
+                self.assertFalse(sessions.support_fallback(ctx.root, ctx.token))
+                action._get_detector.assert_not_called()
 
     def test_ten_refreshes_then_fallback_and_clear_stale_formation(self):
         ctx = Context()
@@ -154,12 +221,19 @@ class SupportFallbackTests(unittest.TestCase):
         fresh = sessions.begin(ctx.root)
         self.assertFalse(sessions.support_fallback(ctx.root, fresh))
 
-    def test_switch_is_default_off_and_available_in_custom_support(self):
+    def test_switch_is_default_off_and_available_in_both_support_modes(self):
         options = json.loads((ROOT / "assets/options/原生自动战斗助战方式.json").read_text("utf-8"))["option"]
         switch = options["多次查找失败随机选择助战"]
         self.assertEqual(switch["default_case"], "No")
-        custom = options["原生自动战斗助战方式"]["cases"][0]
-        self.assertIn("多次查找失败随机选择助战", custom["option"])
+        cases = {case["name"]: case for case in options["原生自动战斗助战方式"]["cases"]}
+        for name in ("自定义助战", "使用Chaldea配置"):
+            self.assertIn("多次查找失败随机选择助战", cases[name]["option"])
+        self.assertNotIn("多次查找失败随机选择助战", cases["首个助战"].get("option", []))
+        for case in switch["cases"]:
+            for node in ("助战action", "Chaldea助战action"):
+                self.assertEqual(case["pipeline_override"][node]["attach"]["fallback_after_refresh"],
+                                 case["name"] == "Yes")
+        self.assertIn("羁绊最大化", switch["description"])
 
 
 if __name__ == "__main__":
