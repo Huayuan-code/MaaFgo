@@ -26,6 +26,7 @@ import {usePartyPointerDrag} from './usePartyPointerDrag';
 import {useEquipPointerDrag} from './useEquipPointerDrag';
 import {SERVANT_SORT_OPTIONS,defaultServantSelectorPreferences,loadServantSelectorPreferences,saveServantSelectorPreferences,sortServants} from './servantSelectorPreferences';
 import type {ServantSortKey,SortDirection} from './servantSelectorPreferences';
+import {defaultEquipSelectorPreferences,loadEquipSelectorPreferences,saveEquipSelectorPreferences} from './equipSelectorPreferences';
 import {swapEquipRequirements} from './equipDrag';
 import type {EquipDragPosition} from './equipDrag';
 import {newServantDefaults,fillMissingTaskSkillDefaults} from './model';
@@ -36,6 +37,10 @@ const time=(date:any)=>date?new Date(typeof date==='number'&&date<1e12?date*1000
 const uid=()=>crypto.randomUUID?.()??`${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 function Avatar({item,size='normal'}:{item?:{image?:string|null;name?:string;id?:number};size?:string}){const [failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[item?.image]);return <div className={`avatar ${size}`} aria-label={item?.name}>{item?.image&&!failed?<img src={item.image} alt={item.name??''} loading="lazy" onError={()=>setFailed(true)}/>:<span>{item?.name?.slice(0,1)||'◇'}</span>}</div>;}
+function CatalogRarity({rarity}:{rarity?:number}) {
+ const known=typeof rarity==='number'&&Number.isInteger(rarity)&&rarity>=0&&rarity<=5,label=known?`${rarity}星`:'星级未知';
+ return <span className={`catalog-rarity ${known?'':'unknown'}`} role="img" aria-label={label} title={label}>{known?(rarity===0?'☆':'★'.repeat(rarity)):'—'}</span>;
+}
 function CatalogClassIcon({servant,catalog}:{servant:Servant;catalog:Catalog}) {
  const src=servant.classIcon||catalog.uiAssets?.classes?.[servant.classKey??''];
  const [failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[src]);
@@ -158,17 +163,20 @@ export default function App(){
 
 function Selector({type,catalog,onSelect,onClose}:{type:'servant'|'equip'|'mystic';catalog:Catalog;onSelect:(item:Servant|Equip|Mystic)=>void;onClose:()=>void}){
  const [remembered]=useState(()=>type==='servant'?loadServantSelectorPreferences(catalog.servants.length?catalog.servants.flatMap(s=>s.classKey?[s.classKey]:[]):undefined):defaultServantSelectorPreferences());
- const [query,setQuery]=useState(''),[classKey,setClassKey]=useState(remembered.classKey),[rarity,setRarity]=useState(remembered.rarity),[owned,setOwned]=useState(false),[common,setCommon]=useState(type==='equip'),[page,setPage]=useState(0);
+ const [equipRemembered]=useState(()=>type==='equip'?loadEquipSelectorPreferences():defaultEquipSelectorPreferences());
+ const [query,setQuery]=useState(''),[classKey,setClassKey]=useState(remembered.classKey),[rarity,setRarity]=useState(type==='equip'?equipRemembered.rarity:remembered.rarity),[owned,setOwned]=useState(type==='equip'?equipRemembered.owned:false),[common,setCommon]=useState(type==='equip'?equipRemembered.common:false),[page,setPage]=useState(0);
  const [sortKey,setSortKey]=useState<ServantSortKey>(remembered.sortKey),[direction,setDirection]=useState<SortDirection>(remembered.direction);
  const [advanced,setAdvanced]=useState(newServantAdvancedFilters);
  const ownIds=type==='equip'?catalog.inventory?.equips:catalog.inventory?.servants;
  const inventoryStatus=type==='equip'?catalog.inventory?.equipsStatus:catalog.inventory?.servantsStatus;
  const hasInventory=Array.isArray(ownIds)&&(ownIds.length>0||(inventoryStatus?.available===true&&inventoryStatus?.scanComplete===true));
+ const ownedActive=owned&&hasInventory;
  const inventorySummary=[inventoryStatus?.available!==true?'库存未扫描':inventoryStatus.scanComplete!==true?'库存部分扫描':'库存完整扫描',inventoryStatus?.generatedAt?`扫描时间 ${time(inventoryStatus.generatedAt)}`:null,inventoryStatus?.scanComplete!==true?'仅显示已记录项目，未出现不代表未持有':null,type==='equip'?'礼装满破状态未知':null].filter(Boolean).join(' · ');
- const matches=filterCatalog(type,catalog,{query,classKey,rarity,owned,common,advanced});
+ const matches=filterCatalog(type,catalog,{query,classKey,rarity,owned:ownedActive,common,advanced});
  const filtered=type==='servant'?sortServants(matches as Servant[],sortKey,direction):matches;
- useEffect(()=>setPage(0),[query,classKey,rarity,owned,common,advanced,sortKey,direction]);
+ useEffect(()=>setPage(0),[query,classKey,rarity,owned,ownedActive,common,advanced,sortKey,direction]);
  useEffect(()=>{if(type==='servant')saveServantSelectorPreferences({version:1,classKey,rarity,sortKey,direction});},[type,classKey,rarity,sortKey,direction]);
+ useEffect(()=>{if(type==='equip')saveEquipSelectorPreferences({version:1,rarity,common,owned});},[type,rarity,common,owned]);
  useEffect(()=>{if(type==='servant'&&catalog.servants.length&&classKey&&!catalog.servants.some(s=>s.classKey===classKey))setClassKey('');},[type,catalog.servants,classKey]);
  const pageSize=60,shown=filtered.slice(page*pageSize,(page+1)*pageSize);
  const order=['saber','archer','lancer','rider','caster','assassin','berserker','shielder','ruler','avenger','moonCancer','alterEgo','foreigner','pretender','beast','unBeast','grandCaster'];
@@ -177,7 +185,7 @@ function Selector({type,catalog,onSelect,onClose}:{type:'servant'|'equip'|'mysti
  return <Modal wide title={type==='servant'?'选择从者':type==='equip'?'选择概念礼装':'选择御主礼装'} onClose={onClose}><div className="selector-body">
   <div className="selector-filters"><label className="search-field"><Search size={18}/><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} placeholder="中文 / 日文 / 别名 / ID / 图鉴编号" aria-label="搜索图鉴"/></label>
    {type==='equip'&&<label className="check-field common-filter"><input type="checkbox" checked={common} onChange={e=>setCommon(e.target.checked)}/>常用礼装</label>}
-   {type!=='mystic'&&<label className="check-field" title={!hasInventory?'未扫描或没有可靠库存数据':undefined}><input type="checkbox" checked={owned} disabled={!hasInventory} onChange={e=>setOwned(e.target.checked)}/>仅持有</label>}
+   {type!=='mystic'&&<label className="check-field" title={!hasInventory?'未扫描或没有可靠库存数据':undefined}><input type="checkbox" checked={ownedActive} disabled={!hasInventory} onChange={e=>setOwned(e.target.checked)}/>仅持有</label>}
   </div>
   {type!=='mystic'&&<div className="catalog-direct-filters">
    {type==='servant'&&<div className="class-filters" role="group" aria-label="职阶筛选"><button className={!classKey?'selected':''} onClick={()=>setClassKey('')} aria-pressed={!classKey}><span>全部<br/>职阶</span></button>{classNames.map(key=>{const item=catalog.servants.find(s=>s.classKey===key),icon=catalog.uiAssets?.classes?.[key]||item?.classIcon;return <button key={key} className={classKey===key?'selected':''} onClick={()=>setClassKey(classKey===key?'':key)} aria-pressed={classKey===key} aria-label={`职阶：${item?.className??key}`} title={item?.className??key}>{icon?<img src={icon} alt="" draggable={false}/>:<Shield size={25}/>}<span>{item?.className??key}</span></button>;})}</div>}
@@ -192,9 +200,12 @@ function Selector({type,catalog,onSelect,onClose}:{type:'servant'|'equip'|'mysti
   {type==='servant'&&<AdvancedServantFilters value={advanced} onChange={setAdvanced}/>}
   <div className="selector-description"><span>共 {filtered.length} 项 · {type==='equip'&&common?'常用礼装 · ':''}{type==='equip'?'工程可识别礼装':'离线图鉴'}{type==='equip'&&common&&<small>来自本地 lizhuang 文件夹</small>}</span>{type!=="mystic"&&<span>{inventorySummary}</span>}</div>
   <div className={`catalog-grid ${type==='servant'?'servant-catalog':''} ${type==='mystic'?'mystic-grid':''} ${type==='equip'?'equip-catalog':''}`}>{shown.map(item=>{const advancedMatch=type==='servant'?matchServantAdvanced(item as Servant,advanced):null;const npSummary=type==='servant'?npFilterSummary(item as Servant):'';return <button className="catalog-card" key={item.id} onClick={()=>onSelect(item)}>
-   {type==='equip'?<div className="equip-catalog-preview" style={{aspectRatio:(item as Equip).imageWidth&&(item as Equip).imageHeight?`${(item as Equip).imageWidth}/${(item as Equip).imageHeight}`:'150/68'}}><Avatar item={item} size="equip-catalog-image"/></div>:<Avatar item={item} size="catalog"/>}
+   {type==='mystic'?<Avatar item={item} size="catalog"/>:<div className={`catalog-visual ${type==='equip'?'equip-catalog-visual':''}`}>
+    {type==='equip'?<div className="equip-catalog-preview" style={{aspectRatio:(item as Equip).imageWidth&&(item as Equip).imageHeight?`${(item as Equip).imageWidth}/${(item as Equip).imageHeight}`:'150/68'}}><Avatar item={item} size="equip-catalog-image"/></div>:<Avatar item={item} size="catalog"/>}
+    <CatalogRarity rarity={(item as Servant|Equip).rarity}/>
+   </div>}
    <div><strong title={item.name}>{item.name}</strong>
-    <small className={type==='servant'?'catalog-servant-class':undefined}>{type==='servant'&&<CatalogClassIcon servant={item as Servant} catalog={catalog}/>}<span>{(item as Servant).className??(type==='equip'?((item as Equip).common?'常用礼装':'概念礼装'):'御主礼装')} {'★'.repeat((item as Servant).rarity??0)}</span></small>
+    <small className={type==='servant'?'catalog-servant-class':undefined}>{type==='servant'&&<CatalogClassIcon servant={item as Servant} catalog={catalog}/>}<span>{(item as Servant).className??(type==='equip'?((item as Equip).common?'常用礼装':'概念礼装'):'御主礼装')}</span></small>
     {npSummary&&<small className="np-filter-summary" title={npSummary}>{npSummary}</small>}{advancedMatch?.conditionalOnly&&<em className="conditional-form-match" title={advancedMatch.matchedForms.join(' · ')}>部分灵基 / 灵衣</em>}<code>{(item as Servant).collectionNo?`No.${(item as Servant).collectionNo} · `:''}{item.id}</code>
    </div>{type==='mystic'&&(item as Mystic).orderChange&&<Chip>换人</Chip>}
   </button>;})}</div>
