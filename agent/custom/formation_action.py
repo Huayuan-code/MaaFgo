@@ -39,6 +39,7 @@ from platform_waits import platform_timeout
 from chaldea.servant_aliases import build_servant_lookup, canonical_servants, servant_aliases
 import mfaalog
 from battle.core.models import Confidence, FormationSlot
+from battle.perception.formation_candidates import FormationCandidateIndex
 from battle.runtime.formation_session import context_session, sessions
 
 
@@ -2323,9 +2324,10 @@ class ValidateFormationFromChaldea(AutoFormationFromChaldea):
 # ---------- 原生战斗：只读取最终编队，不调用上方任何编成/点击方法 ----------
 
 # 单帧采集：确认页为静态界面，无转场残留/动画帧风险。
-# 已验证标定时优先职阶限定快速匹配（秒级）；职阶不可靠或匹配不被
-# 接受时由 read_frame 自动回退全库（约 28s），不再无条件全库复核。
+# 单帧优先固定槽位批量粗筛，再以原模板精查。粗筛不可用时保留原匹配，
+# 显式 full_audit 仍可全库复核；不再因单个职阶候选不足无条件遍历全库。
 IDENTITY_FRAME_NODES = ("编队身份-第1帧",)
+IDENTITY_COARSE_MIN_IDENTITIES = 64
 
 
 @dataclass(frozen=True)
@@ -2484,7 +2486,7 @@ class FormationIdentityReader(AutoFormationFromChaldea):
     """复用编队的 ROI、空位/助战、模板匹配；每次读取只接收显式图像。
 
     不调用 _shot/_prepare_target_templates/run，因而不会使用缓存截图、
-    下载 Chaldea 数据、移动或更换成员。实例仅存活于单次采集回调。
+    下载 Chaldea 数据、移动或更换成员。实例可复用静态模板，但不保存截图。
     """
 
     _instance_cache = {}
@@ -2511,6 +2513,8 @@ class FormationIdentityReader(AutoFormationFromChaldea):
             *_identity_manifest(self.image_roots, self.calibration.template_family,
                                 catalog_path or os.path.join(_CUSTOM_DIR, "servant_list.json"))
         )
+        self._candidate_index = None
+        self._frame_match_cache = None
         self.identity_templates = {}
         if self.calibration.identity_crop:
             left, top, right, bottom = self.calibration.identity_crop
@@ -2542,8 +2546,15 @@ class FormationIdentityReader(AutoFormationFromChaldea):
     def _rank(self, image, roi, identities, *, cropped=False):
         scores = []
         templates = self.identity_templates if cropped else self.templates
+        cache = self._frame_match_cache
         for sid in identities:
-            match = self._match_servant(image, templates[sid], roi)
+            key = (tuple(roi), cropped, sid)
+            if cache is not None and key in cache:
+                match = cache[key]
+            else:
+                match = self._match_servant(image, templates[sid], roi)
+                if cache is not None:
+                    cache[key] = match
             if match is not None and np.isfinite(match[0]):
                 scores.append((match[0], sid, match[2]))
         return sorted(scores, key=lambda x: (-x[0], x[1]))
@@ -2572,6 +2583,28 @@ class FormationIdentityReader(AutoFormationFromChaldea):
         return None, Confidence(0.0, "class_uncertain")
 
     def read_frame(self, image, *, full_audit=False, diagnostics=False):
+        # 继承的 ROI 裁剪缓存只能在当前图像内使用。不能用 id(image) 在跨帧
+        # 缓存中判定图像相同：Python 会复用 id，且旧裁片会持续占用内存。
+        self._roi_crop_cache = {}
+        self._frame_match_cache = {}
+        self.last_match_stats = {"coarse_ms": 0.0, "slots": []}
+        started = time.perf_counter()
+        try:
+            return self._read_frame(image, full_audit=full_audit, diagnostics=diagnostics)
+        finally:
+            self._roi_crop_cache.clear()
+            self._frame_match_cache = None
+            self.last_match_stats["total_ms"] = (time.perf_counter() - started) * 1000
+            summary = ", ".join(
+                f"{row['slot']}:{row['scope']}/{row['candidates']}候选/{row['ms']:.0f}ms"
+                for row in self.last_match_stats["slots"]
+            )
+            mfaalog.info(
+                f"[初始编队] 身份识别耗时={self.last_match_stats['total_ms']:.0f}ms "
+                f"粗筛={self.last_match_stats['coarse_ms']:.0f}ms 槽位=[{summary}]"
+            )
+
+    def _read_frame(self, image, *, full_audit=False, diagnostics=False):
         image = _norm_img(image)
         if image is None:
             raise ValueError("screenshot_unavailable")
@@ -2585,23 +2618,50 @@ class FormationIdentityReader(AutoFormationFromChaldea):
             raise ValueError("not_on_formation_confirmation")
         slots = []
         c = self.calibration
+        pools = None
+        if (not full_audit and (c.verified or diagnostics)
+                and len(self.templates) >= IDENTITY_COARSE_MIN_IDENTITIES):
+            coarse_started = time.perf_counter()
+            try:
+                if self._candidate_index is None:
+                    self._candidate_index = FormationCandidateIndex(self.templates, c.identity_crop)
+                base = image if (width, height) == (BASE_W, BASE_H) else cv2.resize(
+                    image, (BASE_W, BASE_H), interpolation=cv2.INTER_AREA)
+                pools = self._candidate_index.shortlists(base, SLOT_ROIS)
+            except (ValueError, cv2.error) as exc:
+                mfaalog.warning(f"[初始编队] 粗筛失败，回退原图匹配: {exc}")
+            self.last_match_stats["coarse_ms"] = (time.perf_counter() - coarse_started) * 1000
         for index, roi in enumerate(SLOT_ROIS):
+            slot_started = time.perf_counter()
             if self._is_empty_slot(image, roi):
                 slots.append(FormationSlot(index + 1, "empty", is_support=False,
                                            reason="existing_empty_slot_heuristic"))
+                self.last_match_stats["slots"].append({
+                    "slot": index + 1, "scope": "empty", "candidates": 0,
+                    "ms": (time.perf_counter() - slot_started) * 1000,
+                })
                 continue
             support = self._match_template(image, self.support_marker, roi)
             is_support = None if support is None else support[0] >= SUPPORT_THRESHOLD
             class_id, class_conf = self._class(image, roi)
             ranked, scope = [], "not_calibrated"
-            if c.verified or diagnostics:
+            pool = pools[index] if pools is not None else None
+            if pool is not None and not pool.fallback:
+                # 全库粗筛，不以职阶限制候选；仍以原图阈值和不同 ID 分差发布。
+                ranked = self._rank(image, roi, pool.ids)
+                scope = "coarse"
+                if not self._accepted(ranked) and c.identity_crop:
+                    local = self._rank(image, roi, pool.ids, cropped=True)
+                    if self._accepted(local):
+                        ranked, scope = local, "coarse_crop"
+                # 已精查仍低分/歧义就保持 unknown；不能强行接受粗筛第一名。
+            elif c.verified or diagnostics:
                 class_names = dict(c.class_groups).get(class_id, (class_id,))
                 candidates = tuple(sid for name in class_names for sid in self.by_class.get(name, ()))
                 if class_id and candidates and not full_audit:
                     ranked = self._rank(image, roi, candidates)
                     scope = "class"
-                # 最后一帧始终全库复核，避免高置信度职阶误判排除真正身份。
-                # 其余帧只要职阶或该职阶身份不可靠，也立即回退全库。
+                # 显式全库审计不按职阶剪枝；小库/粗筛回退路径仍保留原规则。
                 if full_audit or not self._accepted(ranked):
                     ranked = self._rank(image, roi, self.templates)
                     scope = "all_audit" if full_audit else "all_fallback"
@@ -2615,6 +2675,11 @@ class FormationIdentityReader(AutoFormationFromChaldea):
                         local = self._rank(image, roi, self.templates, cropped=True)
                         if self._accepted(local):
                             ranked, scope = local, "all_crop"
+            self.last_match_stats["slots"].append({
+                "slot": index + 1, "scope": scope,
+                "candidates": len(pool.ids) if pool is not None and not pool.fallback else len(self.templates),
+                "ms": (time.perf_counter() - slot_started) * 1000,
+            })
             identified = self._accepted(ranked)
             best = ranked[0] if ranked else (0.0, None, "")
             margin = best[0] - ranked[1][0] if len(ranked) > 1 else 0.0
@@ -2716,7 +2781,7 @@ class CaptureInitialFormation(CustomAction):
                     "custom_recognition_param": {
                         "session_id": token, "revision": revision,
                         # 仅多帧模式下对末帧强制全库复核；单帧依赖
-                        # read_frame 内部的职阶限定 + 不可靠时回退全库。
+                        # read_frame 内部的固定槽位粗筛 + 原图精查及保守回退。
                         "calibration": config,
                         "full_audit": len(IDENTITY_FRAME_NODES) > 1
                         and i == len(IDENTITY_FRAME_NODES) - 1,
