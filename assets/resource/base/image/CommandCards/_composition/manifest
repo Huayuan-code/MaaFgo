@@ -5948,6 +5948,23 @@
       "source": "https://static.atlasacademy.io/JP/Servants/Commands/405900/card_servant_np.png",
       "source_sha256": "a1fc08a647730355e418b5f3f241aff1cf4b9c2c68fc6390a9c9be1a6f18f7b4"
     },
+    "406000": {
+      "alpha_mask_changed_pixels": 0,
+      "file": "np/406000/card_servant_np.png",
+      "fully_transparent_changed_pixels": 0,
+      "mode": "P",
+      "name_rows": [
+        0
+      ],
+      "quantization_profile": "libimagequant-256-alpha-classes-v1",
+      "sha256": "598ed8c4e528f7fac22a3dca5aaa356584bb3b92ac07a6d35486c9637ad54133",
+      "size": [
+        256,
+        256
+      ],
+      "source": "https://static.atlasacademy.io/JP/Servants/Commands/406000/card_servant_np.png",
+      "source_sha256": "68aa87100f4025e732d28d10a232021f9e0e10b3b498172f99f1394914ce6f19"
+    },
     "500100": {
       "alpha_mask_changed_pixels": 0,
       "file": "np/500100/card_servant_np.png",

@@ -784,7 +784,7 @@ class BundledCatalogTests(unittest.TestCase):
         self.assertEqual(sum(equip["common"] and equip["recognizable"]
                              for equip in catalog["equips"]), 46)
         recognized = json.loads((ROOT / "agent/custom/equip_list.json").read_text(encoding="utf-8"))["equips"]
-        self.assertEqual(len(recognized), 1152)
+        self.assertEqual(len(recognized), 1156)
         expected_equip_ids = {int(row["id"]) for row in recognized
                               if any(resolve_media(ROOT, "equip", image) for image in row.get("images", []))}
         self.assertEqual({equip["id"] for equip in catalog["equips"] if equip["recognizable"]}, expected_equip_ids)
@@ -809,6 +809,29 @@ class BundledCatalogTests(unittest.TestCase):
             pieces = url.split("/")
             self.assertEqual(len(pieces), 4, url)
             self.assertIsNotNone(resolve_media(ROOT, pieces[2], unquote(pieces[3])), url)
+
+    def test_bundled_new_servant_and_high_value_equips_keep_exact_bindings(self):
+        catalog = build_catalog(ROOT)
+        servant = next(item for item in catalog["servants"] if item["id"] == 406000)
+        self.assertEqual((servant["collectionNo"], servant["classKey"], servant["cost"]),
+                         (483, "rider", 16))
+        self.assertEqual((servant["portraitWidth"], servant["portraitHeight"]), (358, 507))
+        self.assertEqual(len(servant["skills"]), 3)
+        self.assertEqual(len(servant["appendSkills"]), 5)
+        self.assertEqual((servant["np"]["id"], servant["np"]["cardType"]), (406001, 1))
+
+        new_ids = {9407580, 9409520, 9312570, 9312620}
+        selected = [item for item in catalog["equips"] if item["id"] in new_ids]
+        self.assertEqual({item["id"] for item in selected}, new_ids)
+        local = json.loads((ROOT / "agent/custom/equip_list.json").read_text(encoding="utf-8"))
+        for item in selected:
+            with self.subTest(equip=item["id"]):
+                self.assertTrue(item["recognizable"])
+                self.assertFalse(item["common"])
+                record = next(row for row in local["equips"] if int(row["id"]) == item["id"])
+                self.assertEqual(record["important"], 0)
+                self.assertIsNotNone(resolve_media(ROOT, "equip", f"f_{item['id']}0.png"))
+        self.assertEqual(catalog["commonEquips"]["count"], 46)
 
     def test_bundled_servants_have_official_decks_and_media_hashes_match(self):
         directory = ROOT / "agent/battle_editor/data"

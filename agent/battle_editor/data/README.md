@@ -12,6 +12,8 @@ python tools/build_battle_editor_catalog.py --refresh
 
 若元数据已完整缓存，仅需补下载失败的图片，可运行 `python tools/build_battle_editor_catalog.py --download-images`，不会重新下载大型从者导出。
 
+2026-10-25按准确ID增量加入No.483「タマモアリア」(`406000`)及No.2707羁绊礼装的轻量资料，原有从者、礼装及御主礼装事实保持；单条Atlas元数据来源及SHA-256见`sources.json.incrementalUpdates`。独立`np_cards.json`同步追加该从者的3种指令卡头像、Arts宝具`406001`及有效名称第0行绑定，国服元数据与名称图尚不可用。维护时不可直接用此前不含该从者的旧缓存全量覆盖；应先刷新所需Atlas元数据，或将已留存的单条元数据与旧缓存按精确ID合并、核对原记录后暂存重建。原图与增量证据位于工程`.workbuddy/resource-update-20261025/`，不随资源包发布。
+
 维护下载遇到代理断连时，可为本次命令加 `--direct` 使用直连，或用 `--image-workers 1` 降低并发；不修改系统代理设置。图片写入前核验 PNG 完整块与 CRC，保存后记录 SHA-256。
 
 若 Python 的 TLS 链路持续断开，可加 `--curl` 使用系统 curl 下载小图（仍校验证书与 PNG 完整性），例如 `python tools/build_battle_editor_catalog.py --download-images --direct --curl`；仅维护时需要此可选工具，玩家运行编辑器不依赖 curl。
