@@ -826,6 +826,35 @@ class AutoFormationFromChaldea(CustomAction):
             and self._on_formation_confirm_page()
         )
 
+    def _formation_page_state(self):
+        """返回当前编队页状态；模板结果需由调用方连续复核。"""
+        image = self._shot()
+        confirm = self._match_template(image, self.config_marker)
+        if confirm is not None and confirm[0] >= 0.80:
+            return "confirm"
+        edit = self._match_template(image, self.edit_marker)
+        if edit is not None and edit[0] >= 0.75:
+            return "edit"
+        return None
+
+    def _wait_for_formation_page(self):
+        state = None
+
+        def predicate():
+            nonlocal state
+            current = self._formation_page_state()
+            if current is None:
+                state = None
+                return False
+            if state == current:
+                return True
+            state = current
+            return False
+
+        # predicate 自身要求同一状态出现两次，_wait_for 再要求连续两次成立，
+        # 因而至少使用三帧，避免确认页与编辑页切换动画造成误判。
+        return state if self._wait_for(predicate, SLOT_LAYOUT_VERIFY_TIMEOUT_SECONDS) else None
+
     def _detect_slots(self):
         image = self._shot()
         if image is None:
@@ -1224,7 +1253,11 @@ class AutoFormationFromChaldea(CustomAction):
                     return self._fail(f"servant_select_failed: 槽位{index + 1}未进入从者选择界面")
                 if not self._filter_servant_list(servant):
                     return self._fail(f"servant_filter_failed: {servant['name']}")
+                self._last_servant_selection_error = None
                 if not self._find_and_select_servant(servant):
+                    if (self.context.tasker.stopping
+                            or self._last_servant_selection_error is not None):
+                        return False
                     return self._fail(f"servant_not_found: {servant['name']}({servant['id']})")
                 if not self._wait_for(self._in_formation_edit, 5.0):
                     return self._fail("servant_select_failed: 选择从者后未返回编队编辑页")
@@ -1327,19 +1360,22 @@ class AutoFormationFromChaldea(CustomAction):
         return True
 
     def _find_and_select_servant(self, servant):
+        self._last_servant_selection_error = None
         templates = self._load_servant_templates(servant["id"], self.face_dirs)
         if not templates:
-            return self._fail(f"resource_missing: 从者选择图 {servant['id']}")
+            return self._fail_servant_selection(f"resource_missing: 从者选择图 {servant['id']}")
         # 每次开始查找前都先通过右侧滚动条复位到列表顶端。筛选后的默认位置
         # 不能作为前提，否则上一名从者的滚动位置会漏掉前面的匹配项。
         if not self._run_pipeline("自动编队-从者列表复位顶部"):
-            return self._fail("servant_list_reset_failed: 未能复位从者列表")
+            return self._fail_servant_selection("servant_list_reset_failed: 未能复位从者列表")
         for round_index in range(MAX_FIND_SERVANT_ROUNDS):
             if self.context.tasker.stopping:
                 return False
             match = self._find_servant_in_still_list(
                 templates, servant["name"], round_index
             )
+            if self.context.tasker.stopping:
+                return False
             if match is not None:
                 mfaalog.info(
                     f"[自动编队] 查找 {servant['name']} 第{round_index + 1}轮，"
@@ -1347,14 +1383,51 @@ class AutoFormationFromChaldea(CustomAction):
                     f"卡位分差={match[3]:.3f}/{SERVANT_LIST_FEATURE_MARGIN:.2f} "
                     f"模板={match[2]}"
                 )
+            if self._servant_list_has_duplicate_candidates(match):
+                return self._fail_servant_selection(
+                    "servant_duplicate_candidates: "
+                    f"{servant['name']}({servant['id']}) 检测到多个同名从者高匹配候选"
+                    f"（含不同灵基），最高分={match[0]:.3f}、"
+                    f"次高分={match[0] - match[3]:.3f}，无法确定应选个体。"
+                    "请先自行整理同名从者（可将多余个体移入保管室），"
+                    "仅保留需要使用的一名后重试；不会自动按等级或技能等级择优。"
+                )
             if self._servant_list_match_accepted(match):
                 self.controller.post_click(*match[1]).wait()
-                if self._wait_for(self._in_formation_edit, 5.0):
-                    return True
+                # 已点中目标后只处理返回状态，绝不能在编队页继续滑动找人。
+                return self._wait_for_selected_servant_return()
             # 单轮顺序固定为：查找未命中 → 下滑一次 → pipeline 等待 0.5 秒。
             if not self._run_pipeline("自动编队-从者列表下滑查找"):
-                return self._fail("servant_list_swipe_failed: 从者列表下滑失败")
+                return self._fail_servant_selection("servant_list_swipe_failed: 从者列表下滑失败")
         return False
+
+    def _fail_servant_selection(self, message):
+        # 保留具体原因，避免调用方再用 servant_not_found 覆盖它。
+        self._last_servant_selection_error = message
+        return self._fail(message)
+
+    def _wait_for_selected_servant_return(self):
+        page_state = self._wait_for_formation_page()
+        if self.context.tasker.stopping:
+            return False
+        if page_state == "edit":
+            return True
+        if page_state == "confirm":
+            mfaalog.warning(
+                "[自动编队] 选择从者后返回队伍确认页，"
+                "重新打开配置变更并复核编辑状态；不会点击开始任务"
+            )
+            if (self._run_pipeline("自动编队-打开配置")
+                    and self._wait_for(self._in_formation_edit, SELECT_PAGE_ENTER_TIMEOUT_SECONDS)):
+                return True
+            return self._fail_servant_selection(
+                "servant_select_return_failed: 已返回队伍确认页，"
+                "但未能重新进入配置变更页，停止编队"
+            )
+        return self._fail_servant_selection(
+            "servant_select_return_failed: 点击从者后未确认返回编队页，"
+            "停止查找，不再滑动或重复选择"
+        )
 
     def _find_servant_in_still_list(self, templates, servant_name, round_index):
         """只返回连续两帧中位置稳定的从者列表匹配，避免滚动残影误点。"""
@@ -1366,9 +1439,12 @@ class AutoFormationFromChaldea(CustomAction):
             latest = second or first
             first_hit = self._servant_list_match_accepted(first)
             second_hit = self._servant_list_match_accepted(second)
-            if not first_hit and not second_hit:
+            first_duplicate = self._servant_list_has_duplicate_candidates(first)
+            second_duplicate = self._servant_list_has_duplicate_candidates(second)
+            if not (first_hit or second_hit or first_duplicate or second_duplicate):
                 return latest
-            if first_hit and second_hit:
+            if ((first_hit and second_hit and not (first_duplicate or second_duplicate))
+                    or (first_duplicate and second_duplicate)):
                 dx = abs(first[1][0] - second[1][0])
                 dy = abs(first[1][1] - second[1][1])
                 if (
@@ -1382,6 +1458,15 @@ class AutoFormationFromChaldea(CustomAction):
                 f"第{check_index + 1}/{SERVANT_LIST_STABILITY_MAX_CHECKS}次等待"
             )
         return None
+
+    @staticmethod
+    def _servant_list_has_duplicate_candidates(match):
+        # 分差小不等于重卡；前两张完整卡位都过身份阈值才报告多个候选。
+        return bool(
+            match is not None
+            and match[0] >= SERVANT_LIST_FEATURE_THRESHOLD
+            and match[0] - match[3] >= SERVANT_LIST_FEATURE_THRESHOLD
+        )
 
     @staticmethod
     def _servant_list_match_accepted(match):
@@ -2036,6 +2121,9 @@ class AutoFormationFromChaldea(CustomAction):
 
     def _run_pipeline(self, name):
         try:
+            if name == "自动编队-打开配置":
+                # Context 共用 max_hit 计数；每次打开配置都应有完整的有限重试预算。
+                self.context.clear_hit_count(name)
             detail = self.context.run_task(name)
         except Exception as exc:
             mfaalog.error(f"[自动编队] pipeline {name} 异常: {exc}")
@@ -2194,35 +2282,6 @@ class ValidateFormationFromChaldea(AutoFormationFromChaldea):
         except Exception as exc:
             mfaalog.error(f"[手动编队] 异常: {exc}\n{traceback.format_exc()}")
             return CustomAction.RunResult(success=False)
-
-    def _formation_page_state(self):
-        """返回当前编队页状态；模板结果需由调用方连续复核。"""
-        image = self._shot()
-        confirm = self._match_template(image, self.config_marker)
-        if confirm is not None and confirm[0] >= 0.80:
-            return "confirm"
-        edit = self._match_template(image, self.edit_marker)
-        if edit is not None and edit[0] >= 0.75:
-            return "edit"
-        return None
-
-    def _wait_for_formation_page(self):
-        state = None
-
-        def predicate():
-            nonlocal state
-            current = self._formation_page_state()
-            if current is None:
-                state = None
-                return False
-            if state == current:
-                return True
-            state = current
-            return False
-
-        # predicate 自身要求同一状态出现两次，_wait_for 再要求连续两次成立，
-        # 因而至少使用三帧，避免确认页与编辑页切换动画造成误判。
-        return state if self._wait_for(predicate, SLOT_LAYOUT_VERIFY_TIMEOUT_SECONDS) else None
 
     def _manual_identities_match(self, current):
         expected_counts = Counter(

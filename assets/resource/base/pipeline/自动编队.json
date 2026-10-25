@@ -288,6 +288,7 @@
         ]
     },
     "自动编队-打开配置": {
+        "doc": "每次点击后优先检测右下角编辑决定；未出现时仅在配置变更按钮仍可识别时重试，最多点击3次。调用脚本每次进入此子流程重置命中预算，未知页面或耗尽后失败，不进入全局恢复。",
         "recognition": {
             "type": "TemplateMatch",
             "param": {
@@ -306,7 +307,47 @@
                 ]
             }
         },
-        "post_delay": 1000
+        "post_delay": 1000,
+        "next": [
+            "自动编队-检测编辑决定",
+            "自动编队-打开配置"
+        ],
+        "max_hit": 3,
+        "timeout": 5000,
+        "on_error": []
+    },
+    "自动编队-检测编辑决定": {
+        "doc": "仅检测，不点击决定。模板与国日服决定文字必须同时命中右下角，不能将开始任务当成进入编辑页；成功后结束子流程，交回脚本继续从者/礼装复核。2026-10-25日服MaaMCP实机模板1.000、OCR決定0.985；可参考自动编队-打开配置的检测优先与有限自循环，检测成功后不能再次点击配置变更。",
+        "recognition": {
+            "type": "And",
+            "param": {
+                "all_of": [
+                    {
+                        "recognition": {
+                            "type": "TemplateMatch",
+                            "param": {
+                                "template": "battle/编队决定.png",
+                                "roi": [1050, 610, 230, 110],
+                                "threshold": 0.8
+                            }
+                        }
+                    },
+                    {
+                        "recognition": {
+                            "type": "OCR",
+                            "param": {
+                                "roi": [1050, 610, 230, 110],
+                                "expected": ["决定|決定"],
+                                "threshold": 0.8
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        "action": {"type": "DoNothing"},
+        "next": [],
+        "on_error": []
     },
     "自动编队-执行清空编队": {
         "recognition": {
