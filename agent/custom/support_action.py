@@ -15,7 +15,7 @@
                  与框内(95,76)中心 60x60 头像窗口匹配, 任一模板满足即可
      b. 礼装   : 普通 ce / 冠位 ce_1+ce_2(lizhuang 模板; 0_空.png 跳过)
      c. 主动技能: skill_active_1/2/3 独立键, 非0数字在锚点左下 ROI 拼接识别 >= 期望
-     d. 宝具等级: np_level/{ch|jp} 模板匹配, 识别等级 >= 期望(目录按资源包选择)
+     d. 宝具等级: nplevel 模板匹配, 识别等级 >= 期望(目录按资源包选择)
      e. 英灵等级: 等级区域 x62-180,y15-42 数字拼接识别 >= 期望
      f. 被动技能: skill_passive_1~5 独立键: 全0跳过;
                  有非0 -> 运行被动切换流水线 -> 重新截图 -> 按被动锚点匹配
@@ -23,10 +23,12 @@
   4. 无框满足 -> 失败
 
 素材路径约定(相对 MaaFgo 根目录):
-  pkg   = "cn" if resource_package=="cn" else "base"
-  servant_face : resource/{pkg}/image/servant_face/f_*.png        (158x158, 已有)
-  lizhuang     : resource/{pkg}/image/lizhuang/                    (礼装模板, 待放)
-  np_level     : resource/{pkg}/image/np_level/ch|jp/              (宝具模板, 待放)
+  pkg   = 实际加载资源层的 loaded_resource_package；旧资源无标记时兼容 resource_package
+  servant_face : resource/base/image/servant_face/f_*.png          (头像共用)
+  lizhuang     : resource/base/image/lizhuang/                     (礼装共用)
+  np_level     : resource/{pkg}/image/nplevel/                      (宝具等级模板)
+  skill        : resource/{pkg}/image/skill/                        (主动/被动视图模板)
+  support      : resource/{pkg}/image/support/                      (参照物模板)
   servant_list : agent/custom/servant_list.json                    (已有)
   support_det  : agent/utils/support_det.onnx                       (YOLO ONNX 模型)
 """
@@ -92,6 +94,7 @@ VIEW_ROI = (782, 102, 138, 39)     # 视图判断: 技能卡 x782-920 y102-141 (
 # 求出它与标定位置的差, 再把框顶点平移过去 —— 平移后图内坐标即等于标定坐标系, 上面锚点常量可直接套用。
 REF_BASE = (1051, 26)   # 参照物左上角在标定坐标系中的位置(上面锚点常量即在该坐标系下量的)
 REF_PAD = 40            # 参照物搜索范围: 以期望位置为中心向外扩 px
+TH_REF = 0.80           # 低分参照物不能用于平移头像/技能等所有识别区域
 
 # ---------------- 职介筛选 tab(全屏坐标, 助战选择界面顶部职介栏) ----------------
 CLASS_TABS = {
@@ -121,6 +124,25 @@ def _image_dir(package, *parts):
     if os.path.isdir(packaged):
         return packaged
     return os.path.join(_ROOT_DIR, "assets", "resource", relative)
+
+
+def _resolve_resource_package(context):
+    """Use the loaded image layer, not a possibly stale per-task option."""
+    config = context.get_node_data("资源包配置") or {}
+    attach = config.get("attach") or {}
+    configured = "cn" if str(attach.get("resource_package") or "base").strip() == "cn" else "base"
+    loaded = attach.get("loaded_resource_package")
+    if loaded is None:
+        # Compatible with existing custom bundles and older packaged resources.
+        return configured
+    if loaded not in ("base", "cn"):
+        raise ValueError(f"助战实际资源包标记无效：{loaded!r}")
+    if loaded != configured:
+        mfaalog.warning(
+            f"[SupportAction] 任务资源包标识={configured} 与实际加载素材={loaded} 不一致；"
+            f"助战按实际加载的{'国服' if loaded == 'cn' else '默认/日服'}素材识别"
+        )
+    return loaded
 
 # ---------------- ROI 尺寸 ----------------
 CE_ROI = (166, 53)        # 礼装匹配窗口(w,h): 左上角锚点, 与礼装模板(约153x40)同量级(左右各+3, 向下+3)
@@ -320,12 +342,13 @@ class SupportAction(CustomAction):
     # ---------- 参照物定位(消除 YOLO 框偏移) ----------
     def _ref_shift(self, img, bx, by):
         """在框内定位参照物 {资源包}/image/support/助战编入确认.png, 返回框顶点所需的平移 (dx,dy);
-        平移后参照物回到标定位置 REF_BASE, 框内坐标即等于标定坐标系"""
+        平移后参照物回到标定位置 REF_BASE, 框内坐标即等于标定坐标系。
+        定位不可信时返回 None，调用方跳过该条目，禁止使用低分坐标。"""
         import cv2
         tpl = _imread(os.path.join(self._ref_dir, self._ref_name), gray=True)
         if tpl is None:
             mfaalog.error(f"[SupportAction] 参照模板缺失: {self._ref_name} ({self._ref_dir})")
-            return 0, 0
+            return None
         th, tw = tpl.shape[:2]
         ex, ey = bx + REF_BASE[0], by + REF_BASE[1]      # 参照物期望左上角(全屏)
         x0, y0 = max(0, ex - REF_PAD), max(0, ey - REF_PAD)
@@ -333,9 +356,15 @@ class SupportAction(CustomAction):
         roi = img[y0:y1, x0:x1]
         if roi.shape[0] < th or roi.shape[1] < tw:
             mfaalog.error("[SupportAction] 参照物搜索区小于模板, 无法定位")
-            return 0, 0
+            return None
         res = cv2.matchTemplate(cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY), tpl, cv2.TM_CCOEFF_NORMED)
         _, score, _, (mx, my) = cv2.minMaxLoc(res)
+        if not np.isfinite(score) or score < TH_REF:
+            mfaalog.warning(
+                f"[SupportAction] 参照物 {self._ref_name}: score={score:.3f}/{TH_REF:.2f} "
+                "定位不可信，跳过当前助战条目，不应用平移"
+            )
+            return None
         dx, dy = x0 + mx - ex, y0 + my - ey
         mfaalog.info(f"[SupportAction] 参照物 {self._ref_name}: 实测=({x0 + mx},{y0 + my}) "
                      f"期望=({ex},{ey}) score={score:.3f} -> 框顶点平移=({dx},{dy})")
@@ -794,8 +823,7 @@ class SupportAction(CustomAction):
                          f"礼装={'/'.join(ce_names) if ce_names else '(空)'} 主动={active} 被动={passive} "
                          f"宝具={np_level} 等级={level}")
 
-            resource_package = str(context.get_node_data("资源包配置")["attach"]["resource_package"])
-            pkg = "cn" if resource_package == "cn" else "base"
+            pkg = _resolve_resource_package(context)
             base_dir = _image_dir(pkg)
             # 英灵头像/礼装固定放 base, 不用 pkg 区分
             face_dir = _image_dir("base", "servant_face")
@@ -859,7 +887,10 @@ class SupportAction(CustomAction):
                 for (bx, by, bx2, by2, conf) in boxes:
                     mfaalog.info(f"[SupportAction] === 判定条目 框=({bx},{by})-({bx2},{by2}) conf={conf:.2f} ===")
                     # 框内参照物重定位: 平移框顶点到标定坐标系, 消除 YOLO 框偏移
-                    dx, dy = self._ref_shift(img, bx, by)
+                    shift = self._ref_shift(img, bx, by)
+                    if shift is None:
+                        continue
+                    dx, dy = shift
                     bx, by, bx2, by2 = bx + dx, by + dy, bx2 + dx, by2 + dy
                     mfaalog.info(f"[SupportAction] 重定位后 框=({bx},{by})-({bx2},{by2})")
                     if not self._match_servant(img, face_dir, bx, by, srv["images"], support_type):
