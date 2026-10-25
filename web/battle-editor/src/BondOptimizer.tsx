@@ -8,11 +8,11 @@ import {reservedBondSupport} from './bondOptimizerModel';
 import {validPartyCostLimit} from './partyCost';
 import './bondOptimizer.css';
 
-export function BondOptimizer({data,catalog,onApply,onClose,initialCostLimit,onCostLimitChange}:{data:Json;catalog:Catalog;onApply:(response:Json,snapshot:Json)=>void;onClose:()=>void;initialCostLimit:number;onCostLimitChange:(limit:number)=>void}) {
+export function BondOptimizer({data,catalog,onApply,onClose,initialCostLimit,onCostLimitChange,preferredSupportSlot}:{data:Json;catalog:Catalog;onApply:(response:Json,snapshot:Json)=>void;onClose:()=>void;initialCostLimit:number;onCostLimitChange:(limit:number)=>void;preferredSupportSlot?:number|null}) {
  const [settings,setSettings]=useState<Json|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[result,setResult]=useState<Json|null>(null);
  const [costLimit,setCostLimit]=useState(String(initialCostLimit)),[bondBase,setBondBase]=useState('1200'),[rarity,setRarity]=useState(5);
  const [ownedServants,setOwnedServants]=useState(true),[ownedEquips,setOwnedEquips]=useState(true),[modifyEquips,setModifyEquips]=useState(false),[confirmedMlb,setConfirmedMlb]=useState(false);
- const [reserved,setReserved]=useState<number|null>(()=>reservedBondSupport(data)),[currentCost,setCurrentCost]=useState('');
+ const [reserved,setReserved]=useState<number|null>(()=>reservedBondSupport(data,preferredSupportSlot)),[currentCost,setCurrentCost]=useState('');
  const [excluded,setExcluded]=useState<number[]>([]),[query,setQuery]=useState('');
  const resultRef=useRef<HTMLDivElement>(null);
  useEffect(()=>{if(result)resultRef.current?.scrollIntoView({block:'nearest'});},[result]);

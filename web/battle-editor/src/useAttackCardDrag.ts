@@ -1,6 +1,6 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {DragEvent,MouseEvent,PointerEvent} from 'react';
-import {attackCardTarget,finishAttackCardDrag,startAttackCardDrag,updateAttackCardDrag} from './attackCardDrag';
+import {attackCardDropTarget,attackCardTarget,finishAttackCardDrag,startAttackCardDrag,updateAttackCardDrag} from './attackCardDrag';
 import type {AttackCardGesture} from './attackCardDrag';
 import {partyFloatingTransform,partyGrabOffset} from './partyDrag';
 interface Session {gesture:AttackCardGesture;element:HTMLElement;card:HTMLElement;group:HTMLElement;offset:{x:number;y:number};point:{x:number;y:number};ghost:HTMLElement|null;frame:number|null}
@@ -12,7 +12,7 @@ export function useAttackCardDrag({occupied,onSwap,resetKey,enabled=true}:{occup
   if(session){if(session.gesture.active)suppress.current=true;if(session.frame!=null)cancelAnimationFrame(session.frame);session.ghost?.remove();try{if(session.element.hasPointerCapture(session.gesture.pointerId))session.element.releasePointerCapture(session.gesture.pointerId);}catch{}}
   document.body.classList.remove('attack-pointer-drag-active');if(update){setDragged(null);setTarget(null);}
  },[]);
- const hit=useCallback((session:Session,x:number,y:number)=>{const card=document.elementFromPoint(x,y)?.closest<HTMLElement>('[data-attack-card]');return attackCardTarget(card?Number(card.dataset.attackCard):null,latest.current.occupied,!!card&&card.closest('[data-attack-group]')===session.group);},[]);
+ const hit=useCallback((session:Session,x:number,y:number)=>{const card=document.elementFromPoint(x,y)?.closest<HTMLElement>('[data-attack-card]');return attackCardDropTarget(card?Number(card.dataset.attackCard):null,!!card&&card.closest('[data-attack-group]')===session.group);},[]);
  const move=useCallback((event:PointerEvent<HTMLElement>)=>{
   const session=pointer.current;if(!session||session.gesture.pointerId!==event.pointerId)return;
   if(!latest.current.enabled){clear();return;}
@@ -40,8 +40,8 @@ export function useAttackCardDrag({occupied,onSwap,resetKey,enabled=true}:{occup
   onPointerMove:move,onPointerUp:end,onPointerCancel:()=>clear(),onLostPointerCapture:(event:PointerEvent<HTMLElement>)=>{if(pointer.current?.gesture.pointerId===event.pointerId)clear();},
   onClickCapture:(event:MouseEvent<HTMLElement>)=>{if(suppress.current&&event.detail>0){event.preventDefault();event.stopPropagation();suppress.current=false;}},
   onDragStart:(event:DragEvent<HTMLElement>)=>{if(pointer.current||!latest.current.enabled||blockedOrigin.current||event.target instanceof Element&&event.target.closest('[data-no-drag]')||attackCardTarget(index,latest.current.occupied,true)==null){event.preventDefault();return;}const group=event.currentTarget.closest<HTMLElement>('[data-attack-group]');if(!group)return;native.current={from:index,group};event.dataTransfer.setData('text/plain',`attack-card:${index}`);event.dataTransfer.effectAllowed='move';const bounds=event.currentTarget.getBoundingClientRect();event.dataTransfer.setDragImage(event.currentTarget,event.clientX-bounds.left,event.clientY-bounds.top);setDragged(index);},
-  onDragOver:(event:DragEvent<HTMLElement>)=>{if(native.current?.group!==event.currentTarget.closest('[data-attack-group]')||attackCardTarget(index,latest.current.occupied,true)==null)return;event.preventDefault();event.dataTransfer.dropEffect='move';setTarget(index);},
-  onDrop:(event:DragEvent<HTMLElement>)=>{const session=native.current;if(!session)return;event.preventDefault();const to=attackCardTarget(index,latest.current.occupied,session.group===event.currentTarget.closest('[data-attack-group]')),valid=event.dataTransfer.getData('text/plain')===`attack-card:${session.from}`;clear();if(latest.current.enabled&&valid&&to!=null&&to!==session.from)latest.current.onSwap(session.from,to);},
+  onDragOver:(event:DragEvent<HTMLElement>)=>{const session=native.current;if(!latest.current.enabled||!session||attackCardTarget(session.from,latest.current.occupied,true)==null||attackCardDropTarget(index,session.group===event.currentTarget.closest('[data-attack-group]'))==null)return;event.preventDefault();event.dataTransfer.dropEffect='move';setTarget(index);},
+  onDrop:(event:DragEvent<HTMLElement>)=>{const session=native.current;if(!session)return;event.preventDefault();const to=attackCardDropTarget(index,session.group===event.currentTarget.closest('[data-attack-group]')),valid=attackCardTarget(session.from,latest.current.occupied,true)!=null&&event.dataTransfer.getData('text/plain')===`attack-card:${session.from}`;clear();if(latest.current.enabled&&valid&&to!=null&&to!==session.from)latest.current.onSwap(session.from,to);},
   onDragEnd:()=>{if(!pointer.current)clear();},
  });
  return {dragged,target,start,bindCard,cancel:()=>clear()};

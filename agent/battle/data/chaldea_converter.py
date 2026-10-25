@@ -13,6 +13,7 @@ Chaldea actions 数据结构（与 bbc_formatter.convert_actions_to_bbc_rounds �
 
 约束（诚实边界）：
 - attacks 按原顺序保留从者、卡色和宝具；card 是从者牌组索引，不能当作屏幕位置。
+- Maa 扩展 {"isAuto": true} 保留默认普通卡的位置，不指定从者、卡色或牌组索引。
 - 同一从者的同色面卡按当前画面从左到右选择；未指定的卡由普通选卡策略补齐。
 - 换人：由换人礼装（mystic_code_id 在换人服集合内）的御主技能 3 触发，
   具体首发/候补槽位取 delegate.replaceMemberIndexes。
@@ -221,6 +222,18 @@ def convert_chaldea_actions_to_battle_plan(
                 for atk in attacks:
                     if not isinstance(atk, dict):
                         continue
+                    if "isAuto" in atk:
+                        if type(atk["isAuto"]) is not bool:
+                            mfaalog.warning("[chaldea_converter] 忽略非布尔值的 isAuto 出卡标记")
+                            continue
+                        if atk["isAuto"] is True:
+                            if any(key in atk for key in ("svt", "card", "isTD", "cardType", "critical")):
+                                mfaalog.warning("[chaldea_converter] 忽略混有具体卡片字段的默认普通卡占位")
+                                continue
+                            # No real frontline slot is 0: the existing resolver
+                            # fills this position with the current face-card policy.
+                            cur_cards.append(PlannedCard(PrimitiveKind.SELECT_CARD, 0))
+                            continue
                     svt_pos = atk.get("svt")
                     if type(svt_pos) is not int or not 0 <= svt_pos <= 2:
                         continue

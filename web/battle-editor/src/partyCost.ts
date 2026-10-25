@@ -37,6 +37,17 @@ export function savePartyCostLimit(value:number,storage?:Pick<Storage,'setItem'>
 
 export interface PartyCostIssue {slot:number;message:string}
 export interface PartyCost {knownTotal:number;complete:boolean;issues:PartyCostIssue[]}
+export interface PartyCostWarning {severity:'warning';code:'party_cost_over_limit';path:'team';message:string}
+
+/** The browser's chosen limit is advisory and never changes structural validity. */
+export function partyCostLimitWarning(summary:PartyCost,limit:number):PartyCostWarning|null {
+ if(!validPartyCostLimit(limit)||summary.knownTotal<=limit)return null;
+ const amount=summary.knownTotal-limit;
+ const message=summary.complete
+  ?`编队 COST ${summary.knownTotal} 超过当前上限 ${limit}（超出 ${amount}）。请核对编队或调整上限；此提醒不影响保存。`
+  :`编队已知 COST 小计 ${summary.knownTotal} 已超过当前上限 ${limit}（至少超出 ${amount}），另有部分 COST 待确认。请核对编队或调整上限；此提醒不影响保存。`;
+ return {severity:'warning',code:'party_cost_over_limit',path:'team',message};
+}
 const record=(value:unknown):value is Json=>value!==null&&typeof value==='object'&&!Array.isArray(value);
 const positiveId=(value:unknown):value is number=>typeof value==='number'&&Number.isSafeInteger(value)&&value>0;
 const validCost=(value:unknown):value is number=>typeof value==='number'&&Number.isInteger(value)&&value>=0&&value<=100;

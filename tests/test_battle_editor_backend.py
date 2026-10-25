@@ -619,6 +619,24 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(self.request("GET", "/api/battles/local_no_support.json")[1]["data"], before)
         self.assertEqual(data, before)
 
+    def test_default_face_slots_formally_roundtrip_and_conflicting_slots_are_rejected(self):
+        data = battle()
+        data["actions"][0]["attacks"] = [{"isAuto": True, "future": {"keep": [None]}},
+                                          {"isAuto": True}, {"svt": 0, "isTD": True, "card": -1}]
+        before = copy.deepcopy(data)
+        status, saved = self.request("POST", "/api/battles", {"name": "local_auto_cards.json", "data": data})
+        self.assertEqual(status, 201, saved)
+        self.assertTrue(saved["validation"]["valid"])
+        restored = self.request("GET", "/api/battles/local_auto_cards.json")[1]
+        self.assertEqual(restored["data"], before)
+        data["actions"][0]["attacks"][0]["svt"] = None
+        status, rejected = self.request("PUT", "/api/battles/local_auto_cards.json", {
+            "data": data, "expectedHash": saved["hash"]})
+        self.assertEqual(status, 422, rejected)
+        self.assertTrue(any(item["code"] == "conflicting_auto_card"
+                            for item in rejected["error"]["details"]["issues"]))
+        self.assertEqual(self.request("GET", "/api/battles/local_auto_cards.json")[1]["data"], before)
+
     def test_same_servant_owned_and_support_can_be_formally_saved_with_alias_identity(self):
         self.server._catalog = {"servants": [{"id": 1002000, "aliases": [1002100], "name": "芙萝拉"}]}
         for support_type in ("friend", "npc", "fixed"):

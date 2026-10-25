@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import type {Catalog,Json} from './model';
 import {
  DEFAULT_PARTY_COST_LIMIT,PARTY_COST_STORAGE_KEY,loadPartyCostLimit,
- partyCost,savePartyCostLimit,validPartyCostLimit,
+ partyCost,partyCostLimitWarning,savePartyCostLimit,validPartyCostLimit,
 } from './partyCost';
 
 const catalog:Catalog={
@@ -114,6 +114,45 @@ test('cost inspection preserves all imported fields and catalog data',()=>{
   {svtId:200,grandSvt:true,equip1:{id:20},equip2:{id:10},future:{a:1}});
  data.future={keep:[null,0]};const before=structuredClone(data),metadata=structuredClone(catalog);
  partyCost(data,catalog);assert.deepEqual(data,before);assert.deepEqual(catalog,metadata);
+});
+
+test('cost above the current limit is an advisory warning with the exact excess',()=>{
+ const data=team(...Array.from({length:5},()=>({svtId:100,equip1:{id:10}}))),before=structuredClone(data);
+ const summary=partyCost(data,catalog),original=structuredClone(summary);
+ const warning=partyCostLimitWarning(summary,117);
+ assert.equal(summary.knownTotal,140);
+ assert.deepEqual(warning,{severity:'warning',code:'party_cost_over_limit',path:'team',message:'编队 COST 140 超过当前上限 117（超出 23）。请核对编队或调整上限；此提醒不影响保存。'});
+ assert.deepEqual(summary,original);assert.deepEqual(data,before);
+});
+
+test('cost warning follows limit changes and vanishes at or below the limit',()=>{
+ const summary=partyCost(team({svtId:100,equip1:{id:10}}),catalog);
+ assert.equal(summary.knownTotal,28);
+ assert.equal(partyCostLimitWarning(summary,28),null);assert.equal(partyCostLimitWarning(summary,117),null);
+ assert.match(partyCostLimitWarning(summary,20)!.message,/上限 20（超出 8）/);
+ assert.match(partyCostLimitWarning(summary,27)!.message,/上限 27（超出 1）/);
+ assert.equal(partyCostLimitWarning(summary,29),null);
+ for(const invalid of [0,301,1.5,NaN,Infinity])assert.equal(partyCostLimitWarning(summary,invalid),null);
+});
+
+test('unknown or grand costs report only a proven over-limit subtotal',()=>{
+ const summary=partyCost(team({svtId:100,equip1:{id:999}},{svtId:200,grandSvt:true}),catalog),before=structuredClone(summary);
+ assert.equal(summary.complete,false);assert.equal(summary.knownTotal,16);
+ assert.equal(partyCostLimitWarning(summary,16),null);assert.equal(partyCostLimitWarning(summary,117),null);
+ const warning=partyCostLimitWarning(summary,10)!;
+ assert.equal(warning.severity,'warning');assert.match(warning.message,/已知 COST 小计 16/);
+ assert.match(warning.message,/至少超出 6/);assert.match(warning.message,/部分 COST 待确认/);assert.match(warning.message,/不影响保存/);
+ assert.deepEqual(summary,before);
+});
+
+test('support slots and cleared requirements cannot create stale over-limit warnings',()=>{
+ const data=team({svtId:100,supportType:'none',equip1:{id:10}});
+ assert.ok(partyCostLimitWarning(partyCost(data,catalog),20));
+ for(const supportType of ['friend','npc','fixed']){
+  data.team.onFieldSvts[0].supportType=supportType;
+  assert.equal(partyCostLimitWarning(partyCost(data,catalog),20),null);
+ }
+ data.team.onFieldSvts[0]=null;assert.equal(partyCostLimitWarning(partyCost(data,catalog),20),null);
 });
 
 test('cost limit defaults to 117 and valid boundaries round-trip through an independent versioned key',()=>{

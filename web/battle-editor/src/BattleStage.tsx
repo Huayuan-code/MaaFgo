@@ -2,6 +2,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {ArrowLeftRight,Check,Clock3,Info,Settings2,Shield,X} from 'lucide-react';
 import {canChange,turnsOf} from './model';
 import type {Catalog,Entry,Json} from './model';
+import {isAutoAttackCard} from './attackCards';
 import {previewTurn,npAt,skillTargetMode,allowedAllyTargets,hasEnemyTarget} from './battlePreview';
 import type {PreviewSkill} from './battlePreview';
 import {Modal} from './EditorModal';
@@ -66,7 +67,7 @@ export function BattleStage({data,catalog,turnIndex,onAppend,onNP,onMystic,onLev
  return <section className="battle-stage" aria-label="当前战斗技能区">
   <div className="battle-stage-heading"><div><span className="eyebrow">COMMAND PHASE</span><h2>当前前排 <small>技能队列末尾 · 攻击之前</small></h2></div><div className="battle-preview-controls"><label><span>卡面文字</span><select aria-label="卡面文字地区，仅影响预览" value={region} onChange={event=>changeRegion(event.target.value)}>{(npCardPreview?.regions??['JP','CN']).filter(value=>value==='JP'||value==='CN').map(value=><option key={value} value={value}>{value==='JP'?'日服 JP':'国服 CN'}</option>)}</select><small>仅预览</small></label><span className="battle-phase">TURN {String(turnIndex+1).padStart(2,'0')}</span></div></div>
   <div className="battle-stage-scroll"><div className="battle-servants">{preview.front.map((entry,i)=>{
-   const np=npAt(entry.member,entry.servant),selected=!!attack?.attacks?.some((c:Json)=>c?.isTD&&c.svt===i),full=(attack?.attacks?.length??0)>=3;
+   const np=npAt(entry.member,entry.servant),selected=!!attack?.attacks?.some((c:Json)=>!isAutoAttackCard(c)&&c?.isTD&&c.svt===i),full=(attack?.attacks?.length??0)>=3&&!attack?.attacks?.slice(0,3).some(isAutoAttackCard);
    return <article className={`battle-servant ${!entry.member?'empty':''}`} key={entry.key}>
     <div className="battle-servant-status"><span className="battle-front-number">{i+1}</span>{entry.servant?.statusImage||entry.servant?.image?<img src={entry.servant.statusImage||entry.servant.image!} alt={entry.servant.name} className={entry.servant.statusImage?'status-art':'status-face'}/>:<span className="status-placeholder"><Shield size={30}/></span>}<div className="battle-status-label"><strong>{entry.servant?.name??(entry.member?`从者 #${entry.member.svtId}`:'未配置从者')}</strong><small>{entry.member?`${entry.servant?.className??'从者'} · Lv.${entry.member.lv??'—'}`:'请先在编队页设置'}</small></div></div>
     <div className="battle-servant-commands"><div className="battle-three-skills">{entry.skills.map(state=>skillButton(i,state,`${entry.key}:${state.index}`))}</div><NPCardPreview member={entry.member} np={np} region={region} config={npCardPreview} slot={i} selected={selected} full={full} onClick={()=>appendNP(i)}/></div>

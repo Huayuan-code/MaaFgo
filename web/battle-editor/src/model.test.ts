@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {assertEditable,clone,newBattle,newServantDefaults,fillMissingTaskSkillDefaults,members,setMember,turnsOf,writeTurns,rosterAt,makeCard,remapSlots,servantFor,skillAt,replaceServant,swapMembers,filterCatalog,appendSkillAt,appendSkillEntry,appendNPEntry} from './model';
+import {assertEditable,clone,newBattle,newServantDefaults,newTeamSupportSlot,restoreNewTeamFirstSupport,newTeamMemberDefaults,fillMissingTaskSkillDefaults,members,setMember,turnsOf,writeTurns,rosterAt,makeCard,remapSlots,servantFor,skillAt,replaceServant,swapMembers,filterCatalog,appendSkillAt,appendSkillEntry,appendNPEntry} from './model';
 import type {Json,Catalog} from './model';
 import {startPartyDrag,updatePartyDrag,finishPartyDrag} from './partyDrag';
 const catalog:Catalog={servants:[{id:1,name:'甲',cards:[2,1,1,3,2]},{id:4,name:'丁',cards:[]}],equips:[],mysticCodes:[]};
@@ -9,6 +9,58 @@ test('new plans explicitly start with Chaldea mystic code 210 at level 10',()=>{
 test('each new plan owns independent formation, mystic code and action containers',()=>{const a=newBattle(),b=newBattle();a.team.mysticCode.level=1;a.team.mysticCode.mysticCodeId=20;setMember(a,0,{svtId:1});a.actions.push({type:'attack',attacks:[]});assert.deepEqual(b,newBattle());assert.notEqual(a.team,b.team);assert.notEqual(a.team.mysticCode,b.team.mysticCode);assert.notEqual(a.team.onFieldSvts,b.team.onFieldSvts);assert.notEqual(a.actions,b.actions);});
 test('import and draft projections preserve missing, null and different mystic code values',()=>{for(const team of [{},{mysticCode:null},{mysticCode:{}},{mysticCode:{mysticCodeId:20}},{mysticCode:{mysticCodeId:210,level:null}},{mysticCode:{mysticCodeId:1,level:5}}]){const imported:Json={team,actions:[],unknown:null},before=clone(imported);newBattle();assertEditable(imported);members(imported);turnsOf(imported);rosterAt(imported,0);assert.deepEqual(imported,before);}});
 test('new servant skill defaults follow task active 10 and five append zeros with independent arrays',()=>{const a=newServantDefaults(),b=newServantDefaults();assert.deepEqual(a,{supportType:'none',skillLvs:[10,10,10],appendLvs:[0,0,0,0,0]});a.skillLvs[0]=1;a.appendLvs[1]=10;assert.deepEqual(b,newServantDefaults());assert.notEqual(a.skillLvs,b.skillLvs);assert.notEqual(a.appendLvs,b.appendLvs);});
+test('new team support suggests only the empty first slot without creating a placeholder member',()=>{
+ const data=newBattle(),before=clone(data);
+ assert.equal(newTeamSupportSlot(data,true),0);
+ for(const disabled of [false,undefined,null,1,'true'])assert.equal(newTeamSupportSlot(data,disabled as boolean),null);
+ assert.deepEqual(newTeamMemberDefaults(data,0,true),{...newServantDefaults(),supportType:'friend'});
+ assert.deepEqual(newTeamMemberDefaults(data,1,true),newServantDefaults());
+ assert.deepEqual(newTeamMemberDefaults(data,0,false),newServantDefaults());
+ assert.deepEqual(data,before);
+});
+test('filling other positions first keeps the support suggestion until an actual support is selected',()=>{
+ const data=newBattle();setMember(data,2,replaceServant(null,4,catalog,newTeamMemberDefaults(data,2,true)));
+ assert.equal(newTeamSupportSlot(data,true),0);assert.equal(members(data)[2].supportType,'none');
+ for(const supportType of ['friend','npc','fixed']){
+  setMember(data,5,{svtId:1,supportType});const before=clone(data);
+  assert.equal(newTeamSupportSlot(data,true),null);
+  assert.equal(newTeamMemberDefaults(data,0,true).supportType,'none');
+  assert.deepEqual(data,before);
+ }
+});
+test('existing first members retain manual support types when replaced and clearing allows the new default again',()=>{
+ const data=newBattle();
+ for(const supportType of ['none','friend','npc','fixed',undefined]){
+  const old:Json={svtId:1,lv:80,supportType,equip1:{id:34},future:{keep:null}};setMember(data,0,old);
+  assert.equal(newTeamSupportSlot(data,true),null);
+  const changed=replaceServant(old,4,catalog,newTeamMemberDefaults(data,0,true));
+  assert.equal(changed.supportType,supportType);assert.deepEqual(changed,{...old,svtId:4});
+ }
+ setMember(data,0,null);
+ assert.equal(newTeamSupportSlot(data,true),0);
+ const selected=replaceServant(null,1,catalog,newTeamMemberDefaults(data,0,true));setMember(data,0,selected);
+ assert.equal(selected.supportType,'friend');assert.equal(newTeamSupportSlot(data,true),null);
+ swapMembers(data,0,3);
+ assert.equal(newTeamSupportSlot(data,true),null);assert.equal(newTeamMemberDefaults(data,0,true).supportType,'none');
+ setMember(data,3,null);assert.equal(newTeamSupportSlot(data,true),0);
+});
+test('new team defaults clone custom presets independently and do not rewrite data or base defaults',()=>{
+ const data=newBattle(),before=clone(data),base:Json={...newServantDefaults(),supportType:'npc',future:{keep:[null]}};
+ const expected=clone(base),first=newTeamMemberDefaults(data,0,true,base),other=newTeamMemberDefaults(data,1,true,base);
+ assert.equal(first.supportType,'friend');assert.equal(other.supportType,'npc');
+ first.skillLvs[0]=2;first.appendLvs[0]=8;first.future.keep.push(9);other.future.keep.push(3);
+ assert.deepEqual(base,expected);assert.deepEqual(data,before);
+ assert.deepEqual(newTeamMemberDefaults(data,0,false,base),expected);
+ assert.notEqual(first.skillLvs,other.skillLvs);assert.notEqual(first.future,other.future);
+});
+test('only an explicit new team draft flag without a formal source restores the suggestion',()=>{
+ for(const sourceName of [undefined,null,''])assert.equal(restoreNewTeamFirstSupport(true,sourceName),true);
+ for(const value of [undefined,null,false,0,1,'true',{},[]])assert.equal(restoreNewTeamFirstSupport(value),false);
+ for(const sourceName of ['local_saved.json',' ',0,false,{},[]])assert.equal(restoreNewTeamFirstSupport(true,sourceName),false);
+ const imported:Json={team:{onFieldSvts:[null,null,null]},actions:[],future:{keep:null}},before=clone(imported);
+ assert.equal(newTeamSupportSlot(imported,restoreNewTeamFirstSupport(undefined)),null);
+ assert.equal(newTeamMemberDefaults(imported,0,false).supportType,'none');assert.deepEqual(imported,before);
+});
 test('only selecting an empty member adds task defaults and custom defaults are cloned',()=>{const a:Json=replaceServant(null,1,catalog),b:Json=replaceServant(null,4,catalog),expectedA:Json={...newServantDefaults(),svtId:1};assert.deepEqual(a,expectedA);a.skillLvs[0]=1;a.appendLvs[1]=10;assert.deepEqual(b,{...newServantDefaults(),svtId:4});const custom:Json={...newServantDefaults(),supportType:'friend',unknown:{keep:null}};const selected=replaceServant(null,1,catalog,custom);selected.skillLvs[0]=5;selected.unknown.keep='changed';assert.deepEqual(custom,{...newServantDefaults(),supportType:'friend',unknown:{keep:null}});});
 test('existing imported members keep missing null empty and explicit levels when replaced or changing support type',()=>{for(const levels of [{},{skillLvs:null,appendLvs:null},{skillLvs:[],appendLvs:[]},{skillLvs:[0,6,10],appendLvs:[0,10,0]},{skillLvs:[5,0,10],appendLvs:[0,10,0,2,0]}]){const old={svtId:1,supportType:'friend',lv:90,...levels,unknown:{keep:null}},before=clone(old);assert.deepEqual(replaceServant(old,4,catalog),{...old,svtId:4});assert.deepEqual(old,before);const d:Json={team:{onFieldSvts:[old]},actions:[]};assertEditable(d);members(d);turnsOf(d);rosterAt(d,0);assert.deepEqual(old,before);for(const supportType of ['none','friend','npc']){const changed=replaceServant({...old,supportType},4,catalog);assert.deepEqual(changed,{...old,supportType,svtId:4});}}});
 test('explicit skill preset fill only supplies nullish slots and preserves zeros extras and unrelated fields',()=>{const m:Json={svtId:1,supportType:'npc',lv:90,skillLvs:[0,null,undefined,8],appendLvs:[null,10,undefined,0,null,7],skillIds:[11,12,13],tdId:9,equip1:{id:3},unknown:{keep:null}};fillMissingTaskSkillDefaults(m);assert.deepEqual(m,{svtId:1,supportType:'npc',lv:90,skillLvs:[0,10,10,8],appendLvs:[0,10,0,0,0,7],skillIds:[11,12,13],tdId:9,equip1:{id:3},unknown:{keep:null}});const once=clone(m);fillMissingTaskSkillDefaults(m);assert.deepEqual(m,once);});
@@ -47,3 +99,15 @@ test('stage skill append preserves an imported attack object and comes after exi
 test('confirmed stage swap is one paired action and NP uses the swapped current position',()=>{const d:Json={team:{onFieldSvts:[{svtId:1},null,null],backupSvts:[{svtId:4}],mysticCode:{mysticCodeId:20}},actions:[{type:'attack',attacks:[],unknown:null}]};appendSkillEntry(d,0,{raw:{type:'skill',svt:null,skill:2},replacement:[0,0],paired:true,index:0});appendNPEntry(d,0,0,catalog);assert.deepEqual(d.delegate.replaceMemberIndexes,[[0,0]]);assert.equal(rosterAt(d,1)[0].svtId,4);assert.deepEqual(d.actions[1],{type:'attack',attacks:[{svt:0,isTD:true,card:-1}],unknown:null});});
 test('stage NP append rejects duplicates and fourth cards without altering raw data',()=>{const d=fixture();appendNPEntry(d,1,0,catalog);const before=clone(d);assert.throws(()=>appendNPEntry(d,1,0,catalog),/重复/);assert.deepEqual(d,before);d.actions[d.actions.length-1].attacks=[{svt:0,isTD:true,card:-1},{svt:1,isTD:true,card:-1},{svt:2,isTD:true,card:-1}];const full=clone(d);assert.throws(()=>appendNPEntry(d,1,0,catalog),/最多/);assert.deepEqual(d,full);});
 test('new empty turn NP creates canonical attack without assigning an enemy or touching earlier turns',()=>{const d=fixture(),before=clone(d);assert.equal(appendNPEntry(d,2,0,catalog),0);assert.deepEqual(d.actions.slice(0,-1),before.actions);assert.deepEqual(d.actions[d.actions.length-1],{type:'attack',attacks:[{svt:0,isTD:true,card:-1}]});assert.deepEqual(d.delegate,before.delegate);});
+test('stage NP fills the first automatic position without moving the delayed NP or changing options',()=>{
+ const d:Json={team:{onFieldSvts:[{svtId:1},{svtId:4},null]},actions:[{type:'attack',attacks:[{isAuto:true},{isAuto:true},{svt:1,isTD:true,card:-1,future:{keep:null}}],options:{enemyTarget:2}}]};
+ appendNPEntry(d,0,0,catalog);
+ assert.deepEqual(d.actions[0],{type:'attack',attacks:[{svt:0,isTD:true,card:-1},{isAuto:true},{svt:1,isTD:true,card:-1,future:{keep:null}}],options:{enemyTarget:2}});
+ const before=clone(d);assert.throws(()=>appendNPEntry(d,0,1,catalog),/重复/);assert.deepEqual(d,before);
+});
+test('role remapping leaves automatic card requests completely intact',()=>{
+ const d=fixture();d.team.mysticCode={mysticCodeId:1};
+ d.actions=[{type:'attack',attacks:[{isAuto:true,future:{keep:null}},{svt:0,isTD:true,card:-1}]}];
+ remapSlots(d,0,1);
+ assert.deepEqual(d.actions[0].attacks,[{isAuto:true,future:{keep:null}},{svt:1,isTD:true,card:-1}]);
+});
