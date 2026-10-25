@@ -49,7 +49,7 @@
       "bytes": 193947
     }
   ],
-  "servantCatalogSha256": "af136c36ba050484cb47e620cdba96be8a8204a362c36c6cda54ccfe414d8cd4",
+  "servantCatalogSha256": "7b34ab18afa27b297804c4a310a1ec85d8c4836c5dc13a64dfa2dee3f1b330d0",
   "missingServantIds": [],
   "noActiveSkillMetadataIds": [
     1700100,
@@ -759,5 +759,23 @@
       "bytes": 22294
     }
   ],
-  "missingMedia": []
+  "missingMedia": [],
+  "incrementalUpdates": [
+    {
+      "date": "2026-10-25",
+      "servantId": 406000,
+      "collectionNo": 483,
+      "sources": [
+        {
+          "url": "https://api.atlasacademy.io/nice/JP/servant/483",
+          "sha256": "1c5c26b996e34b83ee11bd63984a445cec65c5d5e074dbb2472ff350369d15ab"
+        },
+        {
+          "url": "https://api.atlasacademy.io/nice/JP/equip/2707",
+          "sha256": "346b3dfd3b528896796396c579c20ef9bcc9d18fc9095aa94ad77ac4dfcf51a9"
+        }
+      ],
+      "method": "incremental; existing servant, equip, mystic, and media records preserved"
+    }
+  ]
 }

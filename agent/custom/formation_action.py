@@ -39,6 +39,7 @@ from platform_waits import platform_timeout
 from chaldea.servant_aliases import build_servant_lookup, canonical_servants, servant_aliases
 import mfaalog
 from battle.core.models import Confidence, FormationSlot
+from battle.perception.formation_candidates import FormationCandidateIndex
 from battle.runtime.formation_session import context_session, sessions
 
 
@@ -826,6 +827,35 @@ class AutoFormationFromChaldea(CustomAction):
             and self._on_formation_confirm_page()
         )
 
+    def _formation_page_state(self):
+        """返回当前编队页状态；模板结果需由调用方连续复核。"""
+        image = self._shot()
+        confirm = self._match_template(image, self.config_marker)
+        if confirm is not None and confirm[0] >= 0.80:
+            return "confirm"
+        edit = self._match_template(image, self.edit_marker)
+        if edit is not None and edit[0] >= 0.75:
+            return "edit"
+        return None
+
+    def _wait_for_formation_page(self):
+        state = None
+
+        def predicate():
+            nonlocal state
+            current = self._formation_page_state()
+            if current is None:
+                state = None
+                return False
+            if state == current:
+                return True
+            state = current
+            return False
+
+        # predicate 自身要求同一状态出现两次，_wait_for 再要求连续两次成立，
+        # 因而至少使用三帧，避免确认页与编辑页切换动画造成误判。
+        return state if self._wait_for(predicate, SLOT_LAYOUT_VERIFY_TIMEOUT_SECONDS) else None
+
     def _detect_slots(self):
         image = self._shot()
         if image is None:
@@ -1224,7 +1254,11 @@ class AutoFormationFromChaldea(CustomAction):
                     return self._fail(f"servant_select_failed: 槽位{index + 1}未进入从者选择界面")
                 if not self._filter_servant_list(servant):
                     return self._fail(f"servant_filter_failed: {servant['name']}")
+                self._last_servant_selection_error = None
                 if not self._find_and_select_servant(servant):
+                    if (self.context.tasker.stopping
+                            or self._last_servant_selection_error is not None):
+                        return False
                     return self._fail(f"servant_not_found: {servant['name']}({servant['id']})")
                 if not self._wait_for(self._in_formation_edit, 5.0):
                     return self._fail("servant_select_failed: 选择从者后未返回编队编辑页")
@@ -1327,19 +1361,22 @@ class AutoFormationFromChaldea(CustomAction):
         return True
 
     def _find_and_select_servant(self, servant):
+        self._last_servant_selection_error = None
         templates = self._load_servant_templates(servant["id"], self.face_dirs)
         if not templates:
-            return self._fail(f"resource_missing: 从者选择图 {servant['id']}")
+            return self._fail_servant_selection(f"resource_missing: 从者选择图 {servant['id']}")
         # 每次开始查找前都先通过右侧滚动条复位到列表顶端。筛选后的默认位置
         # 不能作为前提，否则上一名从者的滚动位置会漏掉前面的匹配项。
         if not self._run_pipeline("自动编队-从者列表复位顶部"):
-            return self._fail("servant_list_reset_failed: 未能复位从者列表")
+            return self._fail_servant_selection("servant_list_reset_failed: 未能复位从者列表")
         for round_index in range(MAX_FIND_SERVANT_ROUNDS):
             if self.context.tasker.stopping:
                 return False
             match = self._find_servant_in_still_list(
                 templates, servant["name"], round_index
             )
+            if self.context.tasker.stopping:
+                return False
             if match is not None:
                 mfaalog.info(
                     f"[自动编队] 查找 {servant['name']} 第{round_index + 1}轮，"
@@ -1347,14 +1384,51 @@ class AutoFormationFromChaldea(CustomAction):
                     f"卡位分差={match[3]:.3f}/{SERVANT_LIST_FEATURE_MARGIN:.2f} "
                     f"模板={match[2]}"
                 )
+            if self._servant_list_has_duplicate_candidates(match):
+                return self._fail_servant_selection(
+                    "servant_duplicate_candidates: "
+                    f"{servant['name']}({servant['id']}) 检测到多个同名从者高匹配候选"
+                    f"（含不同灵基），最高分={match[0]:.3f}、"
+                    f"次高分={match[0] - match[3]:.3f}，无法确定应选个体。"
+                    "请先自行整理同名从者（可将多余个体移入保管室），"
+                    "仅保留需要使用的一名后重试；不会自动按等级或技能等级择优。"
+                )
             if self._servant_list_match_accepted(match):
                 self.controller.post_click(*match[1]).wait()
-                if self._wait_for(self._in_formation_edit, 5.0):
-                    return True
+                # 已点中目标后只处理返回状态，绝不能在编队页继续滑动找人。
+                return self._wait_for_selected_servant_return()
             # 单轮顺序固定为：查找未命中 → 下滑一次 → pipeline 等待 0.5 秒。
             if not self._run_pipeline("自动编队-从者列表下滑查找"):
-                return self._fail("servant_list_swipe_failed: 从者列表下滑失败")
+                return self._fail_servant_selection("servant_list_swipe_failed: 从者列表下滑失败")
         return False
+
+    def _fail_servant_selection(self, message):
+        # 保留具体原因，避免调用方再用 servant_not_found 覆盖它。
+        self._last_servant_selection_error = message
+        return self._fail(message)
+
+    def _wait_for_selected_servant_return(self):
+        page_state = self._wait_for_formation_page()
+        if self.context.tasker.stopping:
+            return False
+        if page_state == "edit":
+            return True
+        if page_state == "confirm":
+            mfaalog.warning(
+                "[自动编队] 选择从者后返回队伍确认页，"
+                "重新打开配置变更并复核编辑状态；不会点击开始任务"
+            )
+            if (self._run_pipeline("自动编队-打开配置")
+                    and self._wait_for(self._in_formation_edit, SELECT_PAGE_ENTER_TIMEOUT_SECONDS)):
+                return True
+            return self._fail_servant_selection(
+                "servant_select_return_failed: 已返回队伍确认页，"
+                "但未能重新进入配置变更页，停止编队"
+            )
+        return self._fail_servant_selection(
+            "servant_select_return_failed: 点击从者后未确认返回编队页，"
+            "停止查找，不再滑动或重复选择"
+        )
 
     def _find_servant_in_still_list(self, templates, servant_name, round_index):
         """只返回连续两帧中位置稳定的从者列表匹配，避免滚动残影误点。"""
@@ -1366,9 +1440,12 @@ class AutoFormationFromChaldea(CustomAction):
             latest = second or first
             first_hit = self._servant_list_match_accepted(first)
             second_hit = self._servant_list_match_accepted(second)
-            if not first_hit and not second_hit:
+            first_duplicate = self._servant_list_has_duplicate_candidates(first)
+            second_duplicate = self._servant_list_has_duplicate_candidates(second)
+            if not (first_hit or second_hit or first_duplicate or second_duplicate):
                 return latest
-            if first_hit and second_hit:
+            if ((first_hit and second_hit and not (first_duplicate or second_duplicate))
+                    or (first_duplicate and second_duplicate)):
                 dx = abs(first[1][0] - second[1][0])
                 dy = abs(first[1][1] - second[1][1])
                 if (
@@ -1382,6 +1459,15 @@ class AutoFormationFromChaldea(CustomAction):
                 f"第{check_index + 1}/{SERVANT_LIST_STABILITY_MAX_CHECKS}次等待"
             )
         return None
+
+    @staticmethod
+    def _servant_list_has_duplicate_candidates(match):
+        # 分差小不等于重卡；前两张完整卡位都过身份阈值才报告多个候选。
+        return bool(
+            match is not None
+            and match[0] >= SERVANT_LIST_FEATURE_THRESHOLD
+            and match[0] - match[3] >= SERVANT_LIST_FEATURE_THRESHOLD
+        )
 
     @staticmethod
     def _servant_list_match_accepted(match):
@@ -2036,6 +2122,9 @@ class AutoFormationFromChaldea(CustomAction):
 
     def _run_pipeline(self, name):
         try:
+            if name == "自动编队-打开配置":
+                # Context 共用 max_hit 计数；每次打开配置都应有完整的有限重试预算。
+                self.context.clear_hit_count(name)
             detail = self.context.run_task(name)
         except Exception as exc:
             mfaalog.error(f"[自动编队] pipeline {name} 异常: {exc}")
@@ -2195,35 +2284,6 @@ class ValidateFormationFromChaldea(AutoFormationFromChaldea):
             mfaalog.error(f"[手动编队] 异常: {exc}\n{traceback.format_exc()}")
             return CustomAction.RunResult(success=False)
 
-    def _formation_page_state(self):
-        """返回当前编队页状态；模板结果需由调用方连续复核。"""
-        image = self._shot()
-        confirm = self._match_template(image, self.config_marker)
-        if confirm is not None and confirm[0] >= 0.80:
-            return "confirm"
-        edit = self._match_template(image, self.edit_marker)
-        if edit is not None and edit[0] >= 0.75:
-            return "edit"
-        return None
-
-    def _wait_for_formation_page(self):
-        state = None
-
-        def predicate():
-            nonlocal state
-            current = self._formation_page_state()
-            if current is None:
-                state = None
-                return False
-            if state == current:
-                return True
-            state = current
-            return False
-
-        # predicate 自身要求同一状态出现两次，_wait_for 再要求连续两次成立，
-        # 因而至少使用三帧，避免确认页与编辑页切换动画造成误判。
-        return state if self._wait_for(predicate, SLOT_LAYOUT_VERIFY_TIMEOUT_SECONDS) else None
-
     def _manual_identities_match(self, current):
         expected_counts = Counter(
             item["svt_id"] for item in self.expected if item["kind"] == "LOCAL"
@@ -2264,9 +2324,10 @@ class ValidateFormationFromChaldea(AutoFormationFromChaldea):
 # ---------- 原生战斗：只读取最终编队，不调用上方任何编成/点击方法 ----------
 
 # 单帧采集：确认页为静态界面，无转场残留/动画帧风险。
-# 已验证标定时优先职阶限定快速匹配（秒级）；职阶不可靠或匹配不被
-# 接受时由 read_frame 自动回退全库（约 28s），不再无条件全库复核。
+# 单帧优先固定槽位批量粗筛，再以原模板精查。粗筛不可用时保留原匹配，
+# 显式 full_audit 仍可全库复核；不再因单个职阶候选不足无条件遍历全库。
 IDENTITY_FRAME_NODES = ("编队身份-第1帧",)
+IDENTITY_COARSE_MIN_IDENTITIES = 64
 
 
 @dataclass(frozen=True)
@@ -2425,7 +2486,7 @@ class FormationIdentityReader(AutoFormationFromChaldea):
     """复用编队的 ROI、空位/助战、模板匹配；每次读取只接收显式图像。
 
     不调用 _shot/_prepare_target_templates/run，因而不会使用缓存截图、
-    下载 Chaldea 数据、移动或更换成员。实例仅存活于单次采集回调。
+    下载 Chaldea 数据、移动或更换成员。实例可复用静态模板，但不保存截图。
     """
 
     _instance_cache = {}
@@ -2452,6 +2513,8 @@ class FormationIdentityReader(AutoFormationFromChaldea):
             *_identity_manifest(self.image_roots, self.calibration.template_family,
                                 catalog_path or os.path.join(_CUSTOM_DIR, "servant_list.json"))
         )
+        self._candidate_index = None
+        self._frame_match_cache = None
         self.identity_templates = {}
         if self.calibration.identity_crop:
             left, top, right, bottom = self.calibration.identity_crop
@@ -2483,8 +2546,15 @@ class FormationIdentityReader(AutoFormationFromChaldea):
     def _rank(self, image, roi, identities, *, cropped=False):
         scores = []
         templates = self.identity_templates if cropped else self.templates
+        cache = self._frame_match_cache
         for sid in identities:
-            match = self._match_servant(image, templates[sid], roi)
+            key = (tuple(roi), cropped, sid)
+            if cache is not None and key in cache:
+                match = cache[key]
+            else:
+                match = self._match_servant(image, templates[sid], roi)
+                if cache is not None:
+                    cache[key] = match
             if match is not None and np.isfinite(match[0]):
                 scores.append((match[0], sid, match[2]))
         return sorted(scores, key=lambda x: (-x[0], x[1]))
@@ -2513,6 +2583,28 @@ class FormationIdentityReader(AutoFormationFromChaldea):
         return None, Confidence(0.0, "class_uncertain")
 
     def read_frame(self, image, *, full_audit=False, diagnostics=False):
+        # 继承的 ROI 裁剪缓存只能在当前图像内使用。不能用 id(image) 在跨帧
+        # 缓存中判定图像相同：Python 会复用 id，且旧裁片会持续占用内存。
+        self._roi_crop_cache = {}
+        self._frame_match_cache = {}
+        self.last_match_stats = {"coarse_ms": 0.0, "slots": []}
+        started = time.perf_counter()
+        try:
+            return self._read_frame(image, full_audit=full_audit, diagnostics=diagnostics)
+        finally:
+            self._roi_crop_cache.clear()
+            self._frame_match_cache = None
+            self.last_match_stats["total_ms"] = (time.perf_counter() - started) * 1000
+            summary = ", ".join(
+                f"{row['slot']}:{row['scope']}/{row['candidates']}候选/{row['ms']:.0f}ms"
+                for row in self.last_match_stats["slots"]
+            )
+            mfaalog.info(
+                f"[初始编队] 身份识别耗时={self.last_match_stats['total_ms']:.0f}ms "
+                f"粗筛={self.last_match_stats['coarse_ms']:.0f}ms 槽位=[{summary}]"
+            )
+
+    def _read_frame(self, image, *, full_audit=False, diagnostics=False):
         image = _norm_img(image)
         if image is None:
             raise ValueError("screenshot_unavailable")
@@ -2526,23 +2618,50 @@ class FormationIdentityReader(AutoFormationFromChaldea):
             raise ValueError("not_on_formation_confirmation")
         slots = []
         c = self.calibration
+        pools = None
+        if (not full_audit and (c.verified or diagnostics)
+                and len(self.templates) >= IDENTITY_COARSE_MIN_IDENTITIES):
+            coarse_started = time.perf_counter()
+            try:
+                if self._candidate_index is None:
+                    self._candidate_index = FormationCandidateIndex(self.templates, c.identity_crop)
+                base = image if (width, height) == (BASE_W, BASE_H) else cv2.resize(
+                    image, (BASE_W, BASE_H), interpolation=cv2.INTER_AREA)
+                pools = self._candidate_index.shortlists(base, SLOT_ROIS)
+            except (ValueError, cv2.error) as exc:
+                mfaalog.warning(f"[初始编队] 粗筛失败，回退原图匹配: {exc}")
+            self.last_match_stats["coarse_ms"] = (time.perf_counter() - coarse_started) * 1000
         for index, roi in enumerate(SLOT_ROIS):
+            slot_started = time.perf_counter()
             if self._is_empty_slot(image, roi):
                 slots.append(FormationSlot(index + 1, "empty", is_support=False,
                                            reason="existing_empty_slot_heuristic"))
+                self.last_match_stats["slots"].append({
+                    "slot": index + 1, "scope": "empty", "candidates": 0,
+                    "ms": (time.perf_counter() - slot_started) * 1000,
+                })
                 continue
             support = self._match_template(image, self.support_marker, roi)
             is_support = None if support is None else support[0] >= SUPPORT_THRESHOLD
             class_id, class_conf = self._class(image, roi)
             ranked, scope = [], "not_calibrated"
-            if c.verified or diagnostics:
+            pool = pools[index] if pools is not None else None
+            if pool is not None and not pool.fallback:
+                # 全库粗筛，不以职阶限制候选；仍以原图阈值和不同 ID 分差发布。
+                ranked = self._rank(image, roi, pool.ids)
+                scope = "coarse"
+                if not self._accepted(ranked) and c.identity_crop:
+                    local = self._rank(image, roi, pool.ids, cropped=True)
+                    if self._accepted(local):
+                        ranked, scope = local, "coarse_crop"
+                # 已精查仍低分/歧义就保持 unknown；不能强行接受粗筛第一名。
+            elif c.verified or diagnostics:
                 class_names = dict(c.class_groups).get(class_id, (class_id,))
                 candidates = tuple(sid for name in class_names for sid in self.by_class.get(name, ()))
                 if class_id and candidates and not full_audit:
                     ranked = self._rank(image, roi, candidates)
                     scope = "class"
-                # 最后一帧始终全库复核，避免高置信度职阶误判排除真正身份。
-                # 其余帧只要职阶或该职阶身份不可靠，也立即回退全库。
+                # 显式全库审计不按职阶剪枝；小库/粗筛回退路径仍保留原规则。
                 if full_audit or not self._accepted(ranked):
                     ranked = self._rank(image, roi, self.templates)
                     scope = "all_audit" if full_audit else "all_fallback"
@@ -2556,6 +2675,11 @@ class FormationIdentityReader(AutoFormationFromChaldea):
                         local = self._rank(image, roi, self.templates, cropped=True)
                         if self._accepted(local):
                             ranked, scope = local, "all_crop"
+            self.last_match_stats["slots"].append({
+                "slot": index + 1, "scope": scope,
+                "candidates": len(pool.ids) if pool is not None and not pool.fallback else len(self.templates),
+                "ms": (time.perf_counter() - slot_started) * 1000,
+            })
             identified = self._accepted(ranked)
             best = ranked[0] if ranked else (0.0, None, "")
             margin = best[0] - ranked[1][0] if len(ranked) > 1 else 0.0
@@ -2657,7 +2781,7 @@ class CaptureInitialFormation(CustomAction):
                     "custom_recognition_param": {
                         "session_id": token, "revision": revision,
                         # 仅多帧模式下对末帧强制全库复核；单帧依赖
-                        # read_frame 内部的职阶限定 + 不可靠时回退全库。
+                        # read_frame 内部的固定槽位粗筛 + 原图精查及保守回退。
                         "calibration": config,
                         "full_audit": len(IDENTITY_FRAME_NODES) > 1
                         and i == len(IDENTITY_FRAME_NODES) - 1,

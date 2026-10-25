@@ -39,6 +39,15 @@ def _int(value):
     return None
 
 
+def _costs(document, kind: str) -> dict:
+    """Expose only authoritative, bounded integer COST facts, including zero."""
+    rows = document.get(kind) if isinstance(document, dict) else None
+    if not isinstance(rows, dict):
+        return {}
+    return {key: value for key, value in rows.items()
+            if type(value) is int and 0 <= value <= 100}
+
+
 def _data_dir(root: Path) -> Path:
     return root / "agent" / "battle_editor" / "data"
 
@@ -310,6 +319,8 @@ def build_catalog(project_root: Path | str) -> dict:
     names_dir = root / "agent" / "utils" / "Chaldea"
     local = _read(custom / "servant_list.json", {})
     source = _read(_data_dir(root) / "catalog.json", {})
+    cost_index = _read(custom / "bond_completion_costs.json", {})
+    servant_costs, equip_costs = _costs(cost_index, "servants"), _costs(cost_index, "equips")
     ui = _ui_manifest(root)
     ui_servants = ui.get("servants", {})
     ui_classes = ui.get("classes", {})
@@ -331,6 +342,8 @@ def build_catalog(project_root: Path | str) -> dict:
         extra = extras.get(str(sid), {})
         alt_ids = sorted({_int(alias) for alias in item.get("aliases", []) if _int(alias) is not None})
         aliases.update({alias: sid for alias in alt_ids})
+        cost = next((servant_costs[str(identity)] for identity in [sid, *alt_ids]
+                     if str(identity) in servant_costs), None)
         # Alias forms share one selector entry, but their imported skillIds / tdId
         # must still resolve. Keep canonical defaults while retaining every fact.
         variant_sources = [extra] + [extras.get(str(alias), {}) for alias in alt_ids]
@@ -374,7 +387,7 @@ def build_catalog(project_root: Path | str) -> dict:
             "collectionNo": item.get("collection_no", extra.get("collectionNo")),
             "classKey": item.get("class", "unknown"),
             "className": classes.get(item.get("class"), item.get("class", "未知")),
-            "rarity": item.get("rarity"), "aliases": alt_ids,
+            "rarity": item.get("rarity"), "aliases": alt_ids, "cost": cost,
             "searchAliases": item.get("search_aliases", []) + extra.get("searchAliases", []),
             "image": _image(root, "servant", item.get("images", []) + [extra.get("image")], media_cache),
             "statusImage": _image(root, "status", [f"status_{sid}_{stage}.png" for stage in (3, 1, 2)], media_cache),
@@ -408,7 +421,7 @@ def build_catalog(project_root: Path | str) -> dict:
             "id": eid, "name": item.get("name") or cn_names.get(key) or extra.get("name") or extra.get("nameJp") or jp_names.get(key) or f"礼装 {eid}",
             "nameJp": item.get("name_jp") or extra.get("nameJp") or jp_names.get(key, ""),
             "collectionNo": item.get("collection_no", extra.get("collectionNo")),
-            "rarity": item.get("rarity", extra.get("rarity")),
+            "rarity": item.get("rarity", extra.get("rarity")), "cost": equip_costs.get(key),
             "recognizable": key in recognized and image is not None,
             "image": image, "imageWidth": image_width, "imageHeight": image_height,
         })

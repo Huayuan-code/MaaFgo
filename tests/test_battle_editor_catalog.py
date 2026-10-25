@@ -87,6 +87,79 @@ class EditorCatalogTests(unittest.TestCase):
         self.assertEqual(equips[902]["name"], "未实装礼装")
         self.assertFalse(equips[902]["recognizable"])
 
+    def test_cost_index_exposes_zero_and_canonical_facts_without_expanding_selection(self):
+        self.write("agent/custom/bond_completion_costs.json", {
+            "schema_version": 1, "servants": {"100": 0, "200": 16, "999": 12},
+            "equips": {"900": 9, "901": 0, "902": 100, "999": 12}})
+        result = build_catalog(self.root)
+        self.assertEqual([(item["id"], item["cost"]) for item in result["servants"]], [(100, 0)])
+        equips = {item["id"]: item for item in result["equips"]}
+        self.assertEqual({eid: item["cost"] for eid, item in equips.items()}, {900: 9, 901: 0, 902: 100})
+        self.assertTrue(equips[900]["recognizable"])
+        self.assertFalse(equips[901]["recognizable"])
+        self.assertFalse(equips[902]["recognizable"])
+
+    def test_bundled_cost_index_covers_every_canonical_servant_and_preserves_special_costs(self):
+        catalog = build_catalog(ROOT)
+        servants = {item["id"]: item for item in catalog["servants"]}
+        costs = json.loads((ROOT / "agent/custom/bond_completion_costs.json").read_text(encoding="utf-8"))["servants"]
+        self.assertGreater(len(servants), 450)
+        for sid, servant in servants.items():
+            with self.subTest(servant=sid):
+                self.assertIn(str(sid), costs)
+                self.assertIs(type(servant["cost"]), int)
+                self.assertGreaterEqual(servant["cost"], 0)
+                self.assertLessEqual(servant["cost"], 100)
+                self.assertEqual(servant["cost"], costs[str(sid)])
+        for sid, cost in ((1700100, 16), (705400, 16), (800100, 0), (1100100, 4)):
+            self.assertEqual(servants[sid]["cost"], cost)
+        # The stale Hassan record is a registered Flora form, not a third gap.
+        self.assertNotIn(1002100, servants)
+        self.assertIn(1002100, servants[1002000]["aliases"])
+        self.assertEqual(servants[1002000]["cost"], 12)
+
+    def test_servant_cost_falls_back_to_declared_alias_only_when_canonical_fact_is_missing(self):
+        for canonical in (None, True, "0", -1, 101):
+            with self.subTest(canonical=canonical):
+                self.write("agent/custom/bond_completion_costs.json", {
+                    "servants": {"100": canonical, "200": 0}, "equips": {}})
+                servant = build_catalog(self.root)["servants"][0]
+                self.assertEqual(servant["cost"], 0)
+        self.write("agent/custom/bond_completion_costs.json", {
+            "servants": {"100": 16, "200": 0}, "equips": {}})
+        self.assertEqual(build_catalog(self.root)["servants"][0]["cost"], 16)
+
+    def test_missing_or_malformed_cost_tables_do_not_guess_from_rarity_or_other_metadata(self):
+        self.write("agent/custom/servant_list.json", {"servants": [
+            {"id": "100", "name": "有星级但未知COST", "rarity": 5, "cost": 16}]})
+        self.write("agent/custom/equip_list.json", {"equips": [
+            {"id": "900", "name": "有星级但未知COST", "rarity": 5, "cost": 12}]})
+        self.write("agent/battle_editor/data/catalog.json", {
+            "servants": [{"id": 100, "cost": 16}], "equips": [{"id": 902, "rarity": 5, "cost": 12}]})
+        tables = [None, [], True, "bad", {}, {"servants": [], "equips": []},
+                  {"servants": "bad", "equips": False},
+                  {"servants": {"100": None}, "equips": {"900": None}}]
+        for table in tables:
+            with self.subTest(table=table):
+                self.write("agent/custom/bond_completion_costs.json", table)
+                result = build_catalog(self.root)
+                self.assertTrue(all(item["cost"] is None for item in result["servants"]))
+                self.assertTrue(all(item["cost"] is None for item in result["equips"]))
+        cost_file = self.root / "agent/custom/bond_completion_costs.json"
+        cost_file.write_text("{malformed", encoding="utf-8")
+        self.assertIsNone(build_catalog(self.root)["servants"][0]["cost"])
+        cost_file.unlink()
+        self.assertIsNone(build_catalog(self.root)["servants"][0]["cost"])
+
+    def test_cost_values_reject_boolean_string_fractional_and_out_of_bounds_facts(self):
+        for invalid in (True, False, "0", "16", 1.5, -1, 101, [], {}):
+            with self.subTest(invalid=invalid):
+                self.write("agent/custom/bond_completion_costs.json", {
+                    "servants": {"100": invalid}, "equips": {"900": invalid}})
+                result = build_catalog(self.root)
+                self.assertIsNone(result["servants"][0]["cost"])
+                self.assertTrue(all(item["cost"] is None for item in result["equips"]))
+
     def test_packaged_resource_layout_and_path_rejection(self):
         self.image("resource/base/image/servant_face/packaged.png")
         self.assertEqual(resolve_media(self.root, "servant", "packaged.png"),
@@ -711,7 +784,7 @@ class BundledCatalogTests(unittest.TestCase):
         self.assertEqual(sum(equip["common"] and equip["recognizable"]
                              for equip in catalog["equips"]), 46)
         recognized = json.loads((ROOT / "agent/custom/equip_list.json").read_text(encoding="utf-8"))["equips"]
-        self.assertEqual(len(recognized), 1152)
+        self.assertEqual(len(recognized), 1156)
         expected_equip_ids = {int(row["id"]) for row in recognized
                               if any(resolve_media(ROOT, "equip", image) for image in row.get("images", []))}
         self.assertEqual({equip["id"] for equip in catalog["equips"] if equip["recognizable"]}, expected_equip_ids)
@@ -736,6 +809,29 @@ class BundledCatalogTests(unittest.TestCase):
             pieces = url.split("/")
             self.assertEqual(len(pieces), 4, url)
             self.assertIsNotNone(resolve_media(ROOT, pieces[2], unquote(pieces[3])), url)
+
+    def test_bundled_new_servant_and_high_value_equips_keep_exact_bindings(self):
+        catalog = build_catalog(ROOT)
+        servant = next(item for item in catalog["servants"] if item["id"] == 406000)
+        self.assertEqual((servant["collectionNo"], servant["classKey"], servant["cost"]),
+                         (483, "rider", 16))
+        self.assertEqual((servant["portraitWidth"], servant["portraitHeight"]), (358, 507))
+        self.assertEqual(len(servant["skills"]), 3)
+        self.assertEqual(len(servant["appendSkills"]), 5)
+        self.assertEqual((servant["np"]["id"], servant["np"]["cardType"]), (406001, 1))
+
+        new_ids = {9407580, 9409520, 9312570, 9312620}
+        selected = [item for item in catalog["equips"] if item["id"] in new_ids]
+        self.assertEqual({item["id"] for item in selected}, new_ids)
+        local = json.loads((ROOT / "agent/custom/equip_list.json").read_text(encoding="utf-8"))
+        for item in selected:
+            with self.subTest(equip=item["id"]):
+                self.assertTrue(item["recognizable"])
+                self.assertFalse(item["common"])
+                record = next(row for row in local["equips"] if int(row["id"]) == item["id"])
+                self.assertEqual(record["important"], 0)
+                self.assertIsNotNone(resolve_media(ROOT, "equip", f"f_{item['id']}0.png"))
+        self.assertEqual(catalog["commonEquips"]["count"], 46)
 
     def test_bundled_servants_have_official_decks_and_media_hashes_match(self):
         directory = ROOT / "agent/battle_editor/data"

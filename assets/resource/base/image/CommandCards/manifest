@@ -11649,6 +11649,38 @@
         "source_sha256": "d89066e92301d623ca7aa72423e49a738dace1c87c4ff9b10698108a00ab0375"
       }
     ],
+    "406000": [
+      {
+        "file": "406000/card_servant_1.png",
+        "fully_transparent_changed_pixels": 0,
+        "group": "ascension",
+        "key": "1",
+        "quantization_profile": "libimagequant-256-alpha-classes-v1",
+        "sha256": "cda2ccca7f0fbd27a7fe767274e71cb5c2037feeec2593f6345b9664229c46e2",
+        "source": "https://static.atlasacademy.io/JP/Servants/Commands/406000/card_servant_1.png",
+        "source_sha256": "beaf82dfe571817c6d4f0b1d928edeb84bcc8907e998201b9cd8d2692da68421"
+      },
+      {
+        "file": "406000/card_servant_2.png",
+        "fully_transparent_changed_pixels": 0,
+        "group": "ascension",
+        "key": "2",
+        "quantization_profile": "libimagequant-256-alpha-classes-v1",
+        "sha256": "e6c4fb200d644b4a1292e14d4c50275b317d615e8e3672b55649d46645b998dc",
+        "source": "https://static.atlasacademy.io/JP/Servants/Commands/406000/card_servant_2.png",
+        "source_sha256": "371487823ea4748e0b1ad9d57da73c3d01bc00f349304a1b13e59db9dc47705e"
+      },
+      {
+        "file": "406000/card_servant_3.png",
+        "fully_transparent_changed_pixels": 0,
+        "group": "ascension",
+        "key": "3",
+        "quantization_profile": "libimagequant-256-alpha-classes-v1",
+        "sha256": "8db2d053ce27a236a4721b39ad562cc34ddf0008950fb845b7fa8a3aa3e57a9f",
+        "source": "https://static.atlasacademy.io/JP/Servants/Commands/406000/card_servant_3.png",
+        "source_sha256": "ae4e7f5d685e32a8dbd587b89234b4bf2bd2d9ee2ee98caa21cd651afb6e6f94"
+      }
+    ],
     "500100": [
       {
         "alpha_mask_changed_pixels": 0,

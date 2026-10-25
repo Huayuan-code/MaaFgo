@@ -182,7 +182,11 @@ class CardPick:
 
 @dataclass(frozen=True)
 class PlannedCard:
-    """攻略中的出卡意图；面卡位置由当前截图的从者归属与卡色解析。"""
+    """攻略中的出卡意图；面卡位置由当前截图的从者归属与卡色解析。
+
+    Maa 默认普通卡占位使用 SELECT_CARD、servant_slot=0、color=None，
+    保留此出卡位置，交由现有面卡策略补齐。
+    """
     kind: PrimitiveKind
     servant_slot: int
     color: CardColor | None = None

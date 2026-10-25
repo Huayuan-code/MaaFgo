@@ -20773,6 +20773,64 @@
           "card": "Buster"
         }
       ]
+    },
+    {
+      "id": "406000",
+      "collection_no": 483,
+      "name": "タマモアリア",
+      "class": "rider",
+      "rarity": 5,
+      "images": [
+        "f_4060000.png",
+        "f_4060001.png",
+        "f_4060002.png",
+        "f_4060003.png"
+      ],
+      "name_jp": "タマモアリア",
+      "bond": {
+        "tags": [
+          "female",
+          "rider_class",
+          "neutral",
+          "good"
+        ],
+        "tags_by_ascension": {},
+        "tags_by_costume": {},
+        "alignment": "neutral",
+        "attribute": "good",
+        "gender": "female",
+        "sub_attribute": "earth",
+        "atlas_tags_raw": [
+          "genderFemale",
+          "classRider",
+          "attributeEarth",
+          "alignmentNeutral",
+          "alignmentGood",
+          "fiveStarServant",
+          "servant",
+          "humanoid",
+          "weakToEnumaElish",
+          "riding",
+          "skyOrEarthServant",
+          "skyOrEarthExceptPseudoAndDemiServant",
+          "demonicBeastServant",
+          "childServant",
+          "havingAnimalsCharacteristics",
+          "standardClassServant",
+          "canBeInBattle",
+          "unknown"
+        ]
+      },
+      "np_type": "群体输出",
+      "np_card": "Arts",
+      "np_variants": [
+        {
+          "treasureDeviceId": 406001,
+          "name_jp": "回眸一笑・空呑海麒",
+          "type": "群体输出",
+          "card": "Arts"
+        }
+      ]
     }
   ]
 }

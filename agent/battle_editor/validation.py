@@ -13,7 +13,7 @@ CARD_TYPES = {1: "arts", 2: "buster", 3: "quick", "1": "arts", "2": "buster", "3
 DEFAULTS = {
     "newBattle": {"team": {"name": "未命名方案", "onFieldSvts": [None, None, None], "backupSvts": [None, None, None], "mysticCode": {"mysticCodeId": 210, "level": 10}}, "actions": []},
     "servant": {"supportType": "none", "skillLvs": [10, 10, 10], "appendLvs": [0, 0, 0, 0, 0]}, "equip": {}, "mysticCode": {},
-    "description": {"lv": "未指定，不新增等级要求", "tdLv": "未指定，不新增宝具要求", "skillLvs": "空槽新选从者预设 10/10/10；导入未指定时保持缺失，不新增技能要求", "appendLvs": "空槽新选从者预设 0/0/0/0/0，0 表示不要求；导入保留原字段与数组长度", "taskSkillDefaults": "任务技能预设只在新选空槽或显式补齐空项时使用；更换已有从者及切换助战类型不自动补值，预设不是游戏内实际等级", "mysticCode.level": "未指定，仅记录属性", "playerTarget": "未指定，省略该字段", "emptyAttack": "attacks: []，其余由当前默认选卡策略补齐"},
+    "description": {"lv": "未指定，不新增等级要求", "tdLv": "未指定，不新增宝具要求", "skillLvs": "空槽新选从者预设 10/10/10；导入未指定时保持缺失，不新增技能要求", "appendLvs": "空槽新选从者预设 0/0/0/0/0，0 表示不要求；导入保留原字段与数组长度", "taskSkillDefaults": "任务技能预设只在新选空槽或显式补齐空项时使用；更换已有从者及切换助战类型不自动补值，预设不是游戏内实际等级", "mysticCode.level": "未指定，仅记录属性", "playerTarget": "未指定，省略该字段", "emptyAttack": "attacks: []，其余由当前默认选卡策略补齐", "autoAttackCard": "Maa 扩展 isAuto: true，按当前位置使用默认普通卡策略补齐；不属于上游 Chaldea 标准，不能混入具体卡片字段"},
 }
 
 
@@ -266,6 +266,8 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
     summary["actions"] = len(actions)
     swap_pointer = 0
     trailing_skill = False
+    trailing_skill_start = None
+    no_np_turns: list[tuple[int, int, str]] = []
     for ai, action in enumerate(actions):
         path, loc = f"actions[{ai}]", {"actionIndex": ai}
         if not isinstance(action, dict):
@@ -285,6 +287,8 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
                 error(path + ".options." + key, "invalid_number", f"{key} 必须是数值或 null", **loc)
         unknown(options, {"playerTarget", "enemyTarget", "random", "threshold"}, path + ".options", **loc)
         if kind == "skill":
+            if not trailing_skill:
+                trailing_skill_start = ai
             trailing_skill = True
             skill, svt = action.get("skill"), action.get("svt")
             if type(skill) is not int or not 0 <= skill <= 2:
@@ -321,12 +325,18 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
         elif kind == "attack":
             summary["turns"] += 1
             trailing_skill = False
+            trailing_skill_start = None
             attacks = action.get("attacks")
             if attacks is None:
                 attacks = []
             if not isinstance(attacks, list):
                 error(path + ".attacks", "invalid_cards", "attacks 必须是数组或 null", **loc)
                 continue
+            if summary["turns"] <= 3 and not any(
+                isinstance(card, dict) and card.get("isTD") is True
+                and card.get("isAuto") is not True for card in attacks
+            ):
+                no_np_turns.append((summary["turns"], ai, path + ".attacks"))
             if len(attacks) > 3:
                 error(path + ".attacks", "too_many_cards", "当前执行器每回合最多支持三张出卡意图", **loc)
             seen_np = set()
@@ -336,7 +346,16 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
                 if not isinstance(card, dict):
                     error(cp, "invalid_card", "出卡意图必须是对象", **loc)
                     continue
-                unknown(card, {"svt", "card", "isTD", "critical", "cardType"}, cp, **loc)
+                unknown(card, {"svt", "card", "isTD", "critical", "cardType", "isAuto"}, cp, **loc)
+                if "isAuto" in card and type(card["isAuto"]) is not bool:
+                    error(cp + ".isAuto", "invalid_boolean", "isAuto 必须是布尔值", **loc)
+                    continue
+                if card.get("isAuto") is True:
+                    if any(key in card for key in ("svt", "card", "isTD", "cardType", "critical")):
+                        error(cp, "conflicting_auto_card", "默认普通卡占位不能同时指定 svt、card、isTD、cardType 或 critical", **loc)
+                    else:
+                        summary["cards"] += 1
+                    continue
                 svt = card.get("svt")
                 boolean(card, "isTD", cp, **loc)
                 boolean(card, "critical", cp, **loc)
@@ -384,6 +403,13 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
     if trailing_skill:
         warning("actions", "trailing_skills", "末尾技能没有攻击边界，当前转换器将补一个回合并使用默认出卡")
         summary["turns"] += 1
+        if summary["turns"] <= 3 and trailing_skill_start is not None:
+            no_np_turns.append((summary["turns"], trailing_skill_start, f"actions[{trailing_skill_start}]"))
+    if summary["turns"] >= 2:
+        for turn_number, action_index, path in no_np_turns:
+            warning(path, "early_turn_no_np",
+                    f"第{turn_number}回合未安排宝具，将按配置或默认策略出普通卡。请确认是否符合预期；此提醒不影响保存。",
+                    actionIndex=action_index)
     if not actions:
         warning("actions", "default_battle", "方案没有固定回合，实战使用当前默认战斗策略")
     return result()

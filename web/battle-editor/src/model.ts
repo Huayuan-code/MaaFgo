@@ -1,9 +1,11 @@
+import {isAutoAttackCard,setAttackCard} from './attackCards';
+
 export type Json = Record<string, any>;
 export interface ServantBond {tags?:string[]|null;tags_by_ascension?:Record<string,string[]>|null;tags_by_costume?:string[]|Record<string,string[]>|null;alignment?:string|null;attribute?:string|null;gender?:string|null;sub_attribute?:string|null;[key:string]:unknown}
 export interface NPFilterVariant {treasureDeviceId?:number;name_jp?:string;type?:string;card?:string;conditions_jp?:string[];[key:string]:unknown}
 export interface ServantNPFilter {types?:string[];cards?:string[];variants?:NPFilterVariant[]}
-export interface Servant { id:number; name:string; nameJp?:string; collectionNo?:number; classKey?:string; className?:string; rarity?:number; image?:string|null; portrait?:string|null; statusImage?:string|null; classIcon?:string|null; cards?:number[]; aliases?:(string|number)[]; searchAliases?:string[]; skills?:{id:number;name:string;icon?:string;target?:string;targets?:string[];coolDown?:number[]}[]; skillVariants?:Json[]; appendSkills?:Json[]; np?:Json; npVariants?:Json[];bond?:ServantBond|null;npFilter?:ServantNPFilter|null }
-export interface Equip {id:number;name:string;nameJp?:string;collectionNo?:number;rarity?:number;image?:string|null;imageWidth?:number;imageHeight?:number;recognizable?:boolean;common?:boolean;commonSources?:string[]}
+export interface Servant { id:number; name:string; nameJp?:string; collectionNo?:number; classKey?:string; className?:string; rarity?:number;cost?:number|null; image?:string|null; portrait?:string|null; statusImage?:string|null; classIcon?:string|null; cards?:number[]; aliases?:(string|number)[]; searchAliases?:string[]; skills?:{id:number;name:string;icon?:string;target?:string;targets?:string[];coolDown?:number[]}[]; skillVariants?:Json[]; appendSkills?:Json[]; np?:Json; npVariants?:Json[];bond?:ServantBond|null;npFilter?:ServantNPFilter|null }
+export interface Equip {id:number;name:string;nameJp?:string;collectionNo?:number;rarity?:number;cost?:number|null;image?:string|null;imageWidth?:number;imageHeight?:number;recognizable?:boolean;common?:boolean;commonSources?:string[]}
 export interface Mystic {id:number;name:string;image?:string|null;skills?:Json[];orderChange?:boolean}
 export interface Catalog {servants:Servant[];equips:Equip[];mysticCodes:Mystic[];uiAssets?:{classes?:Record<string,string>;support?:string|null;background?:string|null;npFrames?:{arts?:string;buster?:string;quick?:string};masterSkill?:string|null;masterFrame?:string|null;masterEquipFrame?:string|null};inventory?:{servants?:number[];equips?:number[];[key:string]:any};version?:string|Json}
 export interface Entry {raw: any; replacement?:any; paired?:boolean; index:number}
@@ -22,6 +24,19 @@ export function assertEditable(value:any):asserts value is Json {
  for(const a of value.actions??[]){if(a?.type==='attack'&&a.attacks!=null){if(!Array.isArray(a.attacks))throw new Error('attack.attacks 必须是数组。');if(a.attacks.some((c:any)=>!object(c)))throw new Error('attack.attacks 包含无效出卡项，请先修正。');}if(['skill','attack'].includes(a?.type)&&a.options!=null&&!object(a.options))throw new Error('动作 options 必须是对象或 null。');}
 }
 export const members = (data:Json):any[] => [...Array.from({length:3},(_,i)=>data.team?.onFieldSvts?.[i]??null),...Array.from({length:3},(_,i)=>data.team?.backupSvts?.[i]??null)];
+/** A new editor session may suggest support without recording a member in an empty slot. */
+export function newTeamSupportSlot(data:Json,enabled:boolean):0|null {
+ const roster=members(data);
+ return enabled===true&&roster[0]===null&&!roster.some(m=>m&&['friend','npc','fixed'].includes(m.supportType))?0:null;
+}
+export function restoreNewTeamFirstSupport(value:unknown,sourceName?:unknown):boolean {
+ return value===true&&(sourceName==null||sourceName==='');
+}
+export function newTeamMemberDefaults(data:Json,slot:number,enabled:boolean,defaults:Json=newServantDefaults()):Json {
+ const next=clone(defaults);
+ if(slot===newTeamSupportSlot(data,enabled))next.supportType='friend';
+ return next;
+}
 export function setMember(data:Json,slot:number,value:any) {data.team??={}; const key=slot<3?'onFieldSvts':'backupSvts';data.team[key]??=[null,null,null];data.team[key][slot%3]=value;}
 // A drag exchanges the complete recorded member. Battle actions retain position semantics.
 export function swapMembers(data:Json,first:number,second:number) {
@@ -158,9 +173,9 @@ export function appendNPEntry(data:Json,turnIndex:number,svt:number,catalog:Cata
  const list=turns[turnIndex].entries;let at=list.findIndex(e=>e.raw?.type==='attack');
  if(at<0){at=list.length;list.push({raw:{type:'attack',attacks:[]},index:Array.isArray(data.actions)?data.actions.length:0});}
  const attack=list[at];attack.raw.attacks??=[];
- if(attack.raw.attacks.length>=3)throw new Error('每回合最多安排三个出卡意图。');
+ if(attack.raw.attacks.length>=3&&!attack.raw.attacks.slice(0,3).some(isAutoAttackCard))throw new Error('每回合最多安排三个出卡意图。');
  const roster=rosterAt(data,attack.index);
- attack.raw.attacks.push(makeCard(svt,'np',roster,catalog,attack.raw.attacks));writeTurns(data,turns);return at;
+ setAttackCard(attack.raw,makeCard(svt,'np',roster,catalog,attack.raw.attacks));writeTurns(data,turns);return at;
 }
 export function rosterAt(data:Json,index:number):any[] {
  const roster=members(data);for(const turn of turnsOf(data))for(const e of turn.entries){if(e.index>=index)return roster;if(isSwap(data,e.raw)&&Array.isArray(e.replacement)){const f=e.replacement[0],b=e.replacement[1]<3?e.replacement[1]+3:e.replacement[1];if(f>=0&&f<3&&b>=3&&b<6)[roster[f],roster[b]]=[roster[b],roster[f]];}}return roster;
@@ -216,6 +231,6 @@ export function remapSlots(data:Json,first:number,second:number) { // Only safe 
  if((data.actions??[]).some((a:any)=>!['attack','skill'].includes(a?.type)||isSwap(data,a)))throw new Error('存在换人或未知动作，不能可靠重映射角色。请使用保留槽位指向。');
  if(first>=3||second>=3) {if((data.actions??[]).length)throw new Error('前排与候补交换会改变执行资格，不能自动重映射。请逐项检查后保留槽位指向。');}
  const map=(n:any)=>n===first?second:n===second?first:n;
- for(const a of data.actions??[]){if(a.type==='skill'){if(a.svt!=null)a.svt=map(a.svt);if(a.options?.playerTarget!=null)a.options.playerTarget=map(a.options.playerTarget);}else if(a.type==='attack')for(const card of a.attacks??[])card.svt=map(card.svt);}
+ for(const a of data.actions??[]){if(a.type==='skill'){if(a.svt!=null)a.svt=map(a.svt);if(a.options?.playerTarget!=null)a.options.playerTarget=map(a.options.playerTarget);}else if(a.type==='attack')for(const card of a.attacks??[])if(!isAutoAttackCard(card))card.svt=map(card.svt);}
  const roster=members(data);setMember(data,first,roster[second]);setMember(data,second,roster[first]);
 }

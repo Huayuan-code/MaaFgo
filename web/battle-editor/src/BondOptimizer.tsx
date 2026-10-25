@@ -5,13 +5,14 @@ import {Modal} from './EditorModal';
 import {members} from './model';
 import type {Catalog,Json} from './model';
 import {reservedBondSupport} from './bondOptimizerModel';
+import {validPartyCostLimit} from './partyCost';
 import './bondOptimizer.css';
 
-export function BondOptimizer({data,catalog,onApply,onClose}:{data:Json;catalog:Catalog;onApply:(response:Json,snapshot:Json)=>void;onClose:()=>void}) {
+export function BondOptimizer({data,catalog,onApply,onClose,initialCostLimit,onCostLimitChange,preferredSupportSlot}:{data:Json;catalog:Catalog;onApply:(response:Json,snapshot:Json)=>void;onClose:()=>void;initialCostLimit:number;onCostLimitChange:(limit:number)=>void;preferredSupportSlot?:number|null}) {
  const [settings,setSettings]=useState<Json|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[result,setResult]=useState<Json|null>(null);
- const [costLimit,setCostLimit]=useState('117'),[bondBase,setBondBase]=useState('1200'),[rarity,setRarity]=useState(5);
+ const [costLimit,setCostLimit]=useState(String(initialCostLimit)),[bondBase,setBondBase]=useState('1200'),[rarity,setRarity]=useState(5);
  const [ownedServants,setOwnedServants]=useState(true),[ownedEquips,setOwnedEquips]=useState(true),[modifyEquips,setModifyEquips]=useState(false),[confirmedMlb,setConfirmedMlb]=useState(false);
- const [reserved,setReserved]=useState<number|null>(()=>reservedBondSupport(data)),[currentCost,setCurrentCost]=useState('');
+ const [reserved,setReserved]=useState<number|null>(()=>reservedBondSupport(data,preferredSupportSlot)),[currentCost,setCurrentCost]=useState('');
  const [excluded,setExcluded]=useState<number[]>([]),[query,setQuery]=useState('');
  const resultRef=useRef<HTMLDivElement>(null);
  useEffect(()=>{if(result)resultRef.current?.scrollIntoView({block:'nearest'});},[result]);
@@ -39,7 +40,7 @@ export function BondOptimizer({data,catalog,onApply,onClose}:{data:Json;catalog:
    {!settings&&!error&&<p className="muted" role="status">正在读取本地羁绊资料和库存…</p>}
    <fieldset disabled={busy} className="bond-options">
     <div className="bond-option-grid">
-     <label className="field"><span>队伍COST上限</span><input aria-label="队伍COST上限" type="number" min={1} max={300} value={costLimit} onChange={e=>setCostLimit(e.target.value)}/><small>填写当前账号可用的队伍上限</small></label>
+     <label className="field"><span>队伍COST上限</span><input aria-label="队伍COST上限" type="number" min={1} max={300} value={costLimit} onChange={e=>{const value=e.target.value;setCostLimit(value);if(/^\d+$/.test(value)&&validPartyCostLimit(Number(value)))onCostLimitChange(Number(value));}}/><small>与编队COST显示共用上限，当前浏览器记忆</small></label>
      <label className="field"><span>关卡基础羁绊</span><input aria-label="关卡基础羁绊" type="number" min={1} max={1000000} value={bondBase} onChange={e=>setBondBase(e.target.value)}/><small>用于比较固定点数与百分比礼装</small></label>
      <label className="field"><span>补齐从者优先星级</span><select aria-label="补齐从者优先星级" value={rarity} onChange={e=>setRarity(Number(e.target.value))}>{[5,4,3,2,1,0].map(n=><option value={n} key={n}>{n}星</option>)}</select><small>无合适候选时按5→0星回退</small></label>
     </div>

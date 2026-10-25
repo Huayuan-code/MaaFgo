@@ -22613,6 +22613,86 @@
         "effect_desc": "",
         "atlas_effects": []
       }
+    },
+    {
+      "id": "9407580",
+      "collection_no": 1968,
+      "name": "旗鼓相当",
+      "rarity": 3,
+      "important": 0,
+      "images": [
+        "f_94075800.png"
+      ],
+      "name_jp": "旗鼓相当",
+      "acquisition_category_jp": "イベントガチャ（期間限定）",
+      "filter_tag": "活动召唤",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9409520",
+      "collection_no": 2704,
+      "name": "トーメンテッド・ガーディアン",
+      "rarity": 3,
+      "important": 0,
+      "images": [
+        "f_94095200.png"
+      ],
+      "name_jp": "トーメンテッド・ガーディアン",
+      "acquisition_category_jp": "イベントガチャ（期間限定）",
+      "filter_tag": "活动召唤",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9312570",
+      "collection_no": 2706,
+      "name": "ミッシングウィング",
+      "rarity": 4,
+      "important": 0,
+      "images": [
+        "f_93125700.png"
+      ],
+      "name_jp": "ミッシングウィング",
+      "acquisition_category_jp": "絆礼装",
+      "filter_tag": "羁绊礼装",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
+    },
+    {
+      "id": "9312620",
+      "collection_no": 2707,
+      "name": "桃狐半月国傾剣",
+      "rarity": 4,
+      "important": 0,
+      "images": [
+        "f_93126200.png"
+      ],
+      "name_jp": "桃狐半月国傾剣",
+      "acquisition_category_jp": "絆礼装",
+      "filter_tag": "羁绊礼装",
+      "bond": {
+        "bonus_type": "none",
+        "bonus": 0,
+        "target": "",
+        "effect_desc": "",
+        "atlas_effects": []
+      }
     }
   ]
 }

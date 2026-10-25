@@ -25,7 +25,7 @@ from ..core.validator import (
     validate_main_action,
 )
 from ..execution.executor import Executor
-from ..data.servant_identity import servant_name
+from ..data.servant_identity import canonical_servant_id, servant_name
 from ..perception import perception
 import mfaalog
 from platform_waits import platform_timeout
@@ -100,12 +100,18 @@ class AutoBattleRuntime:
             roster_servant_ids = (None,) * 6
         self.roster_servant_ids = tuple(roster_servant_ids)
         self.candidate_servant_ids = self.roster_servant_ids
+        self._special_skill_servant_ids, self._special_skill_scope_reason = self._special_skill_roster()
         self.servant_recognizer = None
         self.executor = Executor(context, controller)
         self._turn_index = 0
         self._selection_cards = ()
 
     def run(self) -> BattleResult:
+        scope = getattr(self, "_special_skill_servant_ids", None)
+        mfaalog.info(
+            f"[AutoBattle] 特殊技能检测范围={'完整兜底' if scope is None else ','.join(sorted(scope))} "
+            f"reason={getattr(self, '_special_skill_scope_reason', 'no_actual_formation')}"
+        )
         if self.initial_formation is not None:
             initial = self.initial_formation
             mfaalog.info(
@@ -699,6 +705,52 @@ class AutoBattleRuntime:
     # 命中这些分支 = 需要选目标，从 action 参数指定槽位（通过 pipeline_override 控制）
     _SKILL_TARGET_BRANCH = "战斗_技能目标子屏"
 
+    def _special_skill_roster(self) -> tuple[frozenset[str] | None, str]:
+        """只有本场完整实际快照能证明从者不在队内；空位不等于未知。"""
+        initial = self.initial_formation
+        if initial is None:
+            return None, "no_actual_formation"
+        if self.initial_formation_reused:
+            return None, "formation_not_reconfirmed_this_battle"
+        if initial.source != "formation_confirmation" or initial.calibration_id in ("", "unverified"):
+            return None, "formation_not_calibrated"
+        if any(slot.status not in {"identified", "empty"} for slot in initial.slots):
+            return None, "formation_contains_unknown"
+        actual = tuple(canonical_servant_id(slot.servant_id) for slot in initial.slots)
+        merged = tuple(canonical_servant_id(sid) for sid in self.roster_servant_ids)
+        if actual != merged or any(slot.status == "identified" and sid is None
+                                   for slot, sid in zip(initial.slots, actual)):
+            return None, "formation_roster_conflict"
+        return frozenset(sid for sid in actual if sid is not None), "complete_actual_formation"
+
+    def _special_skill_pipeline_override(self) -> dict:
+        """只裁剪本次子任务入口，不改变节点 enabled 或 Resource 中的 next。"""
+        scope = getattr(self, "_special_skill_servant_ids", None)
+        if scope is None:
+            return {}
+        try:
+            node = self.ctx.get_node_data(self._SPECIAL_SKILL_PIPELINE) or {}
+        except Exception as exc:
+            mfaalog.warning(f"[AutoBattle] 特殊技能范围配置读取失败，保留完整检测: {exc}")
+            return {}
+        owners = (node.get("attach") or {}).get("special_skill_servant_ids")
+        branches = node.get("next")
+        if not isinstance(owners, dict) or not isinstance(branches, list):
+            return {}
+        kept = []
+        common = {*self._SKILL_SKIP_BRANCHES, self._SKILL_TARGET_BRANCH, self._SKILL_NO_OVERLAY_BRANCH}
+        for branch in branches:
+            name = branch.get("name") if isinstance(branch, dict) else branch
+            ids = owners.get(name) if isinstance(name, str) else None
+            # 无所属声明/非法声明时不排除未来新节点，避免更新元数据前漏检。
+            if not isinstance(name, str) or name in common or not isinstance(ids, list) or not ids:
+                kept.append(branch)
+                continue
+            normalized = tuple(canonical_servant_id(sid) for sid in ids)
+            if any(sid is None for sid in normalized) or scope.intersection(normalized):
+                kept.append(branch)
+        return {self._SPECIAL_SKILL_PIPELINE: {"next": kept}}
+
     def _execute_skill_cast(self, label, cast_callable, target_ally, return_scenes, return_timeout,
                             default_target: int = 1):
         """通用技能执行核：cast → sleep 0.6s → 子流水线处理特殊覆盖层 → 等回主界面。
@@ -739,8 +791,10 @@ class AutoBattleRuntime:
         _wait_until 负责。
         """
         try:
+            override = self._special_skill_pipeline_override()
+            override.update(pipeline_override or {})
             detail = self.ctx.run_task(self._SPECIAL_SKILL_PIPELINE,
-                                       pipeline_override=pipeline_override)
+                                       pipeline_override=override)
         except Exception as e:
             mfaalog.error(f"[AutoBattle] special skill pipeline error: {e}")
             return None

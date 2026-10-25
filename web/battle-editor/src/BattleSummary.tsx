@@ -2,6 +2,7 @@ import {useEffect,useState} from 'react';
 import {ArrowLeftRight,ArrowRight,FileQuestion,Info,Shield,Swords,Target} from 'lucide-react';
 import {actionTitle,colorName,isSwap,rosterAt,servantFor,skillAt,turnsOf} from './model';
 import type {Catalog,Entry,Json} from './model';
+import {isAutoAttackCard} from './attackCards';
 import {npAt} from './battlePreview';
 import {SkillIcon} from './PartyCard';
 import {CardArtwork} from './NPCardPreview';
@@ -42,6 +43,10 @@ function SummaryEntry({entry,data,catalog,region,config}:{entry:Entry;data:Json;
    <span className="summary-action-label"><Swords size={16} aria-hidden="true"/>攻击 · 回合结束</span>
    {raw.options?.enemyTarget!=null&&<SummaryEnemy value={raw.options.enemyTarget}/>}
    {cards.length?<div className="summary-attack-cards" aria-label="摘要出卡顺序">{cards.map((card:Json,i:number)=>{
+    if(isAutoAttackCard(card))return <span className="summary-card-step" key={i}>
+     {i>0&&<ArrowRight size={14} className="summary-arrow" aria-label="然后"/>}
+     <span className="summary-card-item summary-muted"><Swords size={18} aria-hidden="true"/><span className="summary-card-label">默认普通卡</span></span>
+    </span>;
     const member=validFront(card?.svt)?roster[card.svt]:undefined,servant=member?servantFor(catalog,member.svtId):undefined;
     const np=card?.isTD?npAt(member,servant):undefined,color=card?.isTD?np?.cardType:card?.cardType;
     const npColor=artworkColor(color),label=card?.isTD?(npColor?`宝具 · ${npColor[0].toUpperCase()+npColor.slice(1)}`:np?.name??'宝具资料未知'):colorName(color);
