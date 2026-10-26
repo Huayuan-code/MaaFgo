@@ -464,6 +464,10 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self._json(200, storage.save_draft(path[len("/api/drafts/"):], body))
             elif method == "POST" and path == "/api/import":
                 self._json(200, self.server.import_source(body.get("source")))
+            elif method == "POST" and path == "/api/import-bbc":
+                from .bbc_import import import_bbc_document
+                result = import_bbc_document(self.server.root, body.get("config"), body.get("name"))
+                self._json(200, result | {"validation": self.server.validate(result["data"])})
             elif image_request:
                 self._json(200, self.server._screenshot_worker.recognize(body))
             elif method == "POST" and path == "/api/heartbeat":

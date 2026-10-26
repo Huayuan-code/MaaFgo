@@ -1,10 +1,10 @@
 import {servantFor} from './model';
 import type {Catalog,Json} from './model';
 
-export type NamingSource='local'|'chaldea';
+export type NamingSource='local'|'chaldea'|'bbc';
 
 export function restoreNamingSource(value:unknown):NamingSource {
- return value==='chaldea'?'chaldea':'local';
+ return value==='chaldea'||value==='bbc'?value:'local';
 }
 
 /** Count UTF-16 units while keeping each complete Unicode code point. */

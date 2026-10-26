@@ -46,9 +46,8 @@ def _has_support_equip_filter(member: dict) -> bool:
         third = member.get("equip3")
         if isinstance(third, dict) and type(third.get("id")) is int and third["id"] > 0:
             return True
-        bond, board = member.get("equip2"), member.get("classBoardData")
-        return (isinstance(bond, dict) and type(bond.get("id")) is int and bond["id"] > 0
-                and isinstance(board, dict) and type(board.get("grandBondEquipSkillChange")) is bool)
+        board = member.get("classBoardData")
+        return isinstance(board, dict) and type(board.get("grandBondEquipSkillChange")) is bool
     return False
 
 
@@ -89,7 +88,15 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
     if not isinstance(data, dict):
         error("$", "invalid_root", "需要 Chaldea BattleShareData JSON 对象")
         return result()
-    unknown(data, {"minBuild", "appBuild", "quest", "options", "team", "delegate", "actions", "isCritTeam"}, "")
+    known_root = {"minBuild", "appBuild", "quest", "options", "team", "delegate", "actions", "isCritTeam"}
+    if data.get("_source") == "bbc":
+        known_root.update({"_source", "_bbcSource", "_bbcWaveTurns", "_conversionWarnings"})
+        conversion_warnings = data.get("_conversionWarnings")
+        if isinstance(conversion_warnings, list):
+            for index, message in enumerate(conversion_warnings):
+                if isinstance(message, str) and message.strip():
+                    warning(f"_conversionWarnings[{index}]", "bbc_conversion_warning", message)
+    unknown(data, known_root, "")
     for key in ("minBuild", "appBuild"):
         integer(data, key, "$", 0)
     boolean(data, "isCritTeam", "$")
