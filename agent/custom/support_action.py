@@ -781,6 +781,7 @@ class SupportAction(CustomAction):
                     return CustomAction.RunResult(success=False)
                 support_type = criteria["support_type"]
                 class_name = criteria["class_name"]
+                skip_servant = class_name == "any"
                 class_all = "def"
                 servant_id = criteria["servant_id"]
                 ce_bond = criteria["ce_bond"]

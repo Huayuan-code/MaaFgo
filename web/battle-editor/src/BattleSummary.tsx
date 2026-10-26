@@ -1,6 +1,6 @@
 import {useEffect,useState} from 'react';
 import {ArrowLeftRight,ArrowRight,FileQuestion,Info,Shield,Swords,Target} from 'lucide-react';
-import {actionTitle,colorName,isSwap,rosterAt,servantFor,skillAt,turnsOf} from './model';
+import {actionTitle,colorName,isSwap,rosterAt,servantFor,skillAt,turnsOf,hasServantIdentity,memberLabel} from './model';
 import type {Catalog,Entry,Json} from './model';
 import {isAutoAttackCard} from './attackCards';
 import {npAt} from './battlePreview';
@@ -21,11 +21,11 @@ function SummaryPortrait({src,label}:{src?:string|null;label:string}) {
 const validFront=(slot:unknown):slot is number=>Number.isInteger(slot)&&Number(slot)>=0&&Number(slot)<3;
 function SummaryMember({roster,slot,catalog,backup=false}:{roster:any[];slot:unknown;catalog:Catalog;backup?:boolean}) {
  const valid=backup?Number.isInteger(slot)&&Number(slot)>=3&&Number(slot)<6:validFront(slot);
- const member=valid?roster[Number(slot)]:undefined,servant=member?servantFor(catalog,member.svtId):undefined;
+ const member=valid?roster[Number(slot)]:undefined,servant=hasServantIdentity(member)?servantFor(catalog,member.svtId):undefined;
  const position=valid?`${backup?'候补':'前排'} ${Number(slot)-(backup?3:0)+1}`:`无效${backup?'候补':'前排'} ${String(slot??'未指定')}`;
- const name=servant?.name??(member?`从者 #${member.svtId??'未知'}`:'空槽');
- return <span className={`summary-person ${!member?'summary-unresolved':''}`} title={`${position} · ${name}`}>
-  <SummaryPortrait src={servant?.image} label={member?name:'?'}/>
+ const name=memberLabel(member,catalog);
+ return <span className={`summary-person ${!hasServantIdentity(member)?'summary-unresolved':''}`} title={`${position} · ${name}`}>
+  <SummaryPortrait src={servant?.image} label={hasServantIdentity(member)?name:'?'}/>
   <span className="summary-person-name"><small>{position}</small><span>{name}</span></span>
  </span>;
 }
@@ -47,14 +47,14 @@ function SummaryEntry({entry,data,catalog,region,config}:{entry:Entry;data:Json;
      {i>0&&<ArrowRight size={14} className="summary-arrow" aria-label="然后"/>}
      <span className="summary-card-item summary-muted"><Swords size={18} aria-hidden="true"/><span className="summary-card-label">默认普通卡</span></span>
     </span>;
-    const member=validFront(card?.svt)?roster[card.svt]:undefined,servant=member?servantFor(catalog,member.svtId):undefined;
+    const member=validFront(card?.svt)?roster[card.svt]:undefined,actorPresent=hasServantIdentity(member),servant=actorPresent?servantFor(catalog,member.svtId):undefined;
     const np=card?.isTD?npAt(member,servant):undefined,color=card?.isTD?np?.cardType:card?.cardType;
-    const npColor=artworkColor(color),label=card?.isTD?(npColor?`宝具 · ${npColor[0].toUpperCase()+npColor.slice(1)}`:np?.name??'宝具资料未知'):colorName(color);
+    const npColor=artworkColor(color),label=!actorPresent?`未指定从者，无法安排${card?.isTD?'宝具':'指定普通卡'}`:card?.isTD?(npColor?`宝具 · ${npColor[0].toUpperCase()+npColor.slice(1)}`:np?.name??'宝具资料未知'):colorName(color);
     return <span className="summary-card-step" key={i}>
      {i>0&&<ArrowRight size={14} className="summary-arrow" aria-label="然后"/>}
      <span className="summary-card-item" title={card?.isTD?np?.name:label}>
       <SummaryMember roster={roster} slot={card?.svt} catalog={catalog}/>
-      <CardArtwork member={member} np={np} color={color} kind={card?.isTD?'np':'face'} region={region} config={config} className="summary-card-artwork"/>
+      {actorPresent?<CardArtwork member={member} np={np} color={color} kind={card?.isTD?'np':'face'} region={region} config={config} className="summary-card-artwork"/>:<FileQuestion size={20} className="summary-unresolved" aria-hidden="true"/>}
       <span className="summary-card-label">{label}</span>
      </span>
     </span>;
@@ -63,16 +63,16 @@ function SummaryEntry({entry,data,catalog,region,config}:{entry:Entry;data:Json;
  }
  if(raw?.type!=='skill')return <div className="summary-action summary-unresolved"><FileQuestion size={16} aria-hidden="true"/>{actionTitle(entry,data,catalog)}</div>;
  const mystic=catalog.mysticCodes.find(m=>m.id===data.team?.mysticCode?.mysticCodeId),master=raw.svt==null;
- const member=validFront(raw.svt)?roster[raw.svt]:undefined,servant=member?servantFor(catalog,member.svtId):undefined;
+ const member=validFront(raw.svt)?roster[raw.svt]:undefined,actorPresent=master||hasServantIdentity(member),servant=hasServantIdentity(member)?servantFor(catalog,member.svtId):undefined;
  const validSkill=Number.isInteger(raw.skill)&&raw.skill>=0&&raw.skill<3;
- const meta=validSkill?(master?mystic?.skills?.find(skill=>skill.num===raw.skill+1)??mystic?.skills?.find((skill,i)=>skill.num==null&&i===raw.skill):skillAt(member,servant,raw.skill)):undefined;
- const swap=isSwap(data,raw),name=swap?'换人':meta?.name??(validSkill?`技能 ${raw.skill+1}`:`未支持技能 ${String(raw.skill)}`);
+ const meta=validSkill&&actorPresent?(master?mystic?.skills?.find(skill=>skill.num===raw.skill+1)??mystic?.skills?.find((skill,i)=>skill.num==null&&i===raw.skill):skillAt(member,servant,raw.skill)):undefined;
+ const swap=isSwap(data,raw),name=swap?'换人':!actorPresent?'未指定从者，无法安排技能':meta?.name??(validSkill?`技能 ${raw.skill+1}`:`未支持技能 ${String(raw.skill)}`);
  const pair=entry.replacement,front=Array.isArray(pair)?pair[0]:undefined,back=Array.isArray(pair)?pair[1]:undefined;
  const backup=Number.isInteger(back)?back<3?back+3:back:undefined;
  return <div className={`summary-action ${swap?'summary-swap':''}`}>
   {master?<span className="summary-person" title={mystic?.name??'御主礼装未指定'}><SummaryPortrait src={mystic?.image} label="御主"/><span>御主</span></span>:<SummaryMember roster={roster} slot={raw.svt} catalog={catalog}/>}
   <span className="summary-muted">{swap?'使用':'使用技能'}</span>
-  <span className="summary-skill" title={name}>{validSkill?<SkillIcon skill={meta?{...meta,name}:undefined} index={raw.skill}/>:<Shield size={24} aria-hidden="true"/>}<span>{name}</span></span>
+  <span className="summary-skill" title={name}>{validSkill&&actorPresent?<SkillIcon skill={meta?{...meta,name}:undefined} index={raw.skill}/>:<Shield size={24} aria-hidden="true"/>}<span>{name}</span></span>
   {swap?<span className="summary-swap-pair">
    {validFront(front)&&backup!=null&&backup>=3&&backup<6?<><SummaryMember roster={roster} slot={front} catalog={catalog}/><ArrowLeftRight size={16} className="summary-arrow" aria-label="交换"/><SummaryMember roster={roster} slot={backup} backup catalog={catalog}/></>:<span className="summary-unresolved">换人位置未配对或无效</span>}
   </span>:<>

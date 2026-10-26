@@ -491,13 +491,16 @@ class AutoFormationFromChaldea(CustomAction):
             equip_id, equip_limit_break = self._extract_equip(item)
             grand_svt = item.get("grandSvt") is True
             if support_type in SUPPORT_TYPES:
-                if not isinstance(svt_id, int) or svt_id <= 0:
+                any_servant = (support_type == "friend"
+                               and (svt_id is None or type(svt_id) is int and svt_id == 0))
+                if not any_servant and (type(svt_id) is not int or svt_id <= 0):
                     self._fail(
                         f"invalid_chaldea_team: 助战槽位{index + 1}没有有效 svtId"
                     )
                     return None
-                servant = self._get_servant_info(svt_id)
-                canonical_id = int(servant["id"]) if servant is not None else svt_id
+                servant = self._get_servant_info(svt_id) if not any_servant else None
+                canonical_id = (None if any_servant else
+                                int(servant["id"]) if servant is not None else svt_id)
                 expected.append({
                     "kind": "SUPPORT", "svt_id": canonical_id, "equip_id": equip_id,
                     "equip_limit_break": equip_limit_break, "grand_svt": grand_svt,
@@ -892,7 +895,11 @@ class AutoFormationFromChaldea(CustomAction):
         return detected
 
     def _detect_slots_stable(self):
-        """持续读取布局，要求连续两帧的槽位类型和身份一致。"""
+        """连续两帧类型和所需身份一致；不限定人物的助战仅核对标记。"""
+        any_support_identity = any(
+            item["kind"] == "SUPPORT" and item.get("svt_id") is None
+            for item in self.expected
+        )
         deadline = time.monotonic() + SLOT_LAYOUT_VERIFY_TIMEOUT_SECONDS
         previous = None
         latest = None
@@ -904,7 +911,10 @@ class AutoFormationFromChaldea(CustomAction):
             attempts += 1
             if latest is not None:
                 signature = tuple(
-                    (item.get("kind"), item.get("svt_id")) for item in latest
+                    (item.get("kind"),
+                     None if any_support_identity and item.get("kind") == "SUPPORT"
+                     else item.get("svt_id"))
+                    for item in latest
                 )
                 if signature == previous:
                     if attempts > 2:
@@ -1078,7 +1088,11 @@ class AutoFormationFromChaldea(CustomAction):
             support_index = support_indices[0]
             actual = current[support_index]
             actual_id = actual.get("svt_id")
-            if actual_id is None:
+            requires_identity = not expected_support_count or any(
+                item["kind"] == "SUPPORT" and item.get("svt_id") is not None
+                for item in self.expected
+            )
+            if actual_id is None and requires_identity:
                 return self._fail(
                     "support_identity_unknown: 无法识别"
                     f"槽位{support_index + 1}助战人物，"
@@ -1092,16 +1106,21 @@ class AutoFormationFromChaldea(CustomAction):
                 if item["kind"] == "SUPPORT"
             )
             expected_id = self.expected[target_index]["svt_id"]
-            if actual_id != expected_id:
+            if expected_id is not None and actual_id != expected_id:
                 return self._fail(
                     "support_identity_mismatch: "
                     f"当前助战槽位{support_index + 1}为 svtId={actual_id}，"
                     f"Chaldea 槽位{target_index + 1}要求 svtId={expected_id}"
                 )
-            mfaalog.info(
-                f"[自动编队] 助战身份校验通过：svtId={actual_id}，"
-                f"目标槽位{target_index + 1}"
-            )
+            if expected_id is None:
+                mfaalog.info(
+                    f"[自动编队] 助战不要求英灵，已校验助战标记；目标槽位{target_index + 1}"
+                )
+            else:
+                mfaalog.info(
+                    f"[自动编队] 助战身份校验通过：svtId={actual_id}，"
+                    f"目标槽位{target_index + 1}"
+                )
             return True
 
         if not self.use_support_substitution:
@@ -2083,6 +2102,9 @@ class AutoFormationFromChaldea(CustomAction):
             if expected["kind"] != "SUPPORT" or current[index]["kind"] != "SUPPORT":
                 continue
             actual = current[index]
+            if expected.get("svt_id") is None:
+                mfaalog.info(f"[自动编队] 助战最终复核通过：槽位{index + 1}助战标记符合，不限制英灵")
+                continue
             mfaalog.info(
                 f"[自动编队] 助战最终复核通过：槽位{index + 1} "
                 f"svtId={actual.get('svt_id')}，"

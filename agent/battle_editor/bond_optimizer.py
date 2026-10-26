@@ -157,7 +157,11 @@ class BondPlanner:
             if rows is None: rows = []
             if not isinstance(rows, list) or len(rows) > 3 or any(x is not None and not isinstance(x, dict) for x in rows):
                 raise EditorError('bond_team_invalid', '编队必须是六个有效槽位')
-            if any(m is not None and (_id(m.get('svtId')) is None or m.get('supportType') not in (None,'none','friend','npc','fixed')) for m in rows):
+            if any(m is not None and (
+                (_id(m.get('svtId')) is None and not (
+                    m.get('supportType') == 'friend' and (m.get('svtId') is None
+                    or type(m.get('svtId')) is int and m['svtId'] == 0)))
+                or m.get('supportType') not in (None,'none','friend','npc','fixed')) for m in rows):
                 raise EditorError('bond_team_invalid', '已有成员的从者ID或类型无效，请先修正编队')
             roster.extend([*rows, *([None] * (3-len(rows)))])
         supports = [i for i,m in enumerate(roster) if m and m.get('supportType') in ('friend','npc','fixed')]

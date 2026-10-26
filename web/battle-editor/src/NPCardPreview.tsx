@@ -4,6 +4,7 @@ import {apiPNG} from './api';
 import {artworkColor,cardArtworkRequest} from './npCardRequest';
 import type {CardArtworkInput,CardPreviewConfig} from './npCardRequest';
 import type {Json} from './model';
+import {hasServantIdentity} from './model';
 
 interface ArtworkState {key:string;phase:'loading'|'decoding'|'ready'|'error';url?:string;reason?:string;portraitSource?:string|null}
 export function CardArtwork(props:CardArtworkInput&{className?:string}) {
@@ -30,9 +31,9 @@ export function CardArtwork(props:CardArtworkInput&{className?:string}) {
 }
 
 export function NPCardPreview({member,np,region,config,slot,selected,full,onClick}:{member:Json|null;np?:Json;region:string;config?:CardPreviewConfig;slot:number;selected:boolean;full:boolean;onClick:()=>void}) {
- const name=np?.name??'宝具';
- return <button className={`np-composite-button ${selected?'selected':''}`} disabled={!member||selected||full} aria-label={`安排前排 ${slot+1} 宝具：${name}`} aria-pressed={selected} title={selected?'本回合已安排这位从者的宝具':full?'本回合出卡意图已满三项':`安排${name}`} onClick={onClick}>
-  {selected&&<span className="np-composite-selected"><Check size={14}/><span className="sr-only">已安排</span></span>}
-  <CardArtwork member={member} np={np} kind="np" region={region} config={config}/><span className="np-composite-caption">{name}</span>
+ const actorPresent=hasServantIdentity(member),name=actorPresent?(np?.name??'宝具'):'未指定从者';
+ return <button className={`np-composite-button ${actorPresent&&selected?'selected':''}`} disabled={!actorPresent||selected||full} aria-label={`安排前排 ${slot+1} 宝具：${name}`} aria-pressed={actorPresent&&selected} title={!actorPresent?'请先指定从者，才能安排宝具':selected?'本回合已安排这位从者的宝具':full?'本回合出卡意图已满三项':`安排${name}`} onClick={()=>{if(actorPresent)onClick();}}>
+  {actorPresent&&selected&&<span className="np-composite-selected"><Check size={14}/><span className="sr-only">已安排</span></span>}
+  {actorPresent?<CardArtwork member={member} np={np} kind="np" region={region} config={config}/>:<span className="card-artwork fallback"><span className="card-artwork-message"><Swords size={18}/><strong>未指定从者</strong><small>无法安排宝具</small></span></span>}<span className="np-composite-caption">{actorPresent?name:'无法安排宝具'}</span>
  </button>;
 }

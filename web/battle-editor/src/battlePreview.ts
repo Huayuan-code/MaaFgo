@@ -1,4 +1,4 @@
-import {members,servantFor,skillAt,turnsOf,isSwap} from './model';
+import {members,servantFor,skillAt,turnsOf,isSwap,hasServantIdentity,isUnspecifiedSupport} from './model';
 import type {Catalog,Json,Mystic,Servant} from './model';
 
 /** Display-only cooldown information. This module never edits BattleShareData. */
@@ -54,13 +54,14 @@ export function cooldownBounds(skill:Json|undefined,level:unknown):CooldownBound
 }
 
 const initialSkill=(skill:Json|undefined,index:number,level:unknown,hasActor:boolean):PreviewSkill=>({
-  ...cooldownBounds(skill,level),skill,index,used:false,usedThisTurn:false,
+  ...cooldownBounds(hasActor?skill:undefined,level),skill:hasActor?skill:undefined,index,used:false,usedThisTurn:false,
   // Start from the ordinary ready state; special starting cooldowns are outside
   // this basic preview, as are seals, append 5 and skill-effect cooldown changes.
-  remainingMin:0,remainingMax:0,ready:hasActor,
+  remainingMin:hasActor?0:null,remainingMax:hasActor?0:null,ready:hasActor,
 });
 
 export function npAt(member:Json|undefined|null,servant:Servant|undefined):Json|undefined {
+  if(!hasServantIdentity(member))return undefined;
   const chosen=member?.tdId;
   if(chosen!=null)return servant?.npVariants?.find(np=>np.id===chosen)
     ??(servant?.np?.id===chosen?servant?.np:undefined)
@@ -82,7 +83,7 @@ export function allowedAllyTargets(skill:Json|undefined,casterSlot:number,roster
   const targets=Array.isArray(skill?.targets)?skill.targets:[];
   const excludesSelf=targets.includes('ptOneOther')&&!targets.includes('ptOne');
   return roster.slice(0,3).flatMap((entry,index)=>
-    entry.member&&(!excludesSelf||index!==casterSlot)?[index]:[]);
+    (hasServantIdentity(entry.member)||isUnspecifiedSupport(entry.member))&&(!excludesSelf||index!==casterSlot)?[index]:[]);
 }
 
 function decrease(skills:PreviewSkill[]) {
@@ -104,9 +105,9 @@ export function previewTurn(data:Json,catalog:Catalog,turnIndex:number):BattlePr
   const turns=turnsOf(data);
   const selected=Math.max(0,Math.min(Math.max(0,turns.length-1),Number.isInteger(turnIndex)?turnIndex:0));
   const roster:PreviewMember[]=members(data).map((member,initialSlot)=>{
-    const servant=member?servantFor(catalog,member.svtId):undefined;
+    const actorPresent=hasServantIdentity(member),servant=actorPresent?servantFor(catalog,member?.svtId):undefined;
     return {key:`initial:${initialSlot}`,initialSlot,slot:initialSlot,member,servant,
-      skills:[0,1,2].map(index=>initialSkill(skillAt(member??undefined,servant,index),index,member?.skillLvs?.[index],!!member))};
+      skills:[0,1,2].map(index=>initialSkill(actorPresent?skillAt(member??undefined,servant,index):undefined,index,member?.skillLvs?.[index],actorPresent))};
   });
   const mystic=catalog.mysticCodes.find(code=>code.id===data.team?.mysticCode?.mysticCodeId);
   const master={mystic,skills:[0,1,2].map(index=>initialSkill(
@@ -119,7 +120,7 @@ export function previewTurn(data:Json,catalog:Catalog,turnIndex:number):BattlePr
       const action=entry.raw;
       if(action?.type==='attack'){
         if(ti===selected){beforeAttackIndex=entry.index;break;}
-        for(const actor of roster.slice(0,3))if(actor.member)decrease(actor.skills);
+        for(const actor of roster.slice(0,3))if(hasServantIdentity(actor.member))decrease(actor.skills);
         decrease(master.skills);
         for(const actor of roster)for(const state of actor.skills)state.usedThisTurn=false;
         continue;
@@ -129,8 +130,8 @@ export function previewTurn(data:Json,catalog:Catalog,turnIndex:number):BattlePr
       if(!Number.isInteger(skillIndex)||skillIndex<0||skillIndex>2)continue;
       const isMaster=action.svt==null;
       const actor=!isMaster&&Number.isInteger(action.svt)&&action.svt>=0&&action.svt<3?roster[action.svt]:undefined;
-      const state=isMaster?master.skills[skillIndex]:actor?.member?actor.skills[skillIndex]:undefined;
-      if(!state){warnings.push({code:'missing-actor',actionIndex:entry.index,message:'该技能动作时点的从者槽位为空或无效。'});continue;}
+      const state=isMaster?master.skills[skillIndex]:hasServantIdentity(actor?.member)?actor?.skills[skillIndex]:undefined;
+      if(!state){warnings.push({code:'missing-actor',actionIndex:entry.index,message:isUnspecifiedSupport(actor?.member)?'该技能引用仅要求礼装的助战，未指定从者，无法安排技能。':'该技能动作时点的从者槽位为空或未指定有效从者。'});continue;}
       if(state.usedThisTurn)warnings.push({code:'repeat-skill',actionIndex:entry.index,message:'同一回合重复施法；需要实战存在相应减 CD 或再次使用机制。'});
       else if(!state.ready)warnings.push({code:'cooldown-skill',actionIndex:entry.index,message:'此动作超出基础 CD 预览；计划保留，需要实战减 CD 等机制。'});
       const level=isMaster?data.team?.mysticCode?.level:actor?.member?.skillLvs?.[skillIndex];
@@ -143,7 +144,8 @@ export function previewTurn(data:Json,catalog:Catalog,turnIndex:number):BattlePr
         const pair=entry.replacement;
         const front=Array.isArray(pair)?pair[0]:undefined;
         const back=Array.isArray(pair)?(pair[1]<3?pair[1]+3:pair[1]):undefined;
-        if(Number.isInteger(front)&&front>=0&&front<3&&Number.isInteger(back)&&back>=3&&back<6&&roster[front].member&&roster[back].member){
+        const occupied=(index:number)=>hasServantIdentity(roster[index]?.member)||isUnspecifiedSupport(roster[index]?.member);
+        if(Number.isInteger(front)&&front>=0&&front<3&&Number.isInteger(back)&&back>=3&&back<6&&occupied(front)&&occupied(back)){
           [roster[front],roster[back]]=[roster[back],roster[front]];
           roster[front].slot=front;roster[back].slot=back;
         }else warnings.push({code:'invalid-swap',actionIndex:entry.index,message:'换人配对缺失、无效或包含空槽；不推测换人后的成员。'});

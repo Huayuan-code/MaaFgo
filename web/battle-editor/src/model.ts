@@ -13,6 +13,31 @@ export interface Turn {entries:Entry[]}
 export const clone = <T,>(v:T):T => structuredClone(v);
 export const newBattle = ():Json => ({team:{name:'未命名方案',onFieldSvts:[null,null,null],backupSvts:[null,null,null],mysticCode:{mysticCodeId:210,level:10}},actions:[]});
 export const newServantDefaults=():Json=>({supportType:'none',skillLvs:[10,10,10],appendLvs:[0,0,0,0,0]});
+export function hasServantIdentity(member:Json|null|undefined):member is Json&{svtId:number} {
+ return typeof member?.svtId==='number'&&Number.isSafeInteger(member.svtId)&&member.svtId>0;
+}
+export function isUnspecifiedSupport(member:Json|null|undefined):boolean {
+ return member?.supportType==='friend'&&(member.svtId==null||member.svtId===0);
+}
+export function memberLabel(member:Json|null|undefined,catalog:Catalog):string {
+ if(isUnspecifiedSupport(member))return '助战（仅要求礼装）';
+ if(hasServantIdentity(member))return servantFor(catalog,member!.svtId)?.name??`从者 #${member!.svtId}`;
+ return '未配置从者';
+}
+/** Explicitly remove identity requirements, retaining CE and unrelated imported fields. */
+export function clearSupportServantRequirement(member:Json):void {
+ if(member?.supportType!=='friend')throw new Error('仅好友助战支持不要求从者。');
+ for(const key of ['svtId','limitCount','transformVal','skillLvs','skillIds','appendLvs','tdId','tdLv','lv','atkFou','hpFou','fixedAtk','fixedHp','cardStrengthens','commandCodeIds','disabledExtraSkills','allowedExtraSkills','customPassives','customPassiveLvs'])delete member[key];
+}
+export function setMemberEquipRequirement(data:Json,slot:number,key:string,id:number,newTeamDefault=false):void {
+ if(!Number.isInteger(slot)||slot<0||slot>=6||!['equip1','equip2','equip3'].includes(key)||!Number.isSafeInteger(id)||id<=0)throw new Error('礼装或槽位无效，请重新选择。');
+ let member=members(data)[slot];
+ if(!member){
+  if(newTeamSupportSlot(data,newTeamDefault)!==slot)throw new Error('请先选择从者，或将这个位置设为仅要求礼装的助战。');
+  member={supportType:'friend'};
+ }
+ member[key]={...(member[key]??{}),id};setMember(data,slot,member);
+}
 export function assertEditable(value:any):asserts value is Json {
  const object=(v:any)=>v!=null&&typeof v==='object'&&!Array.isArray(v);
  if(!object(value))throw new Error('顶层必须是 JSON 对象。');
@@ -162,8 +187,12 @@ export function appendSkillEntry(data:Json,turnIndex:number,entry:Entry):number 
  const turns=clone(turnsOf(data));
  if(!Number.isInteger(turnIndex)||turnIndex<0||turnIndex>turns.length)throw new Error('回合不存在，请重新选择回合。');
  if(entry.raw?.type==='attack')throw new Error('技能步骤不能替代本回合的攻击组。');
- if(!turns[turnIndex])turns.push({entries:[{raw:{type:'attack',attacks:[]},index:0}]});
+ if(!turns[turnIndex])turns.push({entries:[{raw:{type:'attack',attacks:[]},index:Array.isArray(data.actions)?data.actions.length:0}]});
  const list=turns[turnIndex].entries,attack=list.findIndex(e=>e.raw?.type==='attack'),at=attack<0?list.length:attack;
+ if(entry.raw?.type==='skill'&&entry.raw.svt!=null){
+  const position=list[at]?.index??((list.at(-1)?.index??-1)+1),actor=entry.raw.svt;
+  if(!Number.isInteger(actor)||actor<0||actor>=3||!hasServantIdentity(rosterAt(data,position)[actor]))throw new Error('请先为这个前排位置指定从者，才能安排主动技能。');
+ }
  list.splice(at,0,entry);writeTurns(data,turns);return at;
 }
 export function appendNPEntry(data:Json,turnIndex:number,svt:number,catalog:Catalog):number {
@@ -186,7 +215,7 @@ export const colorName=(value:any):string => ({1:'Arts · 蓝卡',2:'Buster · �
 export const colorClass=(value:any):string => ({1:'arts',2:'buster',3:'quick'} as any)[colorOf(value)]||'';
 export const servantFor=(catalog:Catalog,id:any):Servant|undefined=>catalog.servants.find(s=>s.id===id||s.aliases?.some(alias=>Number(alias)===Number(id)));
 export function replaceServant(old:Json|null,id:number,catalog:Catalog,defaults:Json=newServantDefaults()):Json {
- const next=old===null?clone(defaults):clone(old);
+ const next=old===null?clone(defaults):isUnspecifiedSupport(old)?{...clone(defaults),...clone(old)}:clone(old);
  if(old&&(servantFor(catalog,old.svtId)?.id??old.svtId)!==id)for(const key of ['skillIds','tdId','limitCount','transformVal'])delete next[key];
  next.svtId=id;return next;
 }
@@ -209,7 +238,7 @@ export function appendSkillAt(servant:Servant|undefined,index:number):Json|undef
  return list?.find(s=>s.num===index+1)??list?.find((s,i)=>s.num==null&&i===index);
 }
 export function makeCard(svt:number,type:number|'np',roster:any[],catalog:Catalog,used:Json[]=[],explicitIndex?:number):Json {
- if(!roster[svt]?.svtId)throw new Error('请先为这个前排位置选择从者。');
+ if(!Number.isInteger(svt)||svt<0||svt>=3||!hasServantIdentity(roster[svt]))throw new Error('请先为这个前排位置选择从者。');
  if(type==='np'){if(used.some(c=>c?.svt===svt&&c?.isTD))throw new Error('同一回合不能重复指定同一位从者的宝具。');return {svt,isTD:true,card:-1};}
  const cards=servantFor(catalog,roster[svt]?.svtId)?.cards;
  if(explicitIndex!==undefined){
@@ -225,7 +254,7 @@ export function makeCard(svt:number,type:number|'np',roster:any[],catalog:Catalo
 export function move<T>(array:T[],from:number,to:number):T[] {const a=[...array];if(to<0||to>=a.length)return a;const [v]=a.splice(from,1);a.splice(to,0,v);return a;}
 export function actionTitle(entry:Entry,data:Json,catalog:Catalog):string {
  const a=entry.raw;if(a?.type==='attack')return '攻击 · 回合结束';if(isSwap(data,a))return '御主技能 3 · 换人';if(a?.type!=='skill')return `保留动作 · ${a?.type??'未知类型'}`;
- if(a.svt==null){const skills=catalog.mysticCodes.find(m=>m.id===data.team?.mysticCode?.mysticCodeId)?.skills;const skill=skills?.find(s=>s.num===a.skill+1)??skills?.find((s,i)=>s.num==null&&i===a.skill);return `御主 · ${skill?.name??`技能 ${Number(a.skill)+1}`}`;}const member=rosterAt(data,entry.index)[a.svt],servant=servantFor(catalog,member?.svtId);const name=servant?.name??`从者 ${member?.svtId??'未设置'}`;return `前排 ${Number(a.svt)+1} · ${name} · ${skillAt(member,servant,a.skill)?.name??`技能 ${Number(a.skill)+1}`}`;
+ if(a.svt==null){const skills=catalog.mysticCodes.find(m=>m.id===data.team?.mysticCode?.mysticCodeId)?.skills;const skill=skills?.find(s=>s.num===a.skill+1)??skills?.find((s,i)=>s.num==null&&i===a.skill);return `御主 · ${skill?.name??`技能 ${Number(a.skill)+1}`}`;}const member=rosterAt(data,entry.index)[a.svt],servant=servantFor(catalog,member?.svtId);const name=memberLabel(member,catalog);if(!hasServantIdentity(member))return `前排 ${Number(a.svt)+1} · ${name} · 未指定从者，无法安排技能`;return `前排 ${Number(a.svt)+1} · ${name} · ${skillAt(member,servant,a.skill)?.name??`技能 ${Number(a.skill)+1}`}`;
 }
 export function remapSlots(data:Json,first:number,second:number) { // Only safe while no order changes or unknown actions exist.
  if((data.actions??[]).some((a:any)=>!['attack','skill'].includes(a?.type)||isSwap(data,a)))throw new Error('存在换人或未知动作，不能可靠重映射角色。请使用保留槽位指向。');
