@@ -10,6 +10,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github/workflows/mirrorchyan_release.yml"
+NOTES_WORKFLOW = ROOT / ".github/workflows/mirrorchyan_release_note.yml"
 
 
 class MirrorChyanPublicationTests(unittest.TestCase):
@@ -61,10 +62,12 @@ class MirrorChyanPublicationTests(unittest.TestCase):
             self.assertEqual(selected, platforms)
 
     def test_release_notes_update_both_resource_ids_for_the_selected_tag(self):
-        notes = (ROOT / ".github/workflows/mirrorchyan_release_note.yml").read_text(encoding="utf8")
+        notes = NOTES_WORKFLOW.read_text(encoding="utf8")
         self.assertIn("rid: [MaaFgo, MaaFgo_exec]", notes)
         self.assertIn("mirrorchyan_rid: ${{ matrix.rid }}", notes)
-        self.assertIn("version_name: ${{ inputs.tag || github.event.release.tag_name }}", notes)
+        self.assertIn("RELEASE_TAG: ${{ inputs.tag || github.event.release.tag_name }}", notes)
+        self.assertIn("version_name: ${{ steps.release.outputs.tag }}", notes)
+        self.assertIn("channel: ${{ matrix.rid == 'MaaFgo_exec' && steps.release.outputs.android_channel || '' }}", notes)
         self.assertIn("secrets.MirrorChyanExecUploadToken || secrets.MirrorChyanUploadToken", notes)
 
     def test_release_resolution_and_android_channel_execute_correctly(self):
@@ -72,20 +75,25 @@ class MirrorChyanPublicationTests(unittest.TestCase):
                 else Path(shutil.which("bash") or "/missing-bash"))
         if not bash.is_file():
             self.skipTest("bash unavailable")
-        script = self.workflow.split("        run: |\n", 1)[1].split("      - uses:", 1)[0]
-        script = "\n".join(line[10:] for line in script.splitlines())
         # 执行真实工作流脚本；只替换 GitHub API 调用，测试不会联网或上传。
         stub = 'gh() { printf "%s\\n" "$FAKE_RELEASE_TAG"; }\n'
-        for tag, channel in [("v2.0.11", "stable"), ("v2.0.12-alpha.1", "beta"),
-                             ("v2.0.12-beta.2", "beta"), ("v2.0.12-rc.1", "beta"),
-                             ("v2.0.12-dev.1", "beta"), ("v2.0.12-ci.20261024", "beta")]:
-            for requested in (tag, ""):
-                with self.subTest(tag=tag, requested=requested), tempfile.TemporaryDirectory() as tmp:
-                    env = dict(os.environ, RELEASE_TAG=requested, FAKE_RELEASE_TAG=tag, GITHUB_OUTPUT="result.txt")
-                    subprocess.run([str(bash), "-e", "-c", stub + script], cwd=tmp, env=env, check=True,
-                                   capture_output=True, text=True)
-                    values = dict(line.split("=", 1) for line in (Path(tmp) / "result.txt").read_text().splitlines())
-                    self.assertEqual(values, {"tag": tag, "android_channel": channel})
+        for workflow in (WORKFLOW, NOTES_WORKFLOW):
+            source = workflow.read_text(encoding="utf8")
+            # 按 YAML 缩进截取 run 块，兼容下一步先写 uses 或 id。
+            block = re.search(r"(?m)^        run: \|\n((?:          .*\n)+)", source)
+            self.assertIsNotNone(block, workflow.name)
+            script = "\n".join(line[10:] for line in block.group(1).splitlines())
+            for tag, channel in [("v2.0.11", "stable"), ("v2.0.12-alpha.1", "beta"),
+                                 ("v2.0.12-beta.2", "beta"), ("v2.0.12-rc.1", "beta"),
+                                 ("v2.0.12-dev.1", "beta"), ("v2.0.12-ci.20261024", "beta")]:
+                for requested in (tag, ""):
+                    with self.subTest(workflow=workflow.name, tag=tag, requested=requested), \
+                         tempfile.TemporaryDirectory() as tmp:
+                        env = dict(os.environ, RELEASE_TAG=requested, FAKE_RELEASE_TAG=tag, GITHUB_OUTPUT="result.txt")
+                        subprocess.run([str(bash), "-e", "-c", stub + script], cwd=tmp, env=env, check=True,
+                                       capture_output=True, text=True)
+                        values = dict(line.split("=", 1) for line in (Path(tmp) / "result.txt").read_text().splitlines())
+                        self.assertEqual(values, {"tag": tag, "android_channel": channel})
 
 
 if __name__ == "__main__":
