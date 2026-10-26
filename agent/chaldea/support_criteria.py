@@ -92,19 +92,28 @@ def build_support_criteria(share_data, servant_map, resolve_name=get_equip_name)
     if len(supports) != 1:
         raise ValueError(f"Chaldea 队伍必须恰有一个标记助战，实际为 {len(supports)} 个")
     support = supports[0]
-    try:
-        servant_id = int(support.get("svtId"))
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Chaldea 助战缺少有效 svtId") from exc
-    if servant_id <= 0:
-        raise ValueError("Chaldea 助战缺少有效 svtId")
-    servant = servant_map.get(str(servant_id))
-    if not servant or not servant.get("images"):
-        raise ValueError(f"助战从者 {servant_id} 缺少头像资源")
-    servant_class = str(servant.get("class") or "").lower()
-    class_name = _CLASS_TABS.get(servant_class)
-    if not class_name:
-        raise ValueError(f"助战从者 {servant_id} 的职介无法识别")
+    raw_id = support.get("svtId")
+    any_servant = (str(support.get("supportType") or "").lower() == "friend"
+                   and (raw_id is None or type(raw_id) is int and raw_id == 0))
+    if any_servant:
+        servant = None
+        class_name = "any"
+    else:
+        if isinstance(raw_id, bool):
+            raise ValueError("Chaldea 助战缺少有效 svtId")
+        try:
+            servant_id = int(raw_id)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("Chaldea 助战缺少有效 svtId") from exc
+        if servant_id <= 0:
+            raise ValueError("Chaldea 助战缺少有效 svtId")
+        servant = servant_map.get(str(servant_id))
+        if not servant or not servant.get("images"):
+            raise ValueError(f"助战从者 {servant_id} 缺少头像资源")
+        servant_class = str(servant.get("class") or "").lower()
+        class_name = _CLASS_TABS.get(servant_class)
+        if not class_name:
+            raise ValueError(f"助战从者 {servant_id} 的职介无法识别")
     grand = support.get("grandSvt") is True
     if grand:
         # Chaldea 冠位槽定义：equip1=普通礼装、equip2=羁绊礼装、
@@ -130,13 +139,13 @@ def build_support_criteria(share_data, servant_map, resolve_name=get_equip_name)
         ce_bond = "any"
     return {
         "support_type": "grand" if grand else "normal",
-        "servant_id": str(servant["id"]),
+        "servant_id": "" if any_servant else str(servant["id"]),
         "class_name": class_name,
-        "images": servant["images"],
+        "images": [] if any_servant else servant["images"],
         "ce_specs": [equip for equip in equips if equip is not None],
-        "active": _levels(support.get("skillLvs"), 3, "主动技能"),
-        "passive": _levels(support.get("appendLvs"), 5, "追加技能"),
-        "np_level": _level(support.get("tdLv"), "宝具等级", 5),
-        "level": _level(support.get("lv"), "从者等级", 130),
+        "active": [0] * 3 if any_servant else _levels(support.get("skillLvs"), 3, "主动技能"),
+        "passive": [0] * 5 if any_servant else _levels(support.get("appendLvs"), 5, "追加技能"),
+        "np_level": 0 if any_servant else _level(support.get("tdLv"), "宝具等级", 5),
+        "level": 0 if any_servant else _level(support.get("lv"), "从者等级", 130),
         "ce_bond": ce_bond,
     }

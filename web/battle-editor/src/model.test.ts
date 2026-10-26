@@ -2,8 +2,71 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {assertEditable,clone,newBattle,newServantDefaults,newTeamSupportSlot,restoreNewTeamFirstSupport,newTeamMemberDefaults,fillMissingTaskSkillDefaults,members,setMember,turnsOf,writeTurns,rosterAt,makeCard,remapSlots,servantFor,skillAt,replaceServant,swapMembers,filterCatalog,appendSkillAt,appendSkillEntry,appendNPEntry} from './model';
 import type {Json,Catalog} from './model';
+import {hasServantIdentity,isUnspecifiedSupport,memberLabel,clearSupportServantRequirement,setMemberEquipRequirement,actionTitle} from './model';
 import {startPartyDrag,updatePartyDrag,finishPartyDrag} from './partyDrag';
 const catalog:Catalog={servants:[{id:1,name:'甲',cards:[2,1,1,3,2]},{id:4,name:'丁',cards:[]}],equips:[],mysticCodes:[]};
+test('CE-only friend support is a real requirement with unknown identity, never an invented servant',()=>{
+ for(const svtId of [undefined,null,0]){
+  const member={supportType:'friend',svtId,equip1:{id:10}};
+  assert.equal(isUnspecifiedSupport(member),true);assert.equal(hasServantIdentity(member),false);
+  assert.equal(memberLabel(member,catalog),'助战（仅要求礼装）');
+ }
+ for(const svtId of [false,true,-1,0.5,'1',NaN,Infinity]){
+  assert.equal(hasServantIdentity({svtId}),false);assert.equal(isUnspecifiedSupport({svtId,supportType:'friend'}),false);
+ }
+ assert.equal(hasServantIdentity({svtId:1}),true);assert.equal(memberLabel({svtId:1},catalog),'甲');
+ assert.equal(memberLabel({svtId:999},catalog),'从者 #999');assert.equal(memberLabel(null,catalog),'未配置从者');
+ for(const supportType of ['none','npc','fixed'])assert.equal(isUnspecifiedSupport({supportType}),false);
+});
+test('only the default new support can receive its first CE before a servant is chosen',()=>{
+ const data=newBattle();setMemberEquipRequirement(data,0,'equip1',10,true);
+ assert.deepEqual(members(data)[0],{supportType:'friend',equip1:{id:10}});
+ assert.equal(newTeamSupportSlot(data,true),null);assert.equal(members(data)[1],null);
+ for(const slot of [1,5]){
+  const before=clone(data);assert.throws(()=>setMemberEquipRequirement(data,slot,'equip1',10,true));assert.deepEqual(data,before);
+ }
+ const old=newBattle();assert.throws(()=>setMemberEquipRequirement(old,0,'equip1',10,false));assert.deepEqual(old,newBattle());
+ setMember(data,3,{supportType:'friend',equip1:{id:10,lv:80,future:null},future:{keep:1}});
+ setMemberEquipRequirement(data,3,'equip1',20);
+ assert.deepEqual(members(data)[3],{supportType:'friend',equip1:{id:20,lv:80,future:null},future:{keep:1}});
+});
+test('clearing support identity retains all CE, grand and unknown attributes and later selection restores skill defaults',()=>{
+ const member:Json={supportType:'friend',svtId:1,lv:90,tdLv:5,skillLvs:[8,9,10],appendLvs:[1,2,3],skillIds:[11,12,13],tdId:14,limitCount:4,transformVal:1,
+  grandSvt:true,classBoardData:{grandBondEquipSkillChange:true},equip1:{id:10,lv:100},equip2:{id:20},equip3:{id:30},ceId:40,future:{keep:null}};
+ clearSupportServantRequirement(member);
+ const expected={supportType:'friend',grandSvt:true,classBoardData:{grandBondEquipSkillChange:true},equip1:{id:10,lv:100},equip2:{id:20},equip3:{id:30},ceId:40,future:{keep:null}};
+ assert.deepEqual(member,expected);
+ const replaced=replaceServant(member,1,catalog);
+ assert.deepEqual(replaced,{...newServantDefaults(),...expected,svtId:1});assert.deepEqual(member,expected);
+ (replaced as Json).skillLvs[0]=2;assert.deepEqual(newServantDefaults().skillLvs,[10,10,10]);
+ for(const supportType of ['none','npc','fixed']){
+  const other={supportType,svtId:1,equip1:{id:10}},before=clone(other);assert.throws(()=>clearSupportServantRequirement(other));assert.deepEqual(other,before);
+ }
+});
+test('unknown support cannot produce an active skill, NP or targeted face card and existing actions stay intact',()=>{
+ const data:Json={team:{onFieldSvts:[{supportType:'friend',equip1:{id:10}},{svtId:1},null],backupSvts:[{svtId:4},null,null],mysticCode:{mysticCodeId:210}},actions:[{type:'attack',attacks:[]}]};
+ const before=clone(data);
+ assert.throws(()=>appendSkillEntry(data,0,{raw:{type:'skill',svt:0,skill:0},index:0}),/指定从者/);
+ assert.throws(()=>appendNPEntry(data,0,0,catalog),/选择从者/);
+ for(const type of ['np',1,2,3] as const)assert.throws(()=>makeCard(0,type,members(data),catalog),/选择从者/);
+ assert.deepEqual(data,before);
+ appendSkillEntry(data,0,{raw:{type:'skill',svt:1,skill:0,options:{playerTarget:0}},index:0});
+ assert.equal(data.actions[0].options.playerTarget,0);
+});
+test('old actions on an unidentified support remain recorded with an explicit unresolved title',()=>{
+ const data:Json={team:{onFieldSvts:[{supportType:'friend',skillIds:[123],equip1:{id:10}},null,null]},actions:[{type:'skill',svt:0,skill:0}]},before=clone(data);
+ const label=actionTitle(turnsOf(data)[0].entries[0],data,catalog);
+ assert.match(label,/助战（仅要求礼装）/);assert.match(label,/未指定从者，无法安排技能/);assert.doesNotMatch(label,/#123/);
+ assert.deepEqual(data,before);
+});
+test('skill and card availability follows the roster after swapping an unknown support with a known backup',()=>{
+ const data:Json={team:{onFieldSvts:[{supportType:'friend',equip1:{id:10}},null,null],backupSvts:[{svtId:1},null,null],mysticCode:{mysticCodeId:210}},actions:[]};
+ appendSkillEntry(data,0,{raw:{type:'skill',svt:null,skill:2},replacement:[0,0],paired:true,index:0});
+ appendSkillEntry(data,0,{raw:{type:'skill',svt:0,skill:0},index:0});appendNPEntry(data,0,0,catalog);
+ assert.equal(data.actions[1].svt,0);assert.equal(data.actions[2].attacks[0].svt,0);
+ appendSkillEntry(data,1,{raw:{type:'skill',svt:0,skill:1},index:0});
+ assert.deepEqual(data.actions[3],{type:'skill',svt:0,skill:1});
+});
 const fixture=():Json=>({unknown:{null:null,deep:['x',{test:true}]},team:{name:'原名',onFieldSvts:[{svtId:1,skillLvs:[10,0,2],appendLvs:[0,10,0,0,0],equip1:{ceId:123,deep:null}}, {svtId:2}, {svtId:3}],backupSvts:[{svtId:4},null,null],mysticCode:{mysticCodeId:20}},actions:[{type:'skill',svt:0,skill:0,unknown:['keep']},{type:'skill',svt:null,skill:2},{type:'skill',svt:0,skill:1},{type:'attack',attacks:[{svt:0,isTD:true,card:-1}],options:{enemyTarget:2}},{type:'attack',attacks:[]}],delegate:{replaceMemberIndexes:[[0,0]],unknown:'keep'}});
 test('new plans explicitly start with Chaldea mystic code 210 at level 10',()=>{const d=newBattle();assert.deepEqual(d.team.mysticCode,{mysticCodeId:210,level:10});assert.deepEqual(members(d),[null,null,null,null,null,null]);assert.deepEqual(d.actions,[]);});
 test('each new plan owns independent formation, mystic code and action containers',()=>{const a=newBattle(),b=newBattle();a.team.mysticCode.level=1;a.team.mysticCode.mysticCodeId=20;setMember(a,0,{svtId:1});a.actions.push({type:'attack',attacks:[]});assert.deepEqual(b,newBattle());assert.notEqual(a.team,b.team);assert.notEqual(a.team.mysticCode,b.team.mysticCode);assert.notEqual(a.team.onFieldSvts,b.team.onFieldSvts);assert.notEqual(a.actions,b.actions);});

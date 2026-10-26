@@ -135,15 +135,15 @@ test('missing NPC catalog facts and empty slots never borrow another servant ski
 
 test('NP selection honors explicit variants and keeps unknown NP color unknown',()=>{
   const servant=catalog.servants[0];
-  assert.equal(npAt({},servant)?.cardType,1);assert.equal(npAt({tdId:102},servant)?.cardType,2);
-  assert.deepEqual(npAt({tdId:999},servant),{id:999,name:'宝具 #999'});
+  assert.equal(npAt({svtId:1},servant)?.cardType,1);assert.equal(npAt({svtId:1,tdId:102},servant)?.cardType,2);
+  assert.deepEqual(npAt({svtId:1,tdId:999},servant),{id:999,name:'宝具 #999'});
   assert.equal(npAt({svtId:987},undefined),undefined);
 });
 
 test('an improved default never rewrites an imported explicit placeholder NP or future fields',()=>{
   const actual={id:21,name:'实际宝具',cardType:2},placeholder={id:99,name:'？？？',cardType:2},servant={id:1,name:'测试从者',np:actual,npVariants:[actual,placeholder]};
   const member:Json={svtId:1,tdId:99,future:{unchanged:[null,0]}},before=clone(member),metadata=clone(servant);
-  assert.equal(npAt({},servant),actual);assert.equal(npAt(member,servant),placeholder);
+  assert.equal(npAt({svtId:1},servant),actual);assert.equal(npAt(member,servant),placeholder);
   assert.deepEqual(JSON.parse(JSON.stringify(member)),before);assert.deepEqual(servant,metadata);
   assert.deepEqual(npAt({...member,tdId:12345},servant),{id:12345,name:'宝具 #12345'});
 });
@@ -170,4 +170,49 @@ test('empty plans clamp invalid turn indices and zero-CD actions still require e
   const used=previewTurn(data,zero,0).front[0].skills[0];
   assert.equal(used.remainingMax,0);assert.equal(used.ready,false);assert.equal(used.usedThisTurn,true);
   assert.equal(previewTurn(data,zero,1).front[0].skills[0].ready,true);
+});
+
+test('essence-only support keeps an occupied target but never invents skills cooldowns or NP metadata',()=>{
+  for(const svtId of [undefined,null,0]){
+    const data=fixture();data.team.onFieldSvts[0]={supportType:'friend',svtId,equip1:{id:99},skillIds:[11,12,13],tdId:101,skillLvs:[10,10,10],future:{keep:null}};
+    data.actions=[attack(),attack(),attack()];const before=clone(data),view=previewTurn(data,catalog,2);
+    assert.equal(view.front[0].servant,undefined);
+    for(const state of view.front[0].skills){
+      assert.equal(state.skill,undefined);assert.equal(state.ready,false);assert.equal(state.used,false);
+      assert.equal(state.remainingMin,null);assert.equal(state.remainingMax,null);assert.equal(state.source,'unknown');
+    }
+    assert.equal(npAt(view.front[0].member,catalog.servants[0]),undefined);
+    assert.deepEqual(allowedAllyTargets({target:'ally'},1,view.roster),[0,1]);
+    assert.deepEqual(data,before);
+  }
+});
+
+test('existing skill references to essence-only support remain intact and produce a clear preview warning',()=>{
+  const data=fixture();data.team.onFieldSvts[0]={supportType:'friend',equip1:{id:99},skillIds:[91]};
+  data.actions=[cast(0),attack()];const before=clone(data),view=previewTurn(data,catalog,0);
+  assert.ok(view.warnings.some(w=>w.code==='missing-actor'&&w.actionIndex===0&&w.message.includes('仅要求礼装')));
+  assert.equal(view.front[0].skills[0].used,false);assert.equal(view.front[0].skills[0].skill,undefined);
+  assert.deepEqual(data,before);
+});
+
+test('swapping a known member into an essence-only support position enables only the current known actor',()=>{
+  const data=fixture();data.team.onFieldSvts[0]={supportType:'friend',equip1:{id:99}};
+  data.actions=[cast(null,2),cast(0),attack(),cast(null,2),cast(0),attack()];
+  data.delegate={replaceMemberIndexes:[[0,0],[0,0]]};const before=clone(data);
+  const first=previewTurn(data,catalog,0);
+  assert.equal(first.front[0].member?.svtId,2);assert.equal(first.front[0].skills[0].skill?.id,21);
+  assert.equal(first.front[0].skills[0].used,true);assert.equal(first.roster[3].skills[0].ready,false);
+  assert.equal(first.warnings.some(w=>w.code==='invalid-swap'),false);
+  const second=previewTurn(data,catalog,1);
+  assert.equal(second.front[0].member?.supportType,'friend');assert.equal(second.front[0].skills[0].ready,false);
+  assert.equal(second.front[0].skills[0].remainingMax,null);
+  assert.ok(second.warnings.some(w=>w.code==='missing-actor'&&w.actionIndex===4));
+  assert.deepEqual(data,before);
+});
+
+test('missing or invalid servant identity cannot use a leftover chosen NP even when metadata is supplied',()=>{
+  for(const svtId of [undefined,null,0,-1,1.5,'1',false,true]){
+    const member={svtId,supportType:'friend',tdId:102};const before=clone(member);
+    assert.equal(npAt(member,catalog.servants[0]),undefined);assert.deepEqual(member,before);
+  }
 });

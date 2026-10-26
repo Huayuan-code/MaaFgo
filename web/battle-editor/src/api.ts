@@ -6,6 +6,12 @@ export async function api<T=any>(path:string,method='GET',data?:any):Promise<T> 
 }
 export async function session(){const result=await api('/session');token=result.token;return result;}
 
+/** Upload only to the authenticated loopback editor; no base64 JSON expansion. */
+export async function apiImage(blob:Blob,mime:string,signal?:AbortSignal):Promise<any> {
+ const res=await fetch('/api/import-image',{method:'POST',headers:{'Content-Type':mime,...(token?{'X-Editor-Token':token}:{})},body:blob,signal,credentials:'same-origin'});
+ const body=await res.json();if(!res.ok)throw new ApiError(res.status,body);return body;
+}
+
 /** Card artwork uses the same authenticated session as JSON, without putting its token in a URL. */
 export async function apiPNG(path:string,signal?:AbortSignal):Promise<{blob:Blob;portraitSource:string|null}> {
  if(!/^\/api\/(?!\/)/.test(path)||path.includes('\\'))throw new Error('卡图地址必须来自本地服务。');

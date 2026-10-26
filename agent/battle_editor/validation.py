@@ -23,6 +23,35 @@ def card_color(value: Any) -> str | None:
     return CARD_TYPES.get(value)
 
 
+def _unspecified_friend(member: Any) -> bool:
+    if not isinstance(member, dict) or member.get("supportType") != "friend":
+        return False
+    sid = member.get("svtId")
+    return sid is None or type(sid) is int and sid == 0
+
+
+def _identified_member(member: Any) -> bool:
+    return (isinstance(member, dict) and type(member.get("svtId")) is int
+            and member["svtId"] > 0)
+
+
+def _has_support_equip_filter(member: dict) -> bool:
+    equip1 = member.get("equip1")
+    first_id = equip1.get("id") if isinstance(equip1, dict) else None
+    if first_id is None:
+        first_id = member.get("ceId")
+    if type(first_id) is int and first_id > 0:
+        return True
+    if member.get("grandSvt") is True:
+        third = member.get("equip3")
+        if isinstance(third, dict) and type(third.get("id")) is int and third["id"] > 0:
+            return True
+        bond, board = member.get("equip2"), member.get("classBoardData")
+        return (isinstance(bond, dict) and type(bond.get("id")) is int and bond["id"] > 0
+                and isinstance(board, dict) and type(board.get("grandBondEquipSkillChange")) is bool)
+    return False
+
+
 def validate_battle(data: Any, catalog: dict | None = None) -> dict:
     """Return an actionable report, preserving every field and JSON value supplied."""
     issues: list[dict] = []
@@ -129,9 +158,11 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
                 error(path, "invalid_servant", "从者槽位必须是对象或 null", **loc)
                 continue
             summary["servants"] += 1
-            if member.get("svtId") is None:
-                error(path + ".svtId", "missing_servant", "请选择从者或将空位写为 null", **loc)
-            integer(member, "svtId", path, 1, **loc)
+            unspecified_friend = _unspecified_friend(member)
+            if not unspecified_friend:
+                if member.get("svtId") is None:
+                    error(path + ".svtId", "missing_servant", "请选择从者或将空位写为 null；好友助战可只配置礼装", **loc)
+                integer(member, "svtId", path, 1, **loc)
             for key, lo, hi in (("lv", 1, 120), ("tdLv", 1, 5), ("tdId", 0, None), ("limitCount", 0, None), ("transformVal", 0, None), ("atkFou", 0, None), ("hpFou", 0, None), ("fixedAtk", 0, None), ("fixedHp", 0, None), ("ceId", 0, None), ("ceLv", 0, 100)):
                 integer(member, key, path, lo, hi, **loc)
             for key in ("ceLimitBreak", "grandSvt"):
@@ -157,6 +188,17 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
                 supports += 1
             if support_type == "fixed":
                 warning(path + ".supportType", "legacy_support", "保留历史 fixed 助战类型；Chaldea 官方类型为 none / friend / npc", **loc)
+            if unspecified_friend:
+                identity_fields = ("lv", "tdLv", "tdId", "skillLvs", "appendLvs", "skillIds",
+                                   "limitCount", "transformVal", "atkFou", "hpFou", "fixedAtk", "fixedHp",
+                                   "cardStrengthens", "commandCodeIds", "disabledExtraSkills",
+                                   "allowedExtraSkills", "customPassives", "customPassiveLvs")
+                if any(any(member[key]) if isinstance(member.get(key), list) else bool(member.get(key))
+                       for key in identity_fields):
+                    warning(path, "unspecified_support_attributes",
+                            "此助战未指定从者，等级、技能和宝具等从者条件不参与筛选；仅按礼装要求选择。请核对保留的属性。", **loc)
+                if not _has_support_equip_filter(member):
+                    warning(path, "unrestricted_support", "此好友助战未指定从者或礼装筛选，可能选择任意助战；请确认是否符合预期。", **loc)
             sid = member.get("svtId")
             if support_type in (None, "none") and type(sid) is int and sid > 0:
                 meta = by_id.get(sid, {})
@@ -299,6 +341,8 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
                 summary["skills"] += 1
                 if not members[svt]:
                     error(path + ".svt", "empty_actor", "该动作时点的前排槽位为空", **loc)
+                elif not _identified_member(members[svt]):
+                    error(path + ".svt", "unspecified_support_actor", "该动作时点的助战未指定从者，不能安排从者技能；请先在编队中选择从者。", **loc)
                 elif requires_target(members[svt], skill) and options.get("playerTarget") is None:
                     error(path + ".options.playerTarget", "required_ally_target", "该技能的已知元数据要求选择我方目标", **loc)
             else:
@@ -363,6 +407,8 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
                     error(cp + ".svt", "invalid_front_slot", "出卡必须指向当前前排 0–2", **loc)
                 elif not members[svt]:
                     error(cp + ".svt", "empty_actor", "出卡时的前排槽位为空", **loc)
+                elif not _identified_member(members[svt]):
+                    error(cp + ".svt", "unspecified_support_actor", "出卡时的助战未指定从者，不能安排宝具或指定普通卡；请先在编队中选择从者。", **loc)
                 if card.get("isTD") is True:
                     summary["noblePhantasms"] += 1
                     if type(svt) is int:
