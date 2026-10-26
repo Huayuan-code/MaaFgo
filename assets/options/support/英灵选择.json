@@ -3,8 +3,20 @@
         "英灵选择": {
             "type": "select",
             "label": "英灵选择",
+            "description": "选择“0-不要求英灵”后，在 ALL 职介中仅按礼装要求查找，忽略英灵、技能、宝具和等级要求。",
             "default": "剑士",
             "cases": [
+                {
+                    "name": "不要求英灵",
+                    "label": "0-不要求英灵",
+                    "pipeline_override": {
+                        "助战action": {
+                            "attach": {
+                                "class_name": "any"
+                            }
+                        }
+                    }
+                },
                 {
                     "name": "他人格",
                     "label": "他人格",

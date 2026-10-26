@@ -11,7 +11,8 @@
   1. 截图 -> YOLO 检测助战条目框(按 y 排序, 即条目顺序)
   2. 对每个框判定(全屏坐标 = 框左上角 + 框内锚点):
      a. 英灵   : attach.servant(servantId) -> servant_list.json.images(f_xxx);
-                 attach.class_name(中文职介名) 由 英灵选择 职介 case 固定注入
+                 attach.class_name(中文职介名) 由 英灵选择 职介 case 固定注入;
+                 any=不要求英灵, 使用 ALL 列表并跳过英灵及其技能/宝具/等级要求
                  与框内(95,76)中心 60x60 头像窗口匹配, 任一模板满足即可
      b. 礼装   : 普通 ce / 冠位 ce_1+ce_2(lizhuang 模板; 0_空.png 跳过)
      c. 主动技能: skill_active_1/2/3 独立键, 非0数字在锚点左下 ROI 拼接识别 >= 期望
@@ -763,6 +764,7 @@ class SupportAction(CustomAction):
                 if not sessions.valid(root, token):
                     mfaalog.error("[SupportAction] 助战兜底需要有效的原生战斗会话")
                     return CustomAction.RunResult(success=False)
+            skip_servant = False
             if source_mode == "chaldea":
                 if attach.get("chaldea_enabled") is not True:
                     mfaalog.error("[SupportAction] 使用 Chaldea 配置需要先开启‘是否使用 Chaldea 队伍’")
@@ -795,7 +797,8 @@ class SupportAction(CustomAction):
                 support_type = param.get("support_type", "normal")
                 class_name = str(attach["class_name"]).strip()   # 玩家点击的职介
                 class_all = str(attach["class_all"]).strip()     # all=ALL 阶, def=按职介
-                servant_id = str(attach["servant"]).strip()
+                skip_servant = class_name == "any"
+                servant_id = "" if skip_servant else str(attach["servant"]).strip()
                 # 既有自定义助战选项共用礼装状态；Chaldea 模式可逐格指定不同状态。
                 ce_status = str(attach["礼装状态"]).strip()
                 if support_type == "grand":
@@ -810,16 +813,16 @@ class SupportAction(CustomAction):
                         (str(attach[f"普通助战-礼装-{ce_status}"]).strip(), CE_ANCHOR_NORMAL, ce_status),
                     ]
                 # 技能等级: 0=不要求。
-                active = [int(attach[f"skill_active_{i}"]) for i in range(1, 4)]
-                passive = [int(attach[f"skill_passive_{i}"]) for i in range(1, 6)]
-                np_level = int(attach["np_level"])
-                level = int(attach["level"])
+                active = [0] * 3 if skip_servant else [int(attach[f"skill_active_{i}"]) for i in range(1, 4)]
+                passive = [0] * 5 if skip_servant else [int(attach[f"skill_passive_{i}"]) for i in range(1, 6)]
+                np_level = 0 if skip_servant else int(attach["np_level"])
+                level = 0 if skip_servant else int(attach["level"])
 
             passive_need = any(v > 0 for v in passive)
 
             ce_names = [n for n, _, _ in ce_targets if n]
             mfaalog.info(f"[SupportAction] 助战类型={support_type} 职介={class_name or '(未选)'} "
-                         f"英灵={servant_id or '(未选)'} "
+                         f"英灵={servant_id or ('(不要求)' if skip_servant else '(未选)')} "
                          f"礼装={'/'.join(ce_names) if ce_names else '(空)'} 主动={active} 被动={passive} "
                          f"宝具={np_level} 等级={level}")
 
@@ -844,15 +847,17 @@ class SupportAction(CustomAction):
             self._ref_dir = _image_dir(pkg, "support")
             self._ref_name = "助战编入确认.png"
 
-            if not servant_id:
-                mfaalog.error("[SupportAction] 未选择英灵")
-                return CustomAction.RunResult(success=False)
+            srv = None
+            if not skip_servant:
+                if not servant_id:
+                    mfaalog.error("[SupportAction] 未选择英灵")
+                    return CustomAction.RunResult(success=False)
 
-            smap = self._get_servant_map()
-            srv = smap.get(servant_id)
-            if not srv or not srv.get("images"):
-                mfaalog.error(f"[SupportAction] servant_list 无该英灵: {servant_id}")
-                return CustomAction.RunResult(success=False)
+                smap = self._get_servant_map()
+                srv = smap.get(servant_id)
+                if not srv or not srv.get("images"):
+                    mfaalog.error(f"[SupportAction] servant_list 无该英灵: {servant_id}")
+                    return CustomAction.RunResult(success=False)
 
             detector = self._get_detector()
 
@@ -861,7 +866,7 @@ class SupportAction(CustomAction):
 
             # 执行所有助战选择前, 先点击对应职介的筛选 tab(全屏坐标); 间隔0.5s点击3次
             if class_name:
-                if "all" in class_all:
+                if skip_servant or "all" in class_all:
                     tab = CLASS_TABS["ALL"]    # ALL 阶: 不按具体职介
                 else:
                     tab = CLASS_TABS.get(class_name, CLASS_TABS["OTHER"])
@@ -893,7 +898,7 @@ class SupportAction(CustomAction):
                     dx, dy = shift
                     bx, by, bx2, by2 = bx + dx, by + dy, bx2 + dx, by2 + dy
                     mfaalog.info(f"[SupportAction] 重定位后 框=({bx},{by})-({bx2},{by2})")
-                    if not self._match_servant(img, face_dir, bx, by, srv["images"], support_type):
+                    if not skip_servant and not self._match_servant(img, face_dir, bx, by, srv["images"], support_type):
                         continue
                     if not all(self._match_ce(img, ce_dir, bx, by, name, anc, sub)
                                for name, anc, sub in ce_targets):
@@ -902,7 +907,7 @@ class SupportAction(CustomAction):
                     if support_type == "grand" and not self._match_bond(img, bx, by, ce_bond):
                         continue
                     # 主动视图(主动技能+宝具+英灵等级): 单帧判定, 失败跳过该条目
-                    if not self._check_active_view(img, bx, by, active, np_dir, np_level, level):
+                    if not skip_servant and not self._check_active_view(img, bx, by, active, np_dir, np_level, level):
                         continue
 
                     # 主动/宝具/等级 均满足, 剩被动
