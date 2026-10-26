@@ -1,0 +1,974 @@
+{
+  "schema": 1,
+  "status": "temporary_bbc_fallback_pending_device_calibration",
+  "date": "2026-10-26",
+  "baseline": [
+    1280,
+    720
+  ],
+  "existing_templates": "Refer directly to project paths; do not duplicate them.",
+  "templates": [
+    {
+      "source": "assets\\expball\\JP\\feedjd.png",
+      "server": "JP",
+      "source_sha256": "a6d0d226c76ccd32f44786cf59bdb0f20bdfa52e2ce553e42ca585a6f8f94300",
+      "source_size": [
+        125,
+        62
+      ],
+      "output": "assets/resource/base/image/搓丸子/高星素材确认决定.png",
+      "output_sha256": "ef58f7fe9bdc99cdc21a6f5fc6e2aed5f5c0cfcb8f27c4d3d19f828a89727db2",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\lzqh.png",
+      "server": "JP",
+      "source_sha256": "0aa34915c3d11bef38ba388781f41cc8faf96c31ce29a8d0409293c9c3586772",
+      "source_size": [
+        278,
+        67
+      ],
+      "output": "assets/resource/base/image/搓丸子/礼装强化菜单入口.png",
+      "output_sha256": "40142c81290c74076d425da7c6837988f9fd142edfdd457ab7e7c1fd191cfe47",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\exlevel.png",
+      "server": "JP",
+      "source_sha256": "8d5390b49fcd6e02e598ada0144bc5e3e59ec481c64f80579e9d871a0bcc6cd6",
+      "source_size": [
+        291,
+        302
+      ],
+      "output": "assets/resource/base/image/搓丸子/添加底卡占位.png",
+      "output_sha256": "b34bf6d422f037f2ccaa13e7cddd6ca38433d51762863bbbff5be1b97b59a7b7",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\help.png",
+      "server": "JP",
+      "source_sha256": "7c6d28773d3cfc6b3baabf7ccf8ba35455a2f6da97b30e8e6792e88d5c0493c1",
+      "source_size": [
+        149,
+        47
+      ],
+      "output": "assets/resource/base/image/搓丸子/强化详情帮助.png",
+      "output_sha256": "d1f945909a3e46cc77138a4d85e50a36c3e37681949e4dbd80c02274954bf89a",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\tysd.png",
+      "server": "JP",
+      "source_sha256": "0258b8a0285edfe5bb1aead60d82b5868bee20ecca5f8448b4b272c831a9931b",
+      "source_size": [
+        50,
+        59
+      ],
+      "output": "assets/resource/base/image/搓丸子/统一锁定列表标志.png",
+      "output_sha256": "5c6c6ba1759aa001287d9a2e1a64b63990eb4d3fbe17d04987b05e56f3f7eb35",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\on.png",
+      "server": "JP",
+      "source_sha256": "307f89cd4b3756890b1ede46714bfa8ef54ae4a0a016fce031d0c58ad6d80bca",
+      "source_size": [
+        68,
+        70
+      ],
+      "output": "assets/resource/base/image/搓丸子/开关开启.png",
+      "output_sha256": "cbc3ed7a443b8070f3c917d54c934eb3ad156b37f33fcf4c85f095bc854e051d",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\off.png",
+      "server": "JP",
+      "source_sha256": "00750b8257930e2ab58b79c4a3fa8c1d2df5b4b172c8abfdae90f446ed93f89a",
+      "source_size": [
+        68,
+        70
+      ],
+      "output": "assets/resource/base/image/搓丸子/开关关闭.png",
+      "output_sha256": "d89a3873bbff3a734403fab0619bcf3393b5eafc3938fa789a1f216a30f7addc",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\takes_0.png",
+      "server": "JP",
+      "source_sha256": "38f19307db8e9900a5d2cce656a91299da899299809bcb90366bebdd5f0aeab3",
+      "source_size": [
+        180,
+        55
+      ],
+      "output": "assets/resource/base/image/搓丸子/持有数排序未选中.png",
+      "output_sha256": "85898599fd4693dad84e1be0d4b699ef8a9d1b1fe257a1adbb91403c9b2a4cb7",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\takes_1.png",
+      "server": "JP",
+      "source_sha256": "ad20ce5c6cf2f0274e0ec29039a19a50e8c98bcae1511592c2b4a43c12f5bb40",
+      "source_size": [
+        180,
+        55
+      ],
+      "output": "assets/resource/base/image/搓丸子/持有数排序已选中.png",
+      "output_sha256": "9e62d28223e520070186fe0aaeab444314bb1032cf213d20018d84a2b37c0247",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\level_0.png",
+      "server": "JP",
+      "source_sha256": "bb5fc19c371e724fe7fb90eccb019e4c6a182e5188d8a14e11a28e9733af274a",
+      "source_size": [
+        160,
+        60
+      ],
+      "output": "assets/resource/base/image/搓丸子/等级排序未选中.png",
+      "output_sha256": "ca073aed2ca24b6a4b683445c5341d148888a1c4ab6ecb7ef5650ce785bc0a60",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\level_1.png",
+      "server": "JP",
+      "source_sha256": "008c213515e994c3ff761adf245cecfd77c53c59b7062d0ebc5eb111280ebb3c",
+      "source_size": [
+        160,
+        60
+      ],
+      "output": "assets/resource/base/image/搓丸子/等级排序已选中.png",
+      "output_sha256": "51f6f65593804721716d0dbb146ef1a7a7e5e6f742555b31cc00432658b6faf4",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\star1_1.png",
+      "server": "JP",
+      "source_sha256": "d201c69ea64694936618f3ddcfaee8ceee961fc2f2e0f516c72bd9e5800ad2b1",
+      "source_size": [
+        80,
+        85
+      ],
+      "output": "assets/resource/base/image/搓丸子/1星已选中.png",
+      "output_sha256": "b034ad789388c9cd971277c1db815a7f91ecdef4fbac9644e65b133870c558b8",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\star2_1.png",
+      "server": "JP",
+      "source_sha256": "14ba0e81d530efea4c44c74a75dd2f14b34e59bd221f35213c448df77dc5af32",
+      "source_size": [
+        80,
+        85
+      ],
+      "output": "assets/resource/base/image/搓丸子/2星已选中.png",
+      "output_sha256": "90eafc7f5da9b5b4b582bd960d10daffd1cd0224a38ce9435897ed28b6199648",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\star3_1.png",
+      "server": "JP",
+      "source_sha256": "42c76451b5fab69150933c1c4d67bbfaa7793c2e49461759d8590fb60f43968a",
+      "source_size": [
+        80,
+        85
+      ],
+      "output": "assets/resource/base/image/搓丸子/3星已选中.png",
+      "output_sha256": "d121ee88fac250505e713fe494a6db2325de73a4251faa6dc34faca43b1f0c5a",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\star4_1.png",
+      "server": "JP",
+      "source_sha256": "3b95d488b1c91f91ab1ffa9d10cd527efdb6e422fee401b23d6c4c41a165b459",
+      "source_size": [
+        80,
+        85
+      ],
+      "output": "assets/resource/base/image/搓丸子/4星已选中.png",
+      "output_sha256": "041e0680d494c7eada27e1a4212502502fb55e90320075a3c9333502ba189fe3",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\locked.png",
+      "server": "JP",
+      "source_sha256": "81777e89317c96a11c6a738bf4a986d88b4e3c863fa42da67b273910193983dd",
+      "source_size": [
+        60,
+        55
+      ],
+      "output": "assets/resource/base/image/搓丸子/详情锁定按钮已锁.png",
+      "output_sha256": "0593b1db47926812e289c0ec34d867746f0ce97cebcf36dc015b6d52c09fe03b",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\unlocked.png",
+      "server": "JP",
+      "source_sha256": "399e4c604eff4c4143dcb51ac262ae20638d44cf5fe964f6250e6447f364053b",
+      "source_size": [
+        60,
+        55
+      ],
+      "output": "assets/resource/base/image/搓丸子/详情锁定按钮未锁.png",
+      "output_sha256": "4efddae0c404b949aa2093e4f84f7a2ea8f5cf04259770c9616c7d148a5763c1",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\locker.png",
+      "server": "JP",
+      "source_sha256": "5ccb6c7e7b7b4e1057e925c504ecbe3a4bac10579a79398bdff772f60dc971a3",
+      "source_size": [
+        26,
+        35
+      ],
+      "output": "assets/resource/base/image/搓丸子/卡片已锁标志.png",
+      "output_sha256": "e83545453102e01d1bbb215231920b85bc0dcfe9b8cf025e0250f42bd60e0b84",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\biaoji.png",
+      "server": "JP",
+      "source_sha256": "fe744ddf96ede4370f2976c422102483a1b61e22e70882227d35acf72bbfca7b",
+      "source_size": [
+        28,
+        28
+      ],
+      "output": "assets/resource/base/image/搓丸子/卡片已标记.png",
+      "output_sha256": "ee55dae467438db6c984cce4c2b410db57658da1af14dd34f465367951f7ec28",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\sign_off.png",
+      "server": "JP",
+      "source_sha256": "5b50bc0126c07b25135945f4a0d484f995c0acdbc0abeb97bf743d3424c2a07c",
+      "source_size": [
+        90,
+        60
+      ],
+      "output": "assets/resource/base/image/搓丸子/统一标记模式关闭.png",
+      "output_sha256": "5038ada2fd8cdd84aa4faed103b12728c56cbc8412c990095b37ea1ddd653cb5",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\sign_on.png",
+      "server": "JP",
+      "source_sha256": "c24cd4a0271e4cc89d3735aa8e28c14d5034abaf11c16e05a5a7b94d60970b9c",
+      "source_size": [
+        90,
+        60
+      ],
+      "output": "assets/resource/base/image/搓丸子/统一标记模式开启.png",
+      "output_sha256": "44f4ec79e7b871e9f4c43b80f0eee266987754e8cbc9f01dc022e30da955d779",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\tysd_0.png",
+      "server": "JP",
+      "source_sha256": "4350cb37beff3c1165a0657b38ac50c99b6ce1e5471ab2c47b18389c93334908",
+      "source_size": [
+        50,
+        50
+      ],
+      "output": "assets/resource/base/image/搓丸子/统一锁定模式关闭.png",
+      "output_sha256": "db0cbf122d3ed2ec1c89f3470fa16333c7e0fa93e9041a9a0c48bba03bc0a033",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\tysd_1.png",
+      "server": "JP",
+      "source_sha256": "e1a86d3508a8afb014ede772b4e9c17d16b0a997eb3b5b17b7860f6567eaa0d7",
+      "source_size": [
+        50,
+        50
+      ],
+      "output": "assets/resource/base/image/搓丸子/统一锁定模式开启.png",
+      "output_sha256": "13e27ccf5b36c13fc6fd897d941df548a5cacac67461fd4c1ad13166f688ad87",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\empty.png",
+      "server": "JP",
+      "source_sha256": "71f593a7e00728d444e6f22ffc00c85f148157f39dd336a42983b4eeb024b35a",
+      "source_size": [
+        121,
+        121
+      ],
+      "output": "assets/resource/base/image/搓丸子/卡片空位.png",
+      "output_sha256": "d5789c3ed8b15c4e5128babec243eed1f542dcedd6166460413ed417094178e4",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\empty_1.png",
+      "server": "JP",
+      "source_sha256": "75a5b8b1776a1adfebb738e840eb113a7640b8be6c45df28ddb4f4c977a0648b",
+      "source_size": [
+        127,
+        135
+      ],
+      "output": "assets/resource/base/image/搓丸子/卡片空位另一种.png",
+      "output_sha256": "7b61d8beb05069c8720659c11d753e9c3ed24ab25b37d8f5796cd61f072f1804",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\lclose.png",
+      "server": "JP",
+      "source_sha256": "12c7adb6de258a24328462a005a93dd80dc10c9549e8ea6a1f7398f53285e043",
+      "source_size": [
+        104,
+        88
+      ],
+      "output": "assets/resource/base/image/搓丸子/详情关闭按钮.png",
+      "output_sha256": "7d1146ae383590e78040fce84b49477de5bd9f2f1cb5cc36df4aea1de2fe0895",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\slot.png",
+      "server": "JP",
+      "source_sha256": "0b550567496dfa3e99e214120699dc4010092362d3b49f5d6c2890745649d43f",
+      "source_size": [
+        75,
+        78
+      ],
+      "output": "assets/resource/base/image/搓丸子/材料槽空位.png",
+      "output_sha256": "42cbd319c529d9ea14186cdc6a0c04f80bb75326b393368f637dd7bc450f779a",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\sure.png",
+      "server": "JP",
+      "source_sha256": "8584c6fcb87f19d82fd0d173d8da4cbb39d4d6c5c0c1f8562ffbfb0dbb950fa8",
+      "source_size": [
+        132,
+        75
+      ],
+      "output": "assets/resource/base/image/搓丸子/排序决定按钮.png",
+      "output_sha256": "b837152d170e714f26e140c580f1705203619e73fdf794cc55640e6de062a671",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\all_equip.png",
+      "server": "JP",
+      "source_sha256": "67fdc6a18b71933432291639f69fb72f4a96ad03fc572dac1801b02f85fe7f60",
+      "source_size": [
+        161,
+        60
+      ],
+      "output": "assets/resource/base/image/搓丸子/全部礼装已选.png",
+      "output_sha256": "6367bd06eee41f9ccac6ae78ae0d81575ba9749f3bce98c747335c080d1fa02f",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\gnlz_0.png",
+      "server": "JP",
+      "source_sha256": "1d05f1a3ace6cca249d54ac18f415c8401a854156fb3511b925ab879c1d57357",
+      "source_size": [
+        160,
+        50
+      ],
+      "output": "assets/resource/base/image/搓丸子/概念礼装类型未选.png",
+      "output_sha256": "d9845eba70a384ea71f1c4e3e78dc7a60477e6e0186ace0325f5d2fe0d0bee54",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\gnlz_1.png",
+      "server": "JP",
+      "source_sha256": "af495606a67bbc9df135ccf320670a0f77b13a7bd9af83e0c69976f32bd79676",
+      "source_size": [
+        160,
+        50
+      ],
+      "output": "assets/resource/base/image/搓丸子/概念礼装类型已选.png",
+      "output_sha256": "00ae6fb47223b16244cd06bba83e962f5b521aad254bb3493071dc4d6e803be5",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\in_store.png",
+      "server": "JP",
+      "source_sha256": "8fb223d6a92c3830f13697de991231cb15b1ad4956a772957b8513027021c3d8",
+      "source_size": [
+        166,
+        113
+      ],
+      "output": "assets/resource/base/image/搓丸子/保管室持有栏标志.png",
+      "output_sha256": "c2debdf0086d622193d0d4f3f9795e7739961efaaa10e3b5353e753e2c5fbae4",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\zxStore.png",
+      "server": "JP",
+      "source_sha256": "7f1b2acbe4582fe5ee6248f1b8714a1fec7f1359842302a6901c9b5472d2dbb3",
+      "source_size": [
+        117,
+        61
+      ],
+      "output": "assets/resource/base/image/搓丸子/存入执行按钮.png",
+      "output_sha256": "70b1e3ead640488d792133cc8cda5db196e985ae16ffe1565eddb915eaa4b0be",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\storeAll.png",
+      "server": "JP",
+      "source_sha256": "8cd00780db4e00d241b07e73f850438897670a607c16ef3490444fcdd5064809",
+      "source_size": [
+        88,
+        41
+      ],
+      "output": "assets/resource/base/image/搓丸子/保管室全部已选.png",
+      "output_sha256": "dc05ad86f75aeb80ae679c89df11811040c364cf8898d54d41e65828639cc762",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\noSucai.png",
+      "server": "JP",
+      "source_sha256": "76cc64e43627421155297fc9d8be2d02bd95a271cb03c2902fcbbba677e5fda2",
+      "source_size": [
+        339,
+        48
+      ],
+      "output": "assets/resource/base/image/搓丸子/所需道具不足.png",
+      "output_sha256": "1faf9aa67d9e1ae7897d2d3dd4087352a38ce6851dd3d025aab553af153fefe9",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\scrollEnd.png",
+      "server": "JP",
+      "source_sha256": "a8c71b3659de695ff2a57279855db0194eb5eba904b8d4dad17d28e129f521f3",
+      "source_size": [
+        52,
+        34
+      ],
+      "output": "assets/resource/base/image/搓丸子/列表滚动到底标志.png",
+      "output_sha256": "401aab8910948311b064cad316b44e10cb2fff3667e3fb3c8891d0f38c16f008",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\JP\\greenFrame.png",
+      "server": "JP",
+      "source_sha256": "b020d7e7ba1dd77992bc412200495144556d1651a25d65de0138abe65506f0f8",
+      "source_size": [
+        176,
+        191
+      ],
+      "output": "assets/resource/base/image/搓丸子/素材选中绿框.png",
+      "output_sha256": "df77cd29de06fab894b23da7abc2aab27bd5d07d18d45dd4b1eb3b9faa1829ef",
+      "scale": "2/3",
+      "operation": "centre green mask, outer frame only, nearest resize"
+    },
+    {
+      "source": "assets\\expball\\CH\\feedjd.png",
+      "server": "CH",
+      "source_sha256": "fca996001ee4d96111bfdde4652918268ad4bab9698171739d7dfbae953d1561",
+      "source_size": [
+        118,
+        60
+      ],
+      "output": "assets/resource/cn/image/搓丸子/高星素材确认决定.png",
+      "output_sha256": "420e180752c7b84a5a4163b8096c6d826dc48c479ddbdea032652a73587cbcc9",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\lzqh.png",
+      "server": "CH",
+      "source_sha256": "9b72564c1b4b9ebba0ca6dc6815451f61a2b42a6d129804a93b94fa6c21cbce9",
+      "source_size": [
+        278,
+        67
+      ],
+      "output": "assets/resource/cn/image/搓丸子/礼装强化菜单入口.png",
+      "output_sha256": "7cab1d1be37ab9ecb5bb5cc1068afd47b75444ac19ab36e9406656395500f5d9",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\exlevel.png",
+      "server": "CH",
+      "source_sha256": "3fcce783b556d25ef5c34c73855acd35e601a3ecc80d3ba2dd5c32d526572d4a",
+      "source_size": [
+        291,
+        302
+      ],
+      "output": "assets/resource/cn/image/搓丸子/添加底卡占位.png",
+      "output_sha256": "b34bf6d422f037f2ccaa13e7cddd6ca38433d51762863bbbff5be1b97b59a7b7",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\help.png",
+      "server": "CH",
+      "source_sha256": "c3e0c1e54c9db58f0faf86516e841f4f0ae6866b5b7c9a510413a6868ea85ce1",
+      "source_size": [
+        147,
+        46
+      ],
+      "output": "assets/resource/cn/image/搓丸子/强化详情帮助.png",
+      "output_sha256": "035793efa427b5c6ad9dce4e8fcd5cc2b7039d6df96365a5c157dff7a9b31a24",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\tysd.png",
+      "server": "CH",
+      "source_sha256": "6c97add5cb4f9809a870709dffc997361ca4c166bf58a723e0cce7ca67313b3f",
+      "source_size": [
+        50,
+        59
+      ],
+      "output": "assets/resource/cn/image/搓丸子/统一锁定列表标志.png",
+      "output_sha256": "b64fb2c732f6bebf33e0ad7232bfabb4c05ef954e97f3312d0ee9c7b14fcee77",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\on.png",
+      "server": "CH",
+      "source_sha256": "6340040684bd4e56834aae80a26241c61fb235aa43f56dba8d1628fbe8a84194",
+      "source_size": [
+        68,
+        70
+      ],
+      "output": "assets/resource/cn/image/搓丸子/开关开启.png",
+      "output_sha256": "44749fa35ec5053ad27f94c706b1fc2e4bdbb1fbb0ecfb6b9bd1379e6ff2c4b6",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\off.png",
+      "server": "CH",
+      "source_sha256": "cd8b41b6dca336270e1522ebd329d28b7c7875f6d0684574a3d1338277173875",
+      "source_size": [
+        68,
+        70
+      ],
+      "output": "assets/resource/cn/image/搓丸子/开关关闭.png",
+      "output_sha256": "a4afde207bba0dc94c1c581fd2ed3363778dc3d88e145ce3bd07d466e32f179d",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\takes_0.png",
+      "server": "CH",
+      "source_sha256": "0aa8b1cc1e4817b5fccc5b7f418f2367210141dc2802dc2c54e996535894351f",
+      "source_size": [
+        180,
+        55
+      ],
+      "output": "assets/resource/cn/image/搓丸子/持有数排序未选中.png",
+      "output_sha256": "d1a59dc13feb6e0e320df43a2f2bfd63caf9868d09d4e3b97624996ed2aca20f",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\takes_1.png",
+      "server": "CH",
+      "source_sha256": "221c8c9a3954fc8dcb1d3947cf5a3e85bd52ded9f9bc2c3e1a86a568859a408b",
+      "source_size": [
+        180,
+        55
+      ],
+      "output": "assets/resource/cn/image/搓丸子/持有数排序已选中.png",
+      "output_sha256": "34ecf57c914ef133ea3effc55a5da2c9271527c8211cdfc2dd2b96482d882962",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\level_0.png",
+      "server": "CH",
+      "source_sha256": "a262ec4b7458aba3fc68f77863e835d3afc6badaceee4657d8e8ed0ffdf6ac11",
+      "source_size": [
+        160,
+        60
+      ],
+      "output": "assets/resource/cn/image/搓丸子/等级排序未选中.png",
+      "output_sha256": "bd36eaa943ac2b7201c856918ea1f98f46298ac96d8ea0530099acc553d56cea",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\level_1.png",
+      "server": "CH",
+      "source_sha256": "34141ee6a3a3e0d7237bbd74faecb607c7ac03581c760e319c236e28b3227137",
+      "source_size": [
+        160,
+        60
+      ],
+      "output": "assets/resource/cn/image/搓丸子/等级排序已选中.png",
+      "output_sha256": "e4abc23bc18a631c9e513931f6ad8543e1c5e8a88266bb58bd2d85e7aeb7e119",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\star1_1.png",
+      "server": "CH",
+      "source_sha256": "0847c481b3baac3dba3ad21922b4c32f5e9f10e00c0db28e2914ab735193e6a8",
+      "source_size": [
+        80,
+        85
+      ],
+      "output": "assets/resource/cn/image/搓丸子/1星已选中.png",
+      "output_sha256": "eee169e76f752542d308cc45f458e6b416738f2ffa61567b8c7bad59929b3ddb",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\star2_1.png",
+      "server": "CH",
+      "source_sha256": "84499de1509bfa8fa62f7d23e929f9dedcf8a9b4dbba43d18b81b42f1df3b730",
+      "source_size": [
+        80,
+        85
+      ],
+      "output": "assets/resource/cn/image/搓丸子/2星已选中.png",
+      "output_sha256": "335de28dd819a9d05c928deee3274fb54ec33ff658a34b1d9bcb27a4a54cb3a6",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\star3_1.png",
+      "server": "CH",
+      "source_sha256": "69d15a165c83da5a2455f06c9a05899aa3020197408802302c8801b6a3f15819",
+      "source_size": [
+        80,
+        85
+      ],
+      "output": "assets/resource/cn/image/搓丸子/3星已选中.png",
+      "output_sha256": "f7f80c50af53b0c893937dd0637321eb43a6f93461debf86ce6435219e4c72a9",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\star4_1.png",
+      "server": "CH",
+      "source_sha256": "4d97cf4a58a202789fc4cae558dcb92e9c0fc8beb55adb22d03cdf5fd340a613",
+      "source_size": [
+        80,
+        85
+      ],
+      "output": "assets/resource/cn/image/搓丸子/4星已选中.png",
+      "output_sha256": "2ac0428a79a50e2771022e02a42b12f63b9de093ecbf49c35ccc4758c246e260",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\locked.png",
+      "server": "CH",
+      "source_sha256": "40d2d7762fc11d34df5beedf81436b3953a3a052b9f89837473e744972564d9b",
+      "source_size": [
+        60,
+        55
+      ],
+      "output": "assets/resource/cn/image/搓丸子/详情锁定按钮已锁.png",
+      "output_sha256": "9874e198b7c9c9eeb943c41030d3be7795bcdf9db77b460e0de86cc6153f0e0a",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\unlocked.png",
+      "server": "CH",
+      "source_sha256": "7eda175a38cc5524f3538c2429a965e50dfd5836e173670a97742b99b6623c4e",
+      "source_size": [
+        60,
+        55
+      ],
+      "output": "assets/resource/cn/image/搓丸子/详情锁定按钮未锁.png",
+      "output_sha256": "afd33562819866ccc26cb943b2a8067926a9595a5c6b3dadbf2c53d7cd91fe8c",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\locker.png",
+      "server": "CH",
+      "source_sha256": "5ccb6c7e7b7b4e1057e925c504ecbe3a4bac10579a79398bdff772f60dc971a3",
+      "source_size": [
+        26,
+        35
+      ],
+      "output": "assets/resource/cn/image/搓丸子/卡片已锁标志.png",
+      "output_sha256": "e83545453102e01d1bbb215231920b85bc0dcfe9b8cf025e0250f42bd60e0b84",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\biaoji.png",
+      "server": "CH",
+      "source_sha256": "fe744ddf96ede4370f2976c422102483a1b61e22e70882227d35acf72bbfca7b",
+      "source_size": [
+        28,
+        28
+      ],
+      "output": "assets/resource/cn/image/搓丸子/卡片已标记.png",
+      "output_sha256": "ee55dae467438db6c984cce4c2b410db57658da1af14dd34f465367951f7ec28",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\sign_off.png",
+      "server": "CH",
+      "source_sha256": "14350dde9c7f5bed4ec83860f14d66e6115318a02a3a5f6f0938682f54698d3b",
+      "source_size": [
+        90,
+        60
+      ],
+      "output": "assets/resource/cn/image/搓丸子/统一标记模式关闭.png",
+      "output_sha256": "7a06145a87f457cab9e7b6845ff10f73ef7d87617503f74e36caf3cfdd949deb",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\sign_on.png",
+      "server": "CH",
+      "source_sha256": "923ffd14eed0ea285c233e3a9745ca2b6f2ae4ef2f921f66d420c6b19dd01d60",
+      "source_size": [
+        90,
+        60
+      ],
+      "output": "assets/resource/cn/image/搓丸子/统一标记模式开启.png",
+      "output_sha256": "f5e6cffd56c272c684a1edbb8fb5100463d6de08a4395d31720ef0f18c581382",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\tysd_0.png",
+      "server": "CH",
+      "source_sha256": "4350cb37beff3c1165a0657b38ac50c99b6ce1e5471ab2c47b18389c93334908",
+      "source_size": [
+        50,
+        50
+      ],
+      "output": "assets/resource/cn/image/搓丸子/统一锁定模式关闭.png",
+      "output_sha256": "db0cbf122d3ed2ec1c89f3470fa16333c7e0fa93e9041a9a0c48bba03bc0a033",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\tysd_1.png",
+      "server": "CH",
+      "source_sha256": "e1a86d3508a8afb014ede772b4e9c17d16b0a997eb3b5b17b7860f6567eaa0d7",
+      "source_size": [
+        50,
+        50
+      ],
+      "output": "assets/resource/cn/image/搓丸子/统一锁定模式开启.png",
+      "output_sha256": "13e27ccf5b36c13fc6fd897d941df548a5cacac67461fd4c1ad13166f688ad87",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\empty.png",
+      "server": "CH",
+      "source_sha256": "9cc5ef89928f8392b16a7f5225099592eeba2a0be899f0ba9cf101b38b62c887",
+      "source_size": [
+        123,
+        121
+      ],
+      "output": "assets/resource/cn/image/搓丸子/卡片空位.png",
+      "output_sha256": "ff752d4e34a82e65859eb09db9c56a2c16d916ccd004d6e59bd6a1b8932a7f98",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\empty_1.png",
+      "server": "CH",
+      "source_sha256": "75a5b8b1776a1adfebb738e840eb113a7640b8be6c45df28ddb4f4c977a0648b",
+      "source_size": [
+        127,
+        135
+      ],
+      "output": "assets/resource/cn/image/搓丸子/卡片空位另一种.png",
+      "output_sha256": "7b61d8beb05069c8720659c11d753e9c3ed24ab25b37d8f5796cd61f072f1804",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\lclose.png",
+      "server": "CH",
+      "source_sha256": "2de538fc0895a2ae560b7df81d70526504573a980e6bdb29286905c8126eb027",
+      "source_size": [
+        104,
+        88
+      ],
+      "output": "assets/resource/cn/image/搓丸子/详情关闭按钮.png",
+      "output_sha256": "052c0053e5983a3472a1e49bab086e0ef2547c3b07ba01840ee23caee21e3f6c",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\slot.png",
+      "server": "CH",
+      "source_sha256": "79d70526540c3cb7102872b0c83e628994a56f78c92d2142f0501aa78ece6877",
+      "source_size": [
+        75,
+        78
+      ],
+      "output": "assets/resource/cn/image/搓丸子/材料槽空位.png",
+      "output_sha256": "42cbd319c529d9ea14186cdc6a0c04f80bb75326b393368f637dd7bc450f779a",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\sure.png",
+      "server": "CH",
+      "source_sha256": "dde847cdc68d2cefc0721169029cd0a885402048585a433339b85a4dbbae36fc",
+      "source_size": [
+        132,
+        75
+      ],
+      "output": "assets/resource/cn/image/搓丸子/排序决定按钮.png",
+      "output_sha256": "0e594966c785d53e84581272e9ddbfa671f5e1a8780a546f485cdbb16b457bed",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\all_equip.png",
+      "server": "CH",
+      "source_sha256": "bcd9f2f492511fefa04da995a158ed60a6bc119b5fbe0585a454426c01b9be2c",
+      "source_size": [
+        101,
+        56
+      ],
+      "output": "assets/resource/cn/image/搓丸子/全部礼装已选.png",
+      "output_sha256": "8810c0df5be76082dc38ef41d15c27cfb0f472ee681af328ba262cc4d29271a2",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\gnlz_0.png",
+      "server": "CH",
+      "source_sha256": "97a70e243c1207e3ee96f74ad4118e46f4bb7bf3901b02df5e59b72fd26adccd",
+      "source_size": [
+        160,
+        50
+      ],
+      "output": "assets/resource/cn/image/搓丸子/概念礼装类型未选.png",
+      "output_sha256": "4a8b4f97c5f4467e53cc11f6aaeaa34c09e5a20a3c10b779835de50c504c804d",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\gnlz_1.png",
+      "server": "CH",
+      "source_sha256": "a1ca52bdca5958b4ca926b5f637474325e46d66ea7fb6bf9a7707da780666f9a",
+      "source_size": [
+        160,
+        50
+      ],
+      "output": "assets/resource/cn/image/搓丸子/概念礼装类型已选.png",
+      "output_sha256": "a4dda63f71dc1f5bb942d4a530c31e74c240ef783b8f61732ea9103f1859a50c",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\in_store.png",
+      "server": "CH",
+      "source_sha256": "296b9cd6185f2ce01669736771abd3fe5ff91cd9cb6e30e81b34bc181957c925",
+      "source_size": [
+        171,
+        115
+      ],
+      "output": "assets/resource/cn/image/搓丸子/保管室持有栏标志.png",
+      "output_sha256": "58273cbb4fcab80dea2c32b224bcaa5641bce1dea6a586ed9fc61effb5de6f03",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\zxStore.png",
+      "server": "CH",
+      "source_sha256": "9ef8fee9de6b71d224d978c738f1bc8b9685536799204836c742038e2b72408f",
+      "source_size": [
+        121,
+        59
+      ],
+      "output": "assets/resource/cn/image/搓丸子/存入执行按钮.png",
+      "output_sha256": "5e6ca856812a27c40f6f20752f5c8fb4f5f63325652d41cac4949749507fbd00",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\storeAll.png",
+      "server": "CH",
+      "source_sha256": "6df67f5bcc62f1fa5e62f5cf36c7e32115c82764ae43b913298b43eb3f569e1f",
+      "source_size": [
+        82,
+        43
+      ],
+      "output": "assets/resource/cn/image/搓丸子/保管室全部已选.png",
+      "output_sha256": "d563265fdf8883ed4f5804b0a3cd30adc96d4e4adcd437557373a5bec179c4da",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\noSucai.png",
+      "server": "CH",
+      "source_sha256": "4b23615c57c9e9c9024febc0a4aee52fa5d7c76a35ec86e45933fb6f44d32743",
+      "source_size": [
+        226,
+        36
+      ],
+      "output": "assets/resource/cn/image/搓丸子/所需道具不足.png",
+      "output_sha256": "782356e02887436537c87772412869291ec2d6dc97445767a1a78645e9e43e64",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\scrollEnd.png",
+      "server": "CH",
+      "source_sha256": "a8c71b3659de695ff2a57279855db0194eb5eba904b8d4dad17d28e129f521f3",
+      "source_size": [
+        52,
+        34
+      ],
+      "output": "assets/resource/cn/image/搓丸子/列表滚动到底标志.png",
+      "output_sha256": "401aab8910948311b064cad316b44e10cb2fff3667e3fb3c8891d0f38c16f008",
+      "scale": "2/3",
+      "operation": "Lanczos"
+    },
+    {
+      "source": "assets\\expball\\CH\\greenFrame.png",
+      "server": "CH",
+      "source_sha256": "b020d7e7ba1dd77992bc412200495144556d1651a25d65de0138abe65506f0f8",
+      "source_size": [
+        176,
+        191
+      ],
+      "output": "assets/resource/cn/image/搓丸子/素材选中绿框.png",
+      "output_sha256": "df77cd29de06fab894b23da7abc2aab27bd5d07d18d45dd4b1eb3b9faa1829ef",
+      "scale": "2/3",
+      "operation": "centre green mask, outer frame only, nearest resize"
+    }
+  ]
+}

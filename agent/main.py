@@ -29,6 +29,7 @@ if not IS_ANDROID:
     import bbc_to_chaldea_action
     import battle_editor_action
 import box_action
+import expball_action
 import formation_action
 import bond_completion_action
 import current_bond_completion_action
