@@ -19,6 +19,7 @@ from urllib.parse import unquote, urlsplit
 from . import DEFAULT_PORT, PROTOCOL_VERSION, SERVICE_NAME
 from .storage import BattleStorage, EditorError, MAX_JSON_BYTES, battle_name, decode_json, project_identity, utc_now, within
 from .validation import DEFAULTS, validate_battle
+from .screenshot_import import IMAGE_TYPES, MAX_IMAGE_BYTES, ScreenshotWorker
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,7 @@ class EditorHTTPServer(ThreadingHTTPServer):
         self._bond_planning = threading.BoundedSemaphore(1)
         self._card_renderer = None
         self._card_renderer_lock = threading.Lock()
+        self._screenshot_worker = ScreenshotWorker(self.root)
         self._stopping = threading.Event()
         candidates = (self.root / "assets" / "web" / "battle-editor", self.root / "web" / "battle-editor")
         self.static_root = next((directory for directory in candidates if (directory / "index.html").is_file() and not (directory / "src").is_dir()), None)
@@ -75,6 +77,12 @@ class EditorHTTPServer(ThreadingHTTPServer):
             if self._card_renderer is None:
                 self._card_renderer = NpCardRenderer(self.root)
         return self._card_renderer.render(request)
+
+    def server_close(self):
+        try:
+            super().server_close()
+        finally:
+            self._screenshot_worker.close()
 
     def catalog(self) -> dict:
         with self._catalog_lock:
@@ -361,6 +369,22 @@ class EditorHandler(BaseHTTPRequestHandler):
             raise EditorError("invalid_body", "请求正文必须是 JSON 对象")
         return value
 
+    def _image_body(self):
+        if self.headers.get_all('Transfer-Encoding', []):
+            raise EditorError('invalid_body', '不接受分块请求正文')
+        if self.headers.get('Content-Type', '').split(';')[0].strip().lower() not in IMAGE_TYPES:
+            raise EditorError('image_format', '支持 PNG、JPG/JPEG、WebP 静态图片。', 415)
+        length = self._content_length()
+        if length <= 0 or length > MAX_IMAGE_BYTES:
+            raise EditorError('image_size', '图片为空或超过16 MiB，请换一张较小的截图。', 413)
+        chunks = []
+        while self._body_read < length:
+            chunk = self.rfile.read1(min(length - self._body_read, 65536))
+            if not chunk:
+                raise EditorError('invalid_body', '图片未完整接收，请重试')
+            self._body_read += len(chunk);chunks.append(chunk)
+        return b''.join(chunks)
+
     def _file(self, path: Path):
         if not path.is_file():
             raise EditorError("not_found", "资源不存在，请确认静态页面已经构建并随包安装", 404)
@@ -399,7 +423,8 @@ class EditorHandler(BaseHTTPRequestHandler):
             self.server.last_activity = time.monotonic()
             if self.server._stopping.is_set():
                 raise EditorError("service_stopping", "编辑服务正在停止，请重新运行启动入口", 503)
-            body = self._body() if method in ("POST", "PUT") else None
+            image_request = method == 'POST' and path == '/api/import-image'
+            body = self._image_body() if image_request else self._body() if method in ("POST", "PUT") else None
             storage = self.server.storage
             if method == "GET" and path in ("/api/np-card", "/api/command-card"):
                 preview = self.server.card_preview(urlsplit(self.path).query, card_type="np" if path == "/api/np-card" else "face")
@@ -439,6 +464,8 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self._json(200, storage.save_draft(path[len("/api/drafts/"):], body))
             elif method == "POST" and path == "/api/import":
                 self._json(200, self.server.import_source(body.get("source")))
+            elif image_request:
+                self._json(200, self.server._screenshot_worker.recognize(body))
             elif method == "POST" and path == "/api/heartbeat":
                 self._json(200, {"ok": True, "mode": self.server.mode})
             elif method == "POST" and path == "/api/shutdown":
@@ -466,6 +493,10 @@ class EditorHandler(BaseHTTPRequestHandler):
     def _handle(self):
         try:
             self._dispatch()
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # Closing the import dialog aborts its fetch. The response can no
+            # longer be delivered; do not try to send a second error response.
+            logger.debug('编辑器客户端已断开请求')
         except EditorError as exc:
             self._discard_unread_body()
             value = {"code": exc.code, "message": exc.message}

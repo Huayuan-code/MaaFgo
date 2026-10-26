@@ -898,7 +898,7 @@ class AutoFormationFromChaldea(CustomAction):
         """连续两帧类型和所需身份一致；不限定人物的助战仅核对标记。"""
         any_support_identity = any(
             item["kind"] == "SUPPORT" and item.get("svt_id") is None
-            for item in self.expected
+            for item in (getattr(self, "expected", None) or ())
         )
         deadline = time.monotonic() + SLOT_LAYOUT_VERIFY_TIMEOUT_SECONDS
         previous = None
