@@ -1,9 +1,12 @@
+import {assertEditable,members,memberLabel,servantFor,turnsOf} from './model';
 import type {Catalog,Json} from './model';
 
 export const IMAGE_ACCEPT='image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp';
 export const MAX_IMAGE_BYTES=16*1024*1024;
 export interface ScreenshotSlot {slot:number;servantId:number|null;status:'empty'|'identified'|'unknown';support:boolean;equipId?:number|null;equipStatus?:'empty'|'identified'|'unknown';score?:number;equipScore?:number}
-export interface ScreenshotResult {slots:ScreenshotSlot[];warnings:string[];elapsedMs?:number;sourceSize?:number[]}
+export interface ScreenshotResult {kind?:'screenshot';slots:ScreenshotSlot[];warnings:string[];elapsedMs?:number;sourceSize?:number[]}
+export interface ShareImageResult {kind:'share';schema:1;data:Json;warnings:string[];validation:Json|null;title?:string;elapsedMs?:number}
+export type ImageImportResult=ScreenshotResult|ShareImageResult;
 export function imageMime(file:{type:string;name?:string;size:number}):string {
  if(file.size<=0||file.size>MAX_IMAGE_BYTES)throw new Error('图片为空或超过16 MiB，请换一张较小的截图。');
  const mime=file.type.toLowerCase();
@@ -13,13 +16,41 @@ export function imageMime(file:{type:string;name?:string;size:number}):string {
 }
 export function clipboardImage(items:ArrayLike<{kind:string;type:string;getAsFile:()=>File|null}>):File|null {
  const images=Array.from(items).filter(item=>item.kind==='file'&&item.type.startsWith('image/'));
- if(images.length>1)throw new Error('请每次粘贴一张编队截图。');
+ if(images.length>1)throw new Error('请每次粘贴一张编队截图或一图流。');
  return images[0]?.getAsFile()??null;
 }
 export function readScreenshotResult(value:any):ScreenshotResult {
  const id=(v:any)=>v==null||(typeof v==='number'&&Number.isSafeInteger(v)&&v>0);
  if(!value||!Array.isArray(value.slots)||value.slots.length!==6||value.slots.some((s:any,i:number)=>!s||s.slot!==i||!id(s.servantId)||!id(s.equipId)||!['empty','identified','unknown'].includes(s.status)||typeof s.support!=='boolean'))throw new Error('识别结果不完整，请重新识别。');
  return {...value,slots:value.slots.map((s:ScreenshotSlot)=>({...s})),warnings:Array.isArray(value.warnings)?value.warnings.filter((s:any)=>typeof s==='string'):[]};
+}
+/** Share markers restore the original tree; they must never pass through screenshotTeam. */
+export function readImageImportResult(value:any):ImageImportResult {
+ if(value?.kind==='share') {
+  if(value.schema!==1||!Array.isArray(value.warnings)||value.warnings.some((warning:unknown)=>typeof warning!=='string'))throw new Error('一图流识别结果不完整或版本不受支持，请使用原始分享图片。');
+  assertEditable(value.data);
+  if(!value.data.team||typeof value.data.team!=='object'||Array.isArray(value.data.team))throw new Error('一图流中缺少完整编队数据，请重新导出图片。');
+  const validation=value.validation??null;
+  if(validation!==null&&(typeof validation!=='object'||Array.isArray(validation)||typeof validation.valid!=='boolean'||!Array.isArray(validation.issues)||validation.issues.some((issue:unknown)=>!issue||typeof issue!=='object'||typeof (issue as Json).message!=='string')))throw new Error('一图流方案检查结果无效，请重新识别。');
+  return {kind:'share',schema:1,data:value.data,warnings:[...value.warnings],validation,...(typeof value.title==='string'?{title:value.title}:{}),...(typeof value.elapsedMs==='number'&&Number.isFinite(value.elapsedMs)?{elapsedMs:value.elapsedMs}:{})};
+ }
+ if(value?.kind!=null&&value.kind!=='screenshot')throw new Error('暂不支持这种图片识别结果，请更新编辑器或重新选择图片。');
+ return readScreenshotResult(value);
+}
+export function shareImagePreview(data:Json,catalog:Catalog) {
+ const roster=members(data).map((member,slot)=>{
+  const servant=member?.svtId?servantFor(catalog,member.svtId):undefined;
+  const supportType=member?.supportType;
+  const supportLabel=supportType==='friend'?'好友助战':supportType==='npc'?'NPC 助战':supportType==='fixed'?'固定助战':'';
+  const equips=['equip1','equip2','equip3'].flatMap(key=>{
+   const requirement=member?.[key];if(!requirement?.id)return [];
+   const equip=catalog.equips.find(item=>item.id===requirement.id);
+   return [{id:requirement.id,name:equip?.name??`礼装 #${requirement.id}`,image:equip?.image}];
+  });
+  return {slot,name:member?memberLabel(member,catalog):'不要求此位置',image:servant?.image,support:!!supportLabel,supportLabel,equips};
+ });
+ const actions:Json[]=Array.isArray(data.actions)?data.actions:[],mysticId=data.team?.mysticCode?.mysticCodeId;
+ return {roster,title:typeof data.team?.name==='string'&&data.team.name?data.team.name:'一图流导入方案',turns:turnsOf(data).length,skills:actions.filter(action=>action?.type==='skill').length,cards:actions.reduce((count,action)=>count+(action?.type==='attack'&&Array.isArray(action.attacks)?action.attacks.filter((card:Json)=>card?.isAuto!==true).length:0),0),mystic:catalog.mysticCodes.find(item=>item.id===mysticId)?.name??(mysticId?`御主服 #${mysticId}`:'未指定御主服')};
 }
 export function screenshotTeam(slots:ScreenshotSlot[],catalog:Catalog):Json {
  const result=readScreenshotResult({slots});

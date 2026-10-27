@@ -191,6 +191,13 @@ def _imread(path, gray=False):
     return img
 
 
+def _ce_template_paths(ce_dir, ce_name, status):
+    """任意满破状态共用已有两态模板，不引入独立资源目录。"""
+    statuses = CE_SUB_SWAP if status == "任意" else (status,)
+    return [os.path.join(ce_dir, sub, ce_name) if sub else os.path.join(ce_dir, ce_name)
+            for sub in statuses]
+
+
 def _norm_img(img):
     """兼容 Maa screencap 返回的 ndarray/RGBA/PIL, 统一为 BGR uint8 ndarray"""
     import cv2
@@ -405,10 +412,12 @@ class SupportAction(CustomAction):
         if ce_name in EMPTY_CE:
             mfaalog.info("[SupportAction] 礼装为空(跳过匹配)")
             return True
-        tpl_path = os.path.join(ce_dir, ce_sub, ce_name) if ce_sub else os.path.join(ce_dir, ce_name)
-        tpl = _imread(tpl_path, gray=True)
+        tpl_paths = _ce_template_paths(ce_dir, ce_name, ce_sub)
+        tpl = next((image for path in tpl_paths
+                    if (image := _imread(path, gray=True)) is not None), None)
         if tpl is None:
-            mfaalog.warning(f"[SupportAction] 礼装模板不存在: {ce_name} (目录 {os.path.dirname(tpl_path)})")
+            mfaalog.warning(f"[SupportAction] 礼装模板不存在: {ce_name} "
+                            f"(目录 {'/'.join(os.path.dirname(path) for path in tpl_paths)})")
             return False
         # 锚点是礼装框左上角: 直接以锚点为左上角取 160x50 窗口(与礼装模板同量级),
         # 固定尺度整卡匹配: 模板与卡面显示同尺寸, 不做缩放搜索
@@ -425,6 +434,9 @@ class SupportAction(CustomAction):
         if score < TH_CE:
             mfaalog.info(f"[SupportAction] 礼装 {ce_name}: 整卡={score:.3f}(未过)")
             return False
+        if ce_sub == "任意":
+            mfaalog.info(f"[SupportAction] 礼装 {ce_name}: 整卡={score:.3f}，不限制满破状态")
+            return True
         # 右下角形态校验: 满破/非满破等仅右下角不同的礼装整卡主体相同得分均高,
         # 在最佳匹配位置取卡面右下角约30x30区域与模板右下角匹配。
         # 该标记很淡, 绝对分数不可靠, 故与同名的另一状态模板(满破<->非满破)比谁更像, 取高者定状态
@@ -834,7 +846,8 @@ class SupportAction(CustomAction):
             ce_dir = _image_dir("base", "lizhuang")
             if source_mode == "chaldea":
                 for ce_name, _, status in ce_targets:
-                    if not os.path.isfile(os.path.join(ce_dir, status, ce_name)):
+                    if not any(os.path.isfile(path)
+                               for path in _ce_template_paths(ce_dir, ce_name, status)):
                         display_name = os.path.splitext(ce_name)[0]
                         mfaalog.error(
                             f"[SupportAction] 暂时没有 Chaldea 数据中礼装「{display_name}」的"

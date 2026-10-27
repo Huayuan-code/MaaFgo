@@ -11,6 +11,7 @@ test('Chinese names use the selected source and an available base name never con
  const data=formation([{svtId:1},{svtId:2},{svtId:3}]);
  assert.equal(suggestBattleFileName(data,catalog,'local',[],neverRandom),'local_阿尔托莉雅·卡斯特_奥伯龙_玛修.json');
  assert.equal(suggestBattleFileName(data,catalog,'chaldea',[],neverRandom),'chaldea_阿尔托莉雅·卡斯特_奥伯龙_玛修.json');
+ assert.equal(suggestBattleFileName(data,catalog,'bbc',[],neverRandom),'bbc_阿尔托莉雅·卡斯特_奥伯龙_玛修.json');
  assert.equal(suggestBattleFileName(data,catalog,'local',['unrelated.json'],neverRandom),'local_阿尔托莉雅·卡斯特_奥伯龙_玛修.json');
 });
 
@@ -66,8 +67,8 @@ test('suffix collisions use numbered alternatives without requesting randomness 
  assert.equal(new TextDecoder().decode(new TextEncoder().encode(result)),result);
 });
 
-test('restoring untrusted or old draft metadata only accepts exact local and chaldea strings',()=>{
- assert.equal(restoreNamingSource('local'),'local');assert.equal(restoreNamingSource('chaldea'),'chaldea');
+test('restoring untrusted or old draft metadata only accepts exact supported source strings',()=>{
+ assert.equal(restoreNamingSource('local'),'local');assert.equal(restoreNamingSource('chaldea'),'chaldea');assert.equal(restoreNamingSource('bbc'),'bbc');
  for(const value of [null,undefined,'CHALDEA','chaldea ',' local','share','',true,0,{},[],{source:'chaldea'},new String('chaldea')])assert.equal(restoreNamingSource(value),'local');
 });
 

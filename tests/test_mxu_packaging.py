@@ -33,12 +33,15 @@ class MxuPackagingTests(unittest.TestCase):
             "agent/battle_editor/validation.py", "agent/battle_editor/bond_optimizer.py",
             "agent/battle_editor/np_cards.py", "agent/battle_editor/np_card_metadata.py",
             "agent/battle_editor/screenshot_import.py", "agent/battle/perception/formation_candidates.py",
+            "agent/battle_editor/share_image.py",
+            "agent/battle_editor/bbc_import.py", "agent/chaldea/bbc_importer.py", "agent/chaldea/servant_types.py",
             "agent/custom/battle_editor_action.py", "agent/custom/bond_matcher.py",
             "agent/chaldea/servant_aliases.py", "agent/battle/card_composer.py",
             "打开编队编辑器.cmd", "docs/HTML编队与战斗逻辑工具使用说明.md",
         ):
             self.write(relative, "fixture")
         for relative in ("agent/custom/servant_list.json", "agent/custom/equip_list.json",
+                         "agent/chaldea/bbc_servant_ids.json", "agent/utils/Chaldea/equip_names_CN.json",
                          "agent/custom/bond_completion_costs.json", "agent/battle_editor/data/catalog.json"):
             self.document(relative, {})
         self.document("assets/interface.json", {"version": "source-version", "agent": {}})
@@ -113,7 +116,11 @@ class MxuPackagingTests(unittest.TestCase):
     def test_missing_offline_metadata_and_runtime_modules_are_rejected(self):
         for relative in ("agent/battle_editor/data/catalog.json", "agent/battle_editor/data/np_cards.json",
                          "agent/battle/card_composer.py", "agent/custom/bond_matcher.py",
-                         "agent/battle_editor/screenshot_import.py", "agent/battle/perception/formation_candidates.py"):
+                         "agent/battle_editor/screenshot_import.py", "agent/battle/perception/formation_candidates.py",
+                         "agent/battle_editor/share_image.py",
+                         "agent/battle_editor/bbc_import.py", "agent/chaldea/bbc_importer.py",
+                         "agent/chaldea/servant_types.py", "agent/chaldea/bbc_servant_ids.json",
+                         "agent/utils/Chaldea/equip_names_CN.json"):
             with self.subTest(relative=relative):
                 path = self.source / relative
                 original = path.read_bytes()

@@ -138,6 +138,8 @@ def copy_agent(source: Path, target: Path):
             patterns += ["battle_editor"]
         if Path(folder) == source / "custom":
             patterns += ["bbc*.py", "chaldea_import_action.py", "battle_editor_action.py"]
+        if Path(folder) == source / "chaldea":
+            patterns += ["bbc_servant_ids.json"]
         return shutil.ignore_patterns(*patterns)(folder, names)
     # chaldea/bbc_formatter.py 是公共包的纯 Python 依赖，不能按文件名前缀全局剔除。
     shutil.copytree(source, target, ignore=ignore)

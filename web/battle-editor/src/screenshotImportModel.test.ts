@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {clipboardImage,imageMime,MAX_IMAGE_BYTES,readScreenshotResult,screenshotTeam} from './screenshotImportModel';
+import {clipboardImage,imageMime,MAX_IMAGE_BYTES,readScreenshotResult,screenshotTeam,readImageImportResult,shareImagePreview} from './screenshotImportModel';
 import type {ScreenshotSlot} from './screenshotImportModel';
 import type {Catalog} from './model';
 const catalog:Catalog={servants:[{id:1,name:'甲'}],equips:[{id:2,name:'乙',recognizable:true},{id:3,name:'不可识别'}],mysticCodes:[]};
@@ -37,4 +37,54 @@ test('manual correction rejects unsupported CE, unknown servant, repeated suppor
  const unsupported=slots();unsupported[0].equipId=3;assert.throws(()=>screenshotTeam(unsupported,catalog));
  const duplicate=slots();duplicate[1].support=true;assert.throws(()=>screenshotTeam(duplicate,catalog));
  const blank=slots().map(s=>({...s,servantId:null,support:false}));assert.throws(()=>screenshotTeam(blank,catalog));
+});
+
+const shareData=()=>({team:{name:'双回合分享',onFieldSvts:[{svtId:1,skillLvs:[10,9,8]},null,{supportType:'friend',equip1:{id:2,limitBreak:false}}],backupSvts:[{svtId:999},null,null],mysticCode:{mysticCodeId:210,level:10}},actions:[{type:'skill',svt:null,skill:2},{type:'attack',attacks:[{isAuto:true},{isTD:true,svt:0,card:-1}],options:{enemyTarget:2}},{type:'skill',svt:0,skill:1,options:{playerTarget:2}}],delegate:{replaceMemberIndexes:[[0,0]],future:[null]},unknown:{keep:['完整保留',0,false,null]}});
+
+test('image routing distinguishes ordinary screenshots from checksummed share responses',()=>{
+ const screenshot={slots:slots(),warnings:['游戏截图']};
+ assert.deepEqual(readImageImportResult(screenshot),readScreenshotResult(screenshot));
+ assert.deepEqual(readImageImportResult({...screenshot,kind:'screenshot'}),readScreenshotResult({...screenshot,kind:'screenshot'}));
+ assert.throws(()=>readImageImportResult({...screenshot,kind:'unknown'}),/不支持/);
+ assert.throws(()=>readImageImportResult({...screenshot,kind:'share',schema:1}),/顶层|编队/);
+});
+
+test('share image restoration preserves the complete Chaldea tree and failed validation for later editing',()=>{
+ const data=shareData(),before=structuredClone(data),warnings=['请核对回合'],validation={valid:false,issues:[{code:'fixture',message:'需要核对',severity:'error'}],summary:{turns:2}};
+ const restored=readImageImportResult({kind:'share',schema:1,data,warnings,validation,title:'分享标题',elapsedMs:12});
+ assert.equal(restored.kind,'share');
+ if(restored.kind!=='share')throw new Error('share result was flattened');
+ assert.deepEqual(restored.data,before);assert.equal(restored.data,data);
+ assert.deepEqual(restored.data.actions[1].attacks,[{isAuto:true},{isTD:true,svt:0,card:-1}]);
+ assert.deepEqual(restored.data.delegate,{replaceMemberIndexes:[[0,0]],future:[null]});
+ assert.deepEqual(restored.validation,validation);assert.deepEqual(restored.warnings,warnings);assert.notEqual(restored.warnings,warnings);
+ assert.deepEqual(data,before);
+});
+
+test('share responses reject unknown schemas, malformed warnings and unusable editable shapes',()=>{
+ const base={kind:'share',schema:1,data:shareData(),warnings:[],validation:null};
+ for(const changed of [{schema:2},{schema:true},{warnings:'warning'},{warnings:[null]},{data:null},{data:{actions:[]}},{data:{team:{},actions:'bad'}},{validation:[]},{validation:{valid:true}},{validation:{valid:true,issues:[null]}},{validation:{valid:true,issues:[{message:2}]}}]){
+  assert.throws(()=>readImageImportResult({...base,...changed}));
+ }
+});
+
+test('share preview keeps CE-only support, unknown identities, real turn boundaries and all equipment slots',()=>{
+ const data=shareData(),before=structuredClone(data);
+ data.team.onFieldSvts[2]={supportType:'friend',equip1:{id:2,limitBreak:false},equip3:{id:999}} as any;
+ const preview=shareImagePreview(data,catalog);
+ assert.equal(preview.title,'双回合分享');assert.equal(preview.turns,2);assert.equal(preview.skills,2);assert.equal(preview.cards,1);
+ assert.equal(preview.roster.length,6);assert.equal(preview.roster[0].name,'甲');assert.equal(preview.roster[1].name,'不要求此位置');
+ assert.equal(preview.roster[2].name,'助战（仅要求礼装）');assert.equal(preview.roster[2].supportLabel,'好友助战');assert.deepEqual(preview.roster[2].equips.map(e=>e.name),['乙','礼装 #999']);
+ assert.equal(preview.roster[3].name,'从者 #999');assert.equal(preview.mystic,'御主服 #210');
+ delete (data.team.onFieldSvts[2] as any).equip3;
+ assert.deepEqual(data,before);
+});
+
+test('share preview labels NPC and legacy fixed supports without changing their types',()=>{
+ for(const [supportType,label] of [['npc','NPC 助战'],['fixed','固定助战']]){
+  const data=shareData();data.team.onFieldSvts[2]={svtId:1,supportType} as any;
+  const preview=shareImagePreview(data,catalog);
+  assert.equal(preview.roster[2].support,true);assert.equal(preview.roster[2].supportLabel,label);
+  assert.equal((data.team.onFieldSvts[2] as any).supportType,supportType);
+ }
 });

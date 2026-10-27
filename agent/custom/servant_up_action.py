@@ -366,7 +366,11 @@ class ExecuteServantUp(CustomAction):
 
     def _enter_servant_select(self):
         """强化界面点「强化」按钮进入从者选择列表"""
+        enter = getattr(self, "_enter_select", None)
+        if enter is not None:
+            return enter()
         for _ in range(5):
+            self._check_network_if_configured()
             if self._in_servant_select():
                 return
             self._tap(*TAP_LEVELUP_BTN, delay=1.0)
@@ -377,8 +381,17 @@ class ExecuteServantUp(CustomAction):
             self._context.run_task("强化从者-筛选准备")
         except Exception as e:
             mfaalog.warning(f"[强化从者] 筛选 pipeline 异常: {e}")
+        self._check_network_if_configured()
+        reset = getattr(self, "_list_reset", None)
+        if reset is not None:
+            reset()
         # 头像定位
         return self._find_servant(servant)
+
+    def _check_network_if_configured(self):
+        callback = getattr(self, "_network_check", None)
+        if callback is not None:
+            callback()
 
     def _find_servant(self, servant):
         """头像多阶段匹配 + 滚动查找，找到点击进入"""
@@ -409,28 +422,42 @@ class ExecuteServantUp(CustomAction):
         if not faces:
             mfaalog.error(f"[强化从者] 无头像资源: {sid}")
             return False
-        for _round in range(MAX_FIND_SERVANT_ROUND):
+        for _round in range(getattr(self, "_max_find_rounds", MAX_FIND_SERVANT_ROUND)):
+            self._check_network_if_configured()
             if self._context.tasker.stopping:
                 return False
             # 先拿到本轮所有头像的最高匹配分（threshold=0 不过滤），输出日志方便排查
             best = None  # (score, cx, cy, face)
-            for f in faces:
-                m = self._match(f, threshold=0.0)
-                if m is not None and (best is None or m[0] > best[0]):
-                    best = (m[0], m[1], m[2], f)
+            locator = getattr(self, "_candidate_locator", None)
+            if locator is not None:
+                best = locator(servant, faces)
+            else:
+                for f in faces:
+                    roi = getattr(self, "_face_roi", None)
+                    m = self._match(f, threshold=0.0, roi=roi) if roi is not None else self._match(f, threshold=0.0)
+                    if m is not None and (best is None or m[0] > best[0]):
+                        best = (m[0], m[1], m[2], f)
             if best is not None:
                 mfaalog.info(f"[强化从者] 第{_round}轮 头像最高分 {best[0]:.3f} "
                              f"@ ({best[1]},{best[2]}) {best[3]}")
-            if best is not None and best[0] >= FACE_THRESHOLD:
-                self._controller.post_click(best[1], best[2]).wait()
+            if best is not None and best[0] >= getattr(self, "_face_threshold", FACE_THRESHOLD):
+                select = getattr(self, "_candidate_selector", None)
+                if select is not None:
+                    select(servant, best)
+                else:
+                    self._controller.post_click(best[1], best[2]).wait()
                 # 详情页加载需要时间，循环等待判断（最多 6 秒）
                 entered = False
                 for _ in range(12):
                     time.sleep(0.5)
+                    self._check_network_if_configured()
                     if self._in_levelup():
                         entered = True
                         break
                 if entered:
+                    verify = getattr(self, "_verify_selected", None)
+                    if verify is not None:
+                        verify(servant)
                     mfaalog.info(f"[强化从者] 已定位从者 {servant['name']}")
                     return True
                 mfaalog.warning(f"[强化从者] 点头像({best[0]:.3f})后未进入详情页，继续查找")
@@ -445,6 +472,7 @@ class ExecuteServantUp(CustomAction):
 
     def _levelup_loop(self, servant, target_level):
         for _round in range(MAX_LEVELUP_ROUND):
+            self._check_network_if_configured()
             if self._context.tasker.stopping:
                 return "stopped"
             level = self._read_level()
@@ -463,6 +491,7 @@ class ExecuteServantUp(CustomAction):
                 self._context.run_task("强化从者-强化一次")
             except Exception as e:
                 mfaalog.warning(f"[强化从者] 强化一次 pipeline 异常: {e}")
+            self._check_network_if_configured()
             if self._context.get_hit_count(DOGFOOD_DEPLETED_END_NODE) > 0:
                 mfaalog.info("[强化从者] pipeline 已确认狗粮消耗完毕")
                 return "dogfood_empty"

@@ -339,7 +339,8 @@ class AndroidInterfaceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp) / "source"
             for name in ("custom/bbc_start.py", "custom/bbc_connection_manager.py",
-                         "custom/auto_battle_action.py", "chaldea/bbc_formatter.py", "chaldea/bbc_importer.py"):
+                         "custom/auto_battle_action.py", "chaldea/bbc_formatter.py", "chaldea/bbc_importer.py",
+                         "chaldea/bbc_servant_ids.json"):
                 path = source / name
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("# fixture", encoding="utf8")
@@ -350,6 +351,7 @@ class AndroidInterfaceTests(unittest.TestCase):
             self.assertTrue((target / "custom/auto_battle_action.py").exists())
             self.assertTrue((target / "chaldea/bbc_formatter.py").exists())
             self.assertTrue((target / "chaldea/bbc_importer.py").exists())
+            self.assertFalse((target / "chaldea/bbc_servant_ids.json").exists())
 
 
 if __name__ == "__main__":

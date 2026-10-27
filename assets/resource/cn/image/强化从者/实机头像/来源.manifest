@@ -1,0 +1,36 @@
+{
+  "source": ".workbuddy/runtime/expball-live-cn-20261027/171-cn-david-list-top-template-source.png",
+  "source_sha256": "0527451bd155ee540f2bb70e5512ffb2f2c17a60810c70341649c1cc7ad37f0b",
+  "crop_xyxy": [
+    478,
+    238,
+    597,
+    303
+  ],
+  "baseline": [
+    1280,
+    720
+  ],
+  "output": "assets/resource/cn/image/强化从者/实机头像/大卫.png",
+  "sha256": "79e56544926c695ef7aee8c360928ce9f56279e008dd6728351cdd61efd06fd4",
+  "output_size": [
+    119,
+    65
+  ],
+  "identity": "200600",
+  "name": "大卫",
+  "identity_confirmation": {
+    "source": ".workbuddy/runtime/expball-live-cn-20261027/179-cn-david-profile-large-name.png",
+    "source_sha256": "3c1675ec3a556a0114b7c8d0b02b938f7d76aa6d7a25c6285b822d4da62df90b",
+    "method": "本号171仓库第三格经手动单独选择后，179资料页右上大字姓名大卫确认；离线OCR另存运行证据，未以卡面小字caption作为身份依据。",
+    "name_roi": [
+      1110,
+      0,
+      170,
+      65
+    ]
+  },
+  "note": "仅国服从者强化仓库专用实机头像；原始720p像素无缩放裁剪，包含眼发脸，避开等级、职介、星级和相邻卡。不能跨编队资源复用。候选仍需0.90阈值、唯一位置及后续精确名称复核。",
+  "adapter_note": "MaaFramework native overlay整体替换attach，CN适配显式保留base现有704000摩根补充模板并新增200600；不复制next、timeout或动作逻辑。",
+  "base_pipeline_sha256_at_creation": "3858ebf5f695f151926c0e5fceea798f5a30c0c678c75866b091f2a5285c01a8"
+}

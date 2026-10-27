@@ -51,7 +51,31 @@ class ChaldeaSupportCriteriaTests(unittest.TestCase):
 
         support.pop("equip2")
         result = build_support_criteria(data, self.servant_map)
+        self.assertEqual(result["ce_bond"], "50np")
+        support["classBoardData"]["grandBondEquipSkillChange"] = False
+        self.assertEqual(build_support_criteria(data, self.servant_map)["ce_bond"], "original")
+        support.pop("classBoardData")
+        result = build_support_criteria(data, self.servant_map)
         self.assertEqual(result["ce_bond"], "any")
+
+    def test_absent_limit_break_keeps_any_state_while_explicit_false_requires_non_mlb(self):
+        for source_key, break_key in (("equip1", "limitBreak"), ("ceId", "ceLimitBreak")):
+            for value, expected in ((None, "任意"), (True, "满破"), (False, "非满破")):
+                with self.subTest(source_key=source_key, value=value):
+                    data = self._sample("雨暗阿_21086_94061640.json")
+                    support = data["team"]["onFieldSvts"][0]
+                    support.pop("equip1", None)
+                    support.pop("ceId", None)
+                    if source_key == "equip1":
+                        support["equip1"] = {"id": 9400340}
+                        if value is not None:
+                            support["equip1"][break_key] = value
+                    else:
+                        support["ceId"] = 9400340
+                        if value is not None:
+                            support[break_key] = value
+                    result = build_support_criteria(data, self.servant_map, resolve_name=lambda _: "万华镜")
+                    self.assertEqual(result["ce_specs"][0]["status"], expected)
 
     def test_equip_name_normalizes_fullwidth_characters_for_template_path(self):
         data = self._sample("太女尼_78119_94149837.json")

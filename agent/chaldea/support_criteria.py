@@ -46,13 +46,13 @@ def _equip(item, source_slot, resolve_name, target_slot=None):
     equip = item.get(f"equip{source_slot}")
     if isinstance(equip, dict) and equip.get("id") is not None:
         raw_id = equip["id"]
-        limit_break = equip.get("limitBreak", False)
+        limit_break = equip.get("limitBreak")
     elif source_slot == 1:
         raw_id = item.get("ceId")
-        limit_break = item.get("ceLimitBreak", False)
+        limit_break = item.get("ceLimitBreak")
     else:
         raw_id = None
-        limit_break = False
+        limit_break = None
     if raw_id in (None, "", 0):
         return None
     try:
@@ -74,7 +74,7 @@ def _equip(item, source_slot, resolve_name, target_slot=None):
         "source_slot": source_slot,
         "id": equip_id,
         "name": f"{normalized_name}.png",
-        "status": "满破" if limit_break is True else "非满破",
+        "status": "满破" if limit_break is True else "非满破" if limit_break is False else "任意",
     }
 
 
@@ -123,17 +123,12 @@ def build_support_criteria(share_data, servant_map, resolve_name=get_equip_name)
             _equip(support, 1, resolve_name, target_slot=1),
             _equip(support, 3, resolve_name, target_slot=2),
         ]
-        bond_equip = support.get("equip2")
-        if isinstance(bond_equip, dict) and bond_equip.get("id") not in (None, "", 0):
-            class_board = support.get("classBoardData")
-            bond_changed = (class_board.get("grandBondEquipSkillChange")
-                            if isinstance(class_board, dict) else None)
-            if isinstance(bond_changed, bool):
-                ce_bond = "50np" if bond_changed else "original"
-            else:
-                ce_bond = "any"
-        else:
-            ce_bond = "any"
+        # This is a class-board effect filter, independent of the bond CE's ID.
+        # BBC may require NP50/original while leaving its bond CE unspecified.
+        class_board = support.get("classBoardData")
+        bond_changed = (class_board.get("grandBondEquipSkillChange")
+                        if isinstance(class_board, dict) else None)
+        ce_bond = ("50np" if bond_changed else "original") if isinstance(bond_changed, bool) else "any"
     else:
         equips = [_equip(support, 1, resolve_name)]
         ce_bond = "any"

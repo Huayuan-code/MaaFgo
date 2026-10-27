@@ -1,0 +1,130 @@
+{
+  "schema": 1,
+  "status": "temporary_bbc_reference_unverified",
+  "baseline": [
+    1280,
+    720
+  ],
+  "assets": [
+    {
+      "source": "BBchannel/assets/expball/JP/locked.png",
+      "source_sha256": "81777e89317c96a11c6a738bf4a986d88b4e3c863fa42da67b273910193983dd",
+      "output": "assets/resource/base/image/搓丸子整理/详情已锁定.png",
+      "sha256": "0593b1db47926812e289c0ec34d867746f0ce97cebcf36dc015b6d52c09fe03b"
+    },
+    {
+      "source": "BBchannel/assets/expball/JP/unlocked.png",
+      "source_sha256": "399e4c604eff4c4143dcb51ac262ae20638d44cf5fe964f6250e6447f364053b",
+      "output": "assets/resource/base/image/搓丸子整理/详情未锁定.png",
+      "sha256": "4efddae0c404b949aa2093e4f84f7a2ea8f5cf04259770c9616c7d148a5763c1"
+    },
+    {
+      "source": "BBchannel/assets/expball/JP/lclose.png",
+      "source_sha256": "12c7adb6de258a24328462a005a93dd80dc10c9549e8ea6a1f7398f53285e043",
+      "output": "assets/resource/base/image/搓丸子整理/详情关闭.png",
+      "sha256": "7d1146ae383590e78040fce84b49477de5bd9f2f1cb5cc36df4aea1de2fe0895"
+    },
+    {
+      "source": "BBchannel/assets/expball/JP/ljbg.png",
+      "source_sha256": "6ed40aad5388ecdc4dcb90bfe38e87cb9a8381388b93744a119034ef6758e645",
+      "output": "assets/resource/base/image/搓丸子整理/灵基保管室入口.png",
+      "sha256": "2cd3eb78c23fd672bb25fba8d2f46a86fe3c183d53d414c7789e0e633699a0ba"
+    },
+    {
+      "source": "BBchannel/assets/expball/JP/in_store.png",
+      "source_sha256": "8fb223d6a92c3830f13697de991231cb15b1ad4956a772957b8513027021c3d8",
+      "output": "assets/resource/base/image/搓丸子整理/保管室持有列表.png",
+      "sha256": "c2debdf0086d622193d0d4f3f9795e7739961efaaa10e3b5353e753e2c5fbae4"
+    },
+    {
+      "source": "BBchannel/assets/expball/JP/zxStore.png",
+      "source_sha256": "7f1b2acbe4582fe5ee6248f1b8714a1fec7f1359842302a6901c9b5472d2dbb3",
+      "output": "assets/resource/base/image/搓丸子整理/存储执行按钮.png",
+      "sha256": "70b1e3ead640488d792133cc8cda5db196e985ae16ffe1565eddb915eaa4b0be"
+    },
+    {
+      "source": "BBchannel/assets/expball/JP/storeAll.png",
+      "source_sha256": "8cd00780db4e00d241b07e73f850438897670a607c16ef3490444fcdd5064809",
+      "output": "assets/resource/base/image/搓丸子整理/保管室全部对象.png",
+      "sha256": "dc05ad86f75aeb80ae679c89df11811040c364cf8898d54d41e65828639cc762"
+    },
+    {
+      "source": "BBchannel/assets/expball/JP/kyz.png",
+      "source_sha256": "ea4edabcb54c2072bbe73e34bc8c8f1f0adc6b5926ea55aeaf88bb1ef6e5f8c2",
+      "output": "assets/resource/base/image/搓丸子整理/刻印中.png",
+      "sha256": "c696d26b6794044e5ba75282688db27c98b1596dc149d695bf870503e8148d47"
+    },
+    {
+      "source": "BBchannel/assets/expball/FPgold/4jyz.png",
+      "source_sha256": "7063c4881ba4cbc368e16395c054d74eb02d42819fc211d28cae2df0ddb8d685",
+      "output": "assets/resource/base/image/搓丸子整理/4星经验值卡特征.png",
+      "sha256": "513cdd758b79fc1599cf7465ace63a5d0db9b3f4ce6ec44853b2533fef254558"
+    },
+    {
+      "source": "BBchannel/assets/expball/FPgold/5jyz.png",
+      "source_sha256": "842b0ec7d4bbfa0ef8a74a7020e75e281d02bfd1e13d4a8c326df03bf8de0b6a",
+      "output": "assets/resource/base/image/搓丸子整理/5星经验值卡特征.png",
+      "sha256": "8ee51217454d4f6f045e2ea8fe74c53e6f16963a10dc9fc2d3f340b3d12c9d2f"
+    },
+    {
+      "source": "BBchannel/assets/expball/CH/locked.png",
+      "source_sha256": "40d2d7762fc11d34df5beedf81436b3953a3a052b9f89837473e744972564d9b",
+      "output": "assets/resource/cn/image/搓丸子整理/详情已锁定.png",
+      "sha256": "9874e198b7c9c9eeb943c41030d3be7795bcdf9db77b460e0de86cc6153f0e0a"
+    },
+    {
+      "source": "BBchannel/assets/expball/CH/unlocked.png",
+      "source_sha256": "7eda175a38cc5524f3538c2429a965e50dfd5836e173670a97742b99b6623c4e",
+      "output": "assets/resource/cn/image/搓丸子整理/详情未锁定.png",
+      "sha256": "afd33562819866ccc26cb943b2a8067926a9595a5c6b3dadbf2c53d7cd91fe8c"
+    },
+    {
+      "source": "BBchannel/assets/expball/CH/lclose.png",
+      "source_sha256": "2de538fc0895a2ae560b7df81d70526504573a980e6bdb29286905c8126eb027",
+      "output": "assets/resource/cn/image/搓丸子整理/详情关闭.png",
+      "sha256": "052c0053e5983a3472a1e49bab086e0ef2547c3b07ba01840ee23caee21e3f6c"
+    },
+    {
+      "source": "BBchannel/assets/expball/CH/ljbg.png",
+      "source_sha256": "551d3504a7b2a36f656f695081539021797a9c13a603a4420710e0bf76a03dd6",
+      "output": "assets/resource/cn/image/搓丸子整理/灵基保管室入口.png",
+      "sha256": "2b212457edd49310c89ffadb2960090a1d44ce75ee96a93e6a2c5c3ce648aa1d"
+    },
+    {
+      "source": "BBchannel/assets/expball/CH/in_store.png",
+      "source_sha256": "296b9cd6185f2ce01669736771abd3fe5ff91cd9cb6e30e81b34bc181957c925",
+      "output": "assets/resource/cn/image/搓丸子整理/保管室持有列表.png",
+      "sha256": "58273cbb4fcab80dea2c32b224bcaa5641bce1dea6a586ed9fc61effb5de6f03"
+    },
+    {
+      "source": "BBchannel/assets/expball/CH/zxStore.png",
+      "source_sha256": "9ef8fee9de6b71d224d978c738f1bc8b9685536799204836c742038e2b72408f",
+      "output": "assets/resource/cn/image/搓丸子整理/存储执行按钮.png",
+      "sha256": "5e6ca856812a27c40f6f20752f5c8fb4f5f63325652d41cac4949749507fbd00"
+    },
+    {
+      "source": "BBchannel/assets/expball/CH/storeAll.png",
+      "source_sha256": "6df67f5bcc62f1fa5e62f5cf36c7e32115c82764ae43b913298b43eb3f569e1f",
+      "output": "assets/resource/cn/image/搓丸子整理/保管室全部对象.png",
+      "sha256": "d563265fdf8883ed4f5804b0a3cd30adc96d4e4adcd437557373a5bec179c4da"
+    },
+    {
+      "source": "BBchannel/assets/expball/CH/kyz.png",
+      "source_sha256": "64e095254229f6999def3ecf370204d90e09ab4d6ce0abad889134e954902945",
+      "output": "assets/resource/cn/image/搓丸子整理/刻印中.png",
+      "sha256": "16cf6b475df9fa2949ad69f784af649caabe538701eb589aa5f2eaae24afb699"
+    },
+    {
+      "source": "BBchannel/assets/expball/FPgold/4jyz.png",
+      "source_sha256": "7063c4881ba4cbc368e16395c054d74eb02d42819fc211d28cae2df0ddb8d685",
+      "output": "assets/resource/cn/image/搓丸子整理/4星经验值卡特征.png",
+      "sha256": "513cdd758b79fc1599cf7465ace63a5d0db9b3f4ce6ec44853b2533fef254558"
+    },
+    {
+      "source": "BBchannel/assets/expball/FPgold/5jyz.png",
+      "source_sha256": "842b0ec7d4bbfa0ef8a74a7020e75e281d02bfd1e13d4a8c326df03bf8de0b6a",
+      "output": "assets/resource/cn/image/搓丸子整理/5星经验值卡特征.png",
+      "sha256": "8ee51217454d4f6f045e2ea8fe74c53e6f16963a10dc9fc2d3f340b3d12c9d2f"
+    }
+  ]
+}

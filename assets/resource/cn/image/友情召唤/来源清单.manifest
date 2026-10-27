@@ -1,0 +1,105 @@
+{
+    "description": "BBC fallback only. Existing project templates remain referenced at their original paths.",
+    "scale": "2/3 from BBC 1920x1080 virtual coordinates",
+    "templates": [
+        {
+            "template": "友情召唤/友情池特征.png",
+            "source": "BBchannel/assets/expball/CH/friendpointcall.png",
+            "source_sha256": "dbae3f167954d56515211b6ca369a682d8b0b0670b75eee423eca65b8b32c64e",
+            "sha256": "6b4b686e439d13ceb1c723c2eb50ef17fa790f88248c7b7cdb677c59423a263b",
+            "size": [
+                167,
+                93
+            ],
+            "status": "temporary_bbc_pending_device_calibration"
+        },
+        {
+            "template": "友情召唤/友情十连按钮.png",
+            "source": "BBchannel/assets/expball/CH/call10.png",
+            "source_sha256": "444ffce752b8fab85cc22fe07ecedd2f932c9eb89463800120f4106cb281c953",
+            "sha256": "4c4ec190ba86bfc6359f8eae057a85e6d6727a4d3111a582b87ba6681818a57c",
+            "size": [
+                131,
+                27
+            ],
+            "status": "temporary_bbc_pending_device_calibration"
+        },
+        {
+            "template": "友情召唤/友情免费十连按钮.png",
+            "source": "BBchannel/assets/expball/CH/callfree.png",
+            "source_sha256": "6a6faefe722699714ee9e57e87093c71c55d9592510c952be3bd9754c4ec8e51",
+            "sha256": "c6ef424222d27486ca33113a1fb750a5cf31ba72666ffd133d941b09fbf9dc1d",
+            "size": [
+                171,
+                31
+            ],
+            "status": "temporary_bbc_pending_device_calibration"
+        },
+        {
+            "template": "友情召唤/自动变还设定文字.png",
+            "source": "BBchannel/assets/expball/CH/autoSell.png",
+            "source_sha256": "8db7f762feb18e17df80bf30c7d9bac5d840fdd00ad12f78bcbf9fc168158ea8",
+            "sha256": "54e60ec7e84ba5343daf719a5d738affb7fc872ad48d610761f3d73d3e81f275",
+            "size": [
+                199,
+                41
+            ],
+            "status": "temporary_bbc_pending_device_calibration"
+        },
+        {
+            "template": "友情召唤/召唤确认决定.png",
+            "source": "BBchannel/assets/expball/CH/decide.png",
+            "source_sha256": "320c4b385c3eae517c5d06fc7837aafb0cf59429f4a9a7389e8a092f50e34f95",
+            "sha256": "4f265a763701054b03e80236c26d6f4f0e42fe117d696a3045d21a3476bcae22",
+            "size": [
+                75,
+                44
+            ],
+            "status": "temporary_bbc_pending_device_calibration"
+        },
+        {
+            "template": "友情召唤/结果变还按钮.png",
+            "source": "BBchannel/assets/expball/CH/bianhuan.png",
+            "source_sha256": "eb55ff555b4e946b0da2289e5d726877f227297523454defc1dd441a5879d06c",
+            "sha256": "4615587022544aeece892c68a9c3a3e7d487d04c2c572bc8603588719dd607fe",
+            "size": [
+                87,
+                43
+            ],
+            "status": "temporary_bbc_pending_device_calibration"
+        },
+        {
+            "template": "友情召唤/详情已锁定.png",
+            "source": "BBchannel/assets/expball/CH/locked.png",
+            "source_sha256": "40d2d7762fc11d34df5beedf81436b3953a3a052b9f89837473e744972564d9b",
+            "sha256": "9874e198b7c9c9eeb943c41030d3be7795bcdf9db77b460e0de86cc6153f0e0a",
+            "size": [
+                40,
+                37
+            ],
+            "status": "temporary_bbc_pending_device_calibration"
+        },
+        {
+            "template": "友情召唤/详情未锁定.png",
+            "source": "BBchannel/assets/expball/CH/unlocked.png",
+            "source_sha256": "7eda175a38cc5524f3538c2429a965e50dfd5836e173670a97742b99b6623c4e",
+            "sha256": "afd33562819866ccc26cb943b2a8067926a9595a5c6b3dadbf2c53d7cd91fe8c",
+            "size": [
+                40,
+                37
+            ],
+            "status": "temporary_bbc_pending_device_calibration"
+        },
+        {
+            "template": "友情召唤/详情关闭按钮.png",
+            "source": "BBchannel/assets/expball/CH/lclose.png",
+            "source_sha256": "2de538fc0895a2ae560b7df81d70526504573a980e6bdb29286905c8126eb027",
+            "sha256": "052c0053e5983a3472a1e49bab086e0ef2547c3b07ba01840ee23caee21e3f6c",
+            "size": [
+                69,
+                59
+            ],
+            "status": "temporary_bbc_pending_device_calibration"
+        }
+    ]
+}
