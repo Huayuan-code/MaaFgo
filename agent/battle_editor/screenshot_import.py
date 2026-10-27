@@ -15,6 +15,7 @@ from .storage import EditorError, MAX_JSON_BYTES
 
 MAX_IMAGE_BYTES = 16 * 1024 * 1024
 MAX_IMAGE_PIXELS = 20_000_000
+MAX_IMAGE_SIDE = 30_000
 IMAGE_TYPES = ('image/png', 'image/jpeg', 'image/webp')
 
 
@@ -30,11 +31,11 @@ def decode_image(raw):
             if getattr(original, 'n_frames', 1) != 1:
                 raise EditorError('image_animation', '请选择静态截图，不支持动图。', 415)
             w, h = original.size
-            if w * h > MAX_IMAGE_PIXELS or max(w, h) > 12000:
-                raise EditorError('image_dimensions', '图片不能超过2000万像素或单边12000像素。', 413)
+            if w * h > MAX_IMAGE_PIXELS or max(w, h) > MAX_IMAGE_SIDE:
+                raise EditorError('image_dimensions', '图片不能超过2000万像素或单边30000像素。', 413)
             image = ImageOps.exif_transpose(original)
-            if min(image.size) < 280:
-                raise EditorError('image_resolution', '截图过小，请使用清晰的完整横向编队截图。', 422)
+            if min(image.size) < 64 or max(image.size) < 280:
+                raise EditorError('image_resolution', '图片过小，请使用清晰完整的编队截图或一图流。', 422)
             rgba = image.convert('RGBA')
             background = Image.new('RGBA', rgba.size, 'white')
             image = Image.alpha_composite(background, rgba).convert('RGB')
@@ -148,11 +149,12 @@ class ScreenshotIndex:
             if best is not None: ranked.append(best)
         return sorted(ranked, key=lambda row: (-row[0],row[1]))
 
-    def recognize(self, raw):
+    def recognize(self, raw, *, decoded=None):
         import cv2
         import numpy as np
         started = time.perf_counter()
-        original = decode_image(raw);image, layout = locate_panel(original)
+        original = decode_image(raw) if decoded is None else decoded
+        image, layout = locate_panel(original)
         xs = (41,241,440,654,854,1055)
         rois = tuple((x-5,140,197,300) for x in xs)
         pools = self.servant_index.shortlists(image, rois)
@@ -213,6 +215,23 @@ class ScreenshotIndex:
                 'elapsedMs':round((time.perf_counter()-started)*1000)}
 
 
+def recognize_image(raw, root, index=None):
+    """Identify visual protocols before loading the full servant/equip index."""
+    from .share_image import decode_share_image
+    from .chaldea_image import recognize_chaldea_image
+    started = time.perf_counter()
+    original = decode_image(raw)
+    # A damaged MaaFGO packet raises here; never guess characters from it.
+    result = decode_share_image(original)
+    if result is None:
+        result = recognize_chaldea_image(original, root)
+    if result is None:
+        if index is None:
+            index = ScreenshotIndex(root)
+        result = index.recognize(raw, decoded=original)
+    return result | {'elapsedMs': round((time.perf_counter() - started) * 1000)}, index
+
+
 def stream_worker(root):
     # Set limits before importing numerical libraries, in this process only.
     os.environ['OPENBLAS_NUM_THREADS']='1';os.environ['MKL_NUM_THREADS']='1'
@@ -227,14 +246,7 @@ def stream_worker(root):
         raw = sys.stdin.buffer.read(length)
         if len(raw) != length: return
         try:
-            from .share_image import decode_share_image
-            started = time.perf_counter()
-            shared = decode_share_image(decode_image(raw))
-            if shared is not None:
-                result = shared | {'elapsedMs': round((time.perf_counter() - started) * 1000)}
-            else:
-                if index is None: index = ScreenshotIndex(root)
-                result = index.recognize(raw)
+            result, index = recognize_image(raw, root, index)
             response = {'ok':True,'result':result}
         except EditorError as exc:
             response = {'ok':False,'error':(exc.code,exc.message,exc.status)}
