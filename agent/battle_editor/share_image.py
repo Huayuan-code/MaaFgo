@@ -181,6 +181,21 @@ def decode_share_image(image) -> dict | None:
     except EditorError as error:
         if error.code != "share_incomplete":
             raise
+        # A multi-code detector can miss one footer code even when a full-width
+        # tile contains all its pixels. Isolate the two footer columns with
+        # overlapping margins, starting at the bottom. Keep packet validation
+        # strict and stop as soon as every chunk has actually been decoded.
+        for top, bottom in sorted(scanned, reverse=True):
+            crop = gray[top:bottom]
+            if crop.shape[1] <= 720:
+                continue
+            for left in (0, crop.shape[1] - 720):
+                found.update(_read_codes(crop[:, left:left + 720]))
+                try:
+                    return decode_share_blocks(list(found))
+                except EditorError as retry_error:
+                    if retry_error.code != "share_incomplete":
+                        raise
         # Mild screenshot/JPEG resampling can hinder a detector at one scale.
         # Retry only a known share image, never a whole unrelated screenshot.
         for top, bottom in sorted(scanned):

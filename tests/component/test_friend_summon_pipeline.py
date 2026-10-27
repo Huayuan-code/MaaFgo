@@ -416,6 +416,23 @@ class FriendSummonPipelineTests(unittest.TestCase):
         self.assertEqual(seen, [P + "识别失败"])
         self.assertEqual(c.inputs, [])
 
+    def test_next_and_error_routes_are_distinct_and_rejection_keeps_one_failure_terminal(self):
+        # maa-tools 1.1.3 checks next and on_error together, after stripping
+        # JumpBack attributes. Repeating a target across the two is also an error.
+        for name, node in self.production.items():
+            with self.subTest(node=name):
+                routes = [target.removeprefix("[JumpBack]")
+                          for key in ("next", "on_error") for target in node.get(key, [])]
+                self.assertEqual(len(routes), len(set(routes)), routes)
+        reject = P + "拒绝非友情确认"
+        guard = self.production[P + "确认出现圣晶石或呼符"]
+        self.assertEqual(guard["next"], [reject])
+        self.assertEqual(guard["on_error"], [P + "识别失败"])
+        self.assertEqual(self.production[reject]["next"], [P + "识别失败"])
+        self.assertEqual(self.production[reject]["on_error"], [])
+        self.assertEqual(self.production[reject].get("action", {}).get("type", "DoNothing"), "DoNothing")
+        self.assertEqual(self.production[P + "识别失败"].get("next", []), [])
+
     def test_pool_title_and_friend_currency_are_both_required_before_input(self):
         for scene in ("ordinary_pool", "pool_without_currency", "pool_without_title"):
             with self.subTest(scene=scene):
@@ -503,6 +520,7 @@ class FriendSummonPipelineTests(unittest.TestCase):
                                      forbidden_currency=True)
         self.assertEqual(seen, [P + "识别失败"])
         self.assertEqual(c.confirmations, 0)
+        self.assertEqual(c.executed_actions.count(P + "拒绝非友情确认"), 1)
         self.assertNotIn(P + "免费确认安全后提交", c.executed_actions)
 
     def test_free_override_never_falls_back_to_paid_ten_or_hundred_confirmation(self):
@@ -570,6 +588,8 @@ class FriendSummonPipelineTests(unittest.TestCase):
                                      forbidden_currency=True)
         self.assertEqual(seen, [P + "识别失败"])
         self.assertEqual(c.confirmations, 0)
+        self.assertEqual(c.executed_actions.count(P + "拒绝非友情确认"), 1)
+        self.assertNotIn(P + "确认安全后提交", c.executed_actions)
         seen, c, _ = self.run_scenario("free_pool", batch=100, free_authorized=True,
                                      confirm_kind="paid_cn_actual", confirm_count="100")
         self.assertEqual(seen, [P + "识别失败"])

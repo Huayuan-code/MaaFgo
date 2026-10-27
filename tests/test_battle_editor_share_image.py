@@ -5,6 +5,7 @@ import hashlib
 import json
 import random
 import unittest
+from unittest.mock import patch
 import zlib
 
 import cv2
@@ -13,6 +14,7 @@ import numpy as np
 from agent.battle_editor.share_image import (ANCHOR, CHUNK_SIZE, FORMAT, MAX_MARKERS,
     decode_share_blocks, decode_share_image, encode_share)
 from agent.battle_editor.storage import EditorError, MAX_JSON_BYTES
+import agent.battle_editor.share_image as share_image
 
 
 def document():
@@ -29,7 +31,12 @@ def document():
         "future": {"保留字段": [None, False, 0, "中文"]}}
 
 
-def render_packet(encoded, *, footer=800):
+def multirow_document():
+    rng = random.Random(2)
+    return dict(document(), notes="".join(rng.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(2600)))
+
+
+def render_packet(encoded, *, footer=800, omit_markers=()):
     sizes = [len(marker["matrix"]) for marker in encoded["markers"]]
     row_height = max(sizes) * 5 + 70
     image = np.full((footer + ((len(sizes) + 1) // 2) * row_height + 60, 1200, 3), 255, np.uint8)
@@ -46,6 +53,8 @@ def render_packet(encoded, *, footer=800):
 
     paste(encoded["anchor"]["matrix"], 995, 25)
     for index, marker in enumerate(encoded["markers"]):
+        if index in omit_markers:
+            continue
         paste(marker["matrix"], 40 + index % 2 * 570 + (552 - len(marker["matrix"]) * 5) // 2,
               footer + index // 2 * row_height)
     return image
@@ -161,14 +170,45 @@ class ShareImageRecognitionTests(unittest.TestCase):
         self.assertEqual(decode_share_image(transported(self.image, .75, jpeg=75, border=32))["data"], self.data)
 
     def test_multirow_footer_has_enough_scan_overlap_for_whole_codes(self):
-        rng = random.Random(2)
-        data = dict(document(), notes="".join(rng.choice("abcdefghijklmnopqrstuvwxyz0123456789") for _ in range(2600)))
+        data = multirow_document()
         encoded = encode_share(data)
         self.assertGreater(len(encoded["markers"]), 4)
         image = render_packet(encoded, footer=800)
         for scale, quality in ((1, None), (1, 72), (.75, 72), (.6, 72)):
             with self.subTest(scale=scale, quality=quality):
                 self.assertEqual(decode_share_image(transported(image, scale, jpeg=quality))["data"], data)
+
+    def test_multirow_full_width_miss_is_recovered_by_real_column_recognition(self):
+        data = multirow_document()
+        encoded = encode_share(data)
+        self.assertEqual(len(encoded["markers"]), 8)
+        missing = encoded["markers"][-1]["text"]
+        original_read = share_image._read_codes
+        recovered = []
+
+        def miss_in_multi_code_view(crop):
+            # Reproduce a detector finding only 7/8 in every full-width retry.
+            # Narrow crops still run the real QR detector on the same pixels.
+            values = original_read(crop)
+            if crop.shape[1] >= 800:
+                return [value for value in values if value != missing]
+            if missing in values:
+                recovered.append(crop.shape)
+            return values
+
+        image = transported(render_packet(encoded))
+        with patch.object(share_image, "_read_codes", side_effect=miss_in_multi_code_view):
+            self.assertEqual(decode_share_image(image)["data"], data)
+        self.assertTrue(recovered, "缺失分块必须从真实局部二维码读回，不能接受不完整数据")
+
+    def test_multirow_missing_visual_marker_still_rejects_the_incomplete_packet(self):
+        encoded = encode_share(multirow_document())
+        self.assertEqual(len(encoded["markers"]), 8)
+        image = transported(render_packet(encoded, omit_markers=(7,)))
+        with self.assertRaises(EditorError) as error:
+            decode_share_image(image)
+        self.assertEqual(error.exception.code, "share_incomplete")
+        self.assertRegex(str(error.exception), r"\b[0-7]/8\b")
 
     def test_truncated_footer_never_falls_back_to_an_unrelated_game_image(self):
         with self.assertRaises(EditorError) as error:

@@ -402,15 +402,34 @@ class CeBombPipelineTests(unittest.TestCase):
         self.assertNotIn(PREFIX + "强化二次确认", seen)
         self.assertNotIn(PREFIX + "强化一批完成", seen)
 
+    def test_next_and_error_routes_are_distinct_and_high_star_rejection_keeps_one_failure_terminal(self):
+        # maa-tools 1.1.3 treats next/on_error as a shared set of routes.
+        for name, node in self.ce.items():
+            with self.subTest(node=name):
+                routes = [target.removeprefix("[JumpBack]")
+                          for key in ("next", "on_error") for target in node.get(key, [])]
+                self.assertEqual(len(routes), len(set(routes)), routes)
+        reject = PREFIX + "拒绝未授权高星材料"
+        for warning in ("高星素材决定确认", "高星材料确认"):
+            node = self.ce[PREFIX + warning]
+            self.assertEqual(node["next"], [reject])
+            self.assertEqual(node["on_error"], [PREFIX + "识别失败"])
+        self.assertEqual(self.ce[reject]["next"], [PREFIX + "识别失败"])
+        self.assertEqual(self.ce[reject]["on_error"], [])
+        self.assertEqual(self.ce[reject].get("action", {}).get("type", "DoNothing"), "DoNothing")
+        self.assertEqual(self.ce[PREFIX + "识别失败"].get("next", []), [])
+
     def test_high_star_warning_stops_by_default_at_both_stages(self):
         for entry, warning in (("确认素材", "高星素材决定确认"), ("提交强化", "高星材料确认")):
             with self.subTest(entry=entry):
                 ok, seen, actions, _, _ = self.run_graph(PREFIX + entry, {entry, warning})
                 self.assertTrue(ok)
-                self.assertIn(PREFIX + "识别失败", seen)
+                self.assertEqual(seen.count(PREFIX + "拒绝未授权高星材料"), 1)
+                self.assertEqual(seen.count(PREFIX + "识别失败"), 1)
                 self.assertEqual(actions, [(PREFIX + entry + "执行", "Click")])
                 self.assertNotIn(PREFIX + "素材已选择", seen)
                 self.assertNotIn(PREFIX + "强化一批完成", seen)
+                self.assertNotIn(PREFIX + "成品完成", seen)
 
     def test_high_star_local_authorization_requires_button_and_normal_followup(self):
         for material_stage in (True, False):
