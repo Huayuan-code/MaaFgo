@@ -111,6 +111,7 @@
                         "param": {
                             "all_of": [
                                 {
+                                    "sub_name": "base/搓丸子/搓丸子-制作一轮/OCR1",
                                     "recognition": {
                                         "type": "OCR",
                                         "param": {
@@ -218,6 +219,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-详情判定/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -266,6 +268,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-打开底卡列表/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -2195,6 +2198,7 @@
                             "param": {
                                 "all_of": [
                                     {
+                                        "sub_name": "base/搓丸子/搓丸子-当前底卡为空/OCR1",
                                         "recognition": {
                                             "type": "OCR",
                                             "param": {
@@ -2468,6 +2472,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-预览当前底卡/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -2595,6 +2600,7 @@
                         }
                     },
                     {
+                        "sub_name": "base/搓丸子/搓丸子-底卡详情显示/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -2669,6 +2675,7 @@
                         }
                     },
                     {
+                        "sub_name": "base/搓丸子/搓丸子-素材详情显示/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -2826,6 +2833,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-关闭回强化页/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -2921,6 +2929,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-底卡选定复查/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -2969,6 +2978,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-打开素材列表/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -3592,6 +3602,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-高星素材决定授权确认/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -3666,6 +3677,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-素材回到强化页/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -3714,6 +3726,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-自动填充一轮/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -3819,6 +3832,7 @@
                             "param": {
                                 "all_of": [
                                     {
+                                        "sub_name": "base/搓丸子/搓丸子-提交强化执行/OCR1",
                                         "recognition": {
                                             "type": "OCR",
                                             "param": {
@@ -3908,6 +3922,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-强化二次确认/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -3994,6 +4009,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-高星材料授权确认/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -4115,6 +4131,7 @@
                             "param": {
                                 "all_of": [
                                     {
+                                        "sub_name": "base/搓丸子/搓丸子-强化结果页/OCR1",
                                         "recognition": {
                                             "type": "OCR",
                                             "param": {
@@ -5237,6 +5254,7 @@
                         }
                     },
                     {
+                        "sub_name": "base/搓丸子/搓丸子-保护半成品详情已开/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -5321,6 +5339,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-保护半成品预览底卡/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -5571,6 +5590,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-保护半成品关闭复查/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -5663,6 +5683,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-保护成品预览底卡/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -5777,6 +5798,7 @@
                         }
                     },
                     {
+                        "sub_name": "base/搓丸子/搓丸子-保护成品详情已开/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -5987,6 +6009,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/搓丸子/搓丸子-保护成品打开列表/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -6127,6 +6150,7 @@
                         }
                     },
                     {
+                        "sub_name": "base/搓丸子/搓丸子-底卡筛选无对象/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -6161,6 +6185,7 @@
                 "all_of": [
                     "搓丸子-底卡筛选无对象",
                     {
+                        "sub_name": "base/搓丸子/搓丸子-底卡无对象取消筛选/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {

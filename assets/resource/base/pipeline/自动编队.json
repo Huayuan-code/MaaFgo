@@ -333,6 +333,7 @@
                         }
                     },
                     {
+                        "sub_name": "base/自动编队/自动编队-检测编辑决定/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {

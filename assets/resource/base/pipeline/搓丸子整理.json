@@ -961,6 +961,7 @@
             }
           },
           {
+            "sub_name": "base/搓丸子整理/搓丸子整理-确认存储/OCR1",
             "recognition": {
               "type": "OCR",
               "param": {
