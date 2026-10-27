@@ -630,6 +630,7 @@ class AutoFormationFromChaldea(CustomAction):
         explicit_names = set(servant.get("images") or [])
         result, seen = [], set()
         for directory in directories:
+            full_face = os.path.basename(os.path.normpath(directory)) == "servant_face"
             for path in glob.glob(os.path.join(directory, "f_*.png")):
                 name = os.path.basename(path)
                 if name in seen or (
@@ -639,6 +640,10 @@ class AutoFormationFromChaldea(CustomAction):
                     continue
                 template = _read_image(path)
                 if template is not None:
+                    # 仓库特征按完整 158×158 头像的固定区域提取。区域服的
+                    # 局部识别裁片不能拉伸替代完整头像，也不能遮住 base 同名图。
+                    if full_face and template.shape[:2] != (SERVANT_LIST_FACE_SIZE, SERVANT_LIST_FACE_SIZE):
+                        continue
                     result.append((name, template))
                     seen.add(name)
         return result
