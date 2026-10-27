@@ -473,7 +473,23 @@ class EditorHandler(BaseHTTPRequestHandler):
                 self._json(200, encode_share(body.get("data")))
             elif image_request:
                 result = self.server._screenshot_worker.recognize(body)
-                if result.get("kind") == "share":
+                if result.get("kind") == "chaldea":
+                    team_id = result.get("teamId")
+                    if type(team_id) is not int or not 0 < team_id <= 9007199254740991:
+                        raise EditorError("chaldea_team_id", "Chaldea 图片中的 Team ID 无效，请使用清晰原图。", 422)
+                    # Only the validated ID is used, never an OCR-derived URL or
+                    # bare number (legacy parsing treats long numbers as quest IDs).
+                    source = f"https://link.chaldea.center/laplace/share?id={team_id}"
+                    try:
+                        imported = self.server.import_source(source)
+                    except EditorError as exc:
+                        message = f"已识别 Chaldea 图片的 Team ID {team_id}，但未能获取队伍配置；请检查网络、队伍是否仍公开，或尝试手动导入分享链接。"
+                        raise EditorError("chaldea_fetch_failed", message, exc.status) from exc
+                    if imported.get("teamId") != team_id:
+                        raise EditorError("chaldea_team_mismatch", "Chaldea 返回的队伍 ID 与图片不一致，已停止导入，请核对原始分享。", 422)
+                    result = result | {"schema": 1, "source": source, "data": imported["data"],
+                                       "validation": imported["validation"], "warnings": result.get("warnings", [])}
+                elif result.get("kind") == "share":
                     result = result | {"validation": self.server.validate(result["data"])}
                 self._json(200, result)
             elif method == "POST" and path == "/api/heartbeat":

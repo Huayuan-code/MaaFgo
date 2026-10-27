@@ -179,6 +179,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/进本流程/进本-攻略提示关闭/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {

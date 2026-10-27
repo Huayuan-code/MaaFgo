@@ -6,7 +6,9 @@ export const MAX_IMAGE_BYTES=16*1024*1024;
 export interface ScreenshotSlot {slot:number;servantId:number|null;status:'empty'|'identified'|'unknown';support:boolean;equipId?:number|null;equipStatus?:'empty'|'identified'|'unknown';score?:number;equipScore?:number}
 export interface ScreenshotResult {kind?:'screenshot';slots:ScreenshotSlot[];warnings:string[];elapsedMs?:number;sourceSize?:number[]}
 export interface ShareImageResult {kind:'share';schema:1;data:Json;warnings:string[];validation:Json|null;title?:string;elapsedMs?:number}
-export type ImageImportResult=ScreenshotResult|ShareImageResult;
+export interface ChaldeaImageResult {kind:'chaldea';schema:1;teamId:number;source:string;data:Json;warnings:string[];validation:Json|null;title?:string;elapsedMs?:number}
+export type RestoredImageResult=ShareImageResult|ChaldeaImageResult;
+export type ImageImportResult=ScreenshotResult|RestoredImageResult;
 export function imageMime(file:{type:string;name?:string;size:number}):string {
  if(file.size<=0||file.size>MAX_IMAGE_BYTES)throw new Error('图片为空或超过16 MiB，请换一张较小的截图。');
  const mime=file.type.toLowerCase();
@@ -24,15 +26,18 @@ export function readScreenshotResult(value:any):ScreenshotResult {
  if(!value||!Array.isArray(value.slots)||value.slots.length!==6||value.slots.some((s:any,i:number)=>!s||s.slot!==i||!id(s.servantId)||!id(s.equipId)||!['empty','identified','unknown'].includes(s.status)||typeof s.support!=='boolean'))throw new Error('识别结果不完整，请重新识别。');
  return {...value,slots:value.slots.map((s:ScreenshotSlot)=>({...s})),warnings:Array.isArray(value.warnings)?value.warnings.filter((s:any)=>typeof s==='string'):[]};
 }
-/** Share markers restore the original tree; they must never pass through screenshotTeam. */
+/** Full plans from share markers or Chaldea IDs must never pass through screenshotTeam. */
 export function readImageImportResult(value:any):ImageImportResult {
- if(value?.kind==='share') {
-  if(value.schema!==1||!Array.isArray(value.warnings)||value.warnings.some((warning:unknown)=>typeof warning!=='string'))throw new Error('一图流识别结果不完整或版本不受支持，请使用原始分享图片。');
+ if(value?.kind==='share'||value?.kind==='chaldea') {
+  const label=value.kind==='chaldea'?'Chaldea 图片':'一图流';
+  if(value.schema!==1||!Array.isArray(value.warnings)||value.warnings.some((warning:unknown)=>typeof warning!=='string'))throw new Error(`${label}识别结果不完整或版本不受支持，请使用原始分享图片。`);
+  if(value.kind==='chaldea'&&(!Number.isSafeInteger(value.teamId)||value.teamId<=0||value.source!==`https://link.chaldea.center/laplace/share?id=${value.teamId}`))throw new Error('Chaldea 图片的 Team ID 或分享链接无效，请重新识别。');
   assertEditable(value.data);
-  if(!value.data.team||typeof value.data.team!=='object'||Array.isArray(value.data.team))throw new Error('一图流中缺少完整编队数据，请重新导出图片。');
+  if(!value.data.team||typeof value.data.team!=='object'||Array.isArray(value.data.team))throw new Error(`${label}中缺少完整编队数据，请重新选择图片。`);
   const validation=value.validation??null;
-  if(validation!==null&&(typeof validation!=='object'||Array.isArray(validation)||typeof validation.valid!=='boolean'||!Array.isArray(validation.issues)||validation.issues.some((issue:unknown)=>!issue||typeof issue!=='object'||typeof (issue as Json).message!=='string')))throw new Error('一图流方案检查结果无效，请重新识别。');
-  return {kind:'share',schema:1,data:value.data,warnings:[...value.warnings],validation,...(typeof value.title==='string'?{title:value.title}:{}),...(typeof value.elapsedMs==='number'&&Number.isFinite(value.elapsedMs)?{elapsedMs:value.elapsedMs}:{})};
+  if(validation!==null&&(typeof validation!=='object'||Array.isArray(validation)||typeof validation.valid!=='boolean'||!Array.isArray(validation.issues)||validation.issues.some((issue:unknown)=>!issue||typeof issue!=='object'||typeof (issue as Json).message!=='string')))throw new Error(`${label}方案检查结果无效，请重新识别。`);
+  const common={schema:1 as const,data:value.data,warnings:[...value.warnings],validation,...(typeof value.title==='string'?{title:value.title}:{}),...(typeof value.elapsedMs==='number'&&Number.isFinite(value.elapsedMs)?{elapsedMs:value.elapsedMs}:{})};
+  return value.kind==='chaldea'?{...common,kind:'chaldea',teamId:value.teamId,source:value.source}:{...common,kind:'share'};
  }
  if(value?.kind!=null&&value.kind!=='screenshot')throw new Error('暂不支持这种图片识别结果，请更新编辑器或重新选择图片。');
  return readScreenshotResult(value);

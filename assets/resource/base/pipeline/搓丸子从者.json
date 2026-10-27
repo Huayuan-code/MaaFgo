@@ -120,6 +120,7 @@
       "param": {
         "all_of": [
           {
+            "sub_name": "base/搓丸子从者/搓丸子-点击从者再选择/OCR1",
             "recognition": {
               "type": "OCR",
               "param": {
@@ -137,6 +138,7 @@
             }
           },
           {
+            "sub_name": "base/搓丸子从者/搓丸子-点击从者再选择/OCR2",
             "recognition": {
               "type": "OCR",
               "param": {
@@ -997,6 +999,7 @@
         "all_of": [
           "搓丸子-从者强化已选页面",
           {
+            "sub_name": "base/搓丸子从者/搓丸子-执行清除测试从者素材/OCR1",
             "recognition": {
               "type": "OCR",
               "param": {

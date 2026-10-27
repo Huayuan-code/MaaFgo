@@ -223,7 +223,7 @@ class ShareImageRecognitionTests(unittest.TestCase):
             self.assertIsNone(decode_share_image(source))
 
     def test_bad_array_and_oversized_dimensions_fail_before_detection(self):
-        for image in (None, np.zeros((4, 4), np.float32), np.empty((12001, 1), np.uint8)):
+        for image in (None, np.zeros((4, 4), np.float32), np.empty((30001, 1), np.uint8)):
             with self.assertRaises(EditorError):
                 decode_share_image(image)
 

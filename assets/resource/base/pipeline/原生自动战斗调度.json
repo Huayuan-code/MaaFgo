@@ -440,6 +440,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/原生自动战斗调度/剧情奖励-礼装详情关闭/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -457,6 +458,7 @@
                         }
                     },
                     {
+                        "sub_name": "base/原生自动战斗调度/剧情奖励-礼装详情关闭/OCR2",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -489,6 +491,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/原生自动战斗调度/剧情奖励-从者加入详情关闭/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -506,6 +509,7 @@
                         }
                     },
                     {
+                        "sub_name": "base/原生自动战斗调度/剧情奖励-从者加入详情关闭/OCR2",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -523,6 +527,7 @@
                         }
                     },
                     {
+                        "sub_name": "base/原生自动战斗调度/剧情奖励-从者加入详情关闭/OCR3",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -558,6 +563,7 @@
             "param": {
                 "all_of": [
                     {
+                        "sub_name": "base/原生自动战斗调度/结算-已返回幕间列表/OCR1",
                         "recognition": {
                             "type": "OCR",
                             "param": {
@@ -576,6 +582,7 @@
                         }
                     },
                     {
+                        "sub_name": "base/原生自动战斗调度/结算-已返回幕间列表/OCR2",
                         "recognition": {
                             "type": "OCR",
                             "param": {

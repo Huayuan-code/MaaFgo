@@ -152,8 +152,8 @@ def decode_share_image(image) -> dict | None:
     if not isinstance(image, np.ndarray) or image.dtype != np.uint8 or image.ndim not in (2, 3):
         raise EditorError("share_image", "无法读取分享图片。", 422)
     height, width = image.shape[:2]
-    if not width or not height or width * height > 20_000_000 or max(width, height) > 12000:
-        raise EditorError("image_dimensions", "图片不能超过2000万像素或单边12000像素。", 413)
+    if not width or not height or width * height > 20_000_000 or max(width, height) > 30000:
+        raise EditorError("image_dimensions", "图片不能超过2000万像素或单边30000像素。", 413)
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
     # Exports have a fixed 1200px page width. Normalize a reduced copy before
     # recognition so resampling does not leave fractional 2-3px QR modules.

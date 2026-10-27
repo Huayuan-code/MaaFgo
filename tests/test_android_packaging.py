@@ -133,6 +133,7 @@ class AndroidInterfaceTests(unittest.TestCase):
             desktop_files = (
                 "assets/web/battle-editor/index.html", "assets/web/battle-editor/assets/app.js",
                 "agent/custom/battle_editor_action.py", "agent/battle_editor/server.py",
+                "agent/battle_editor/chaldea_image.py",
                 "agent/battle_editor/data/catalog.json", "agent/battle_editor/data/np_cards.json",
                 "agent/battle_editor/data/ui/media/formation_100100_0123456789abcdef.webp",
                 "打开编队编辑器.cmd",

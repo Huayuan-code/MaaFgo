@@ -88,3 +88,42 @@ test('share preview labels NPC and legacy fixed supports without changing their 
   assert.equal((data.team.onFieldSvts[2] as any).supportType,supportType);
  }
 });
+
+const chaldeaImageResult=(teamId=107574)=>({kind:'chaldea',schema:1,teamId,source:`https://link.chaldea.center/laplace/share?id=${teamId}`,data:shareData(),warnings:[],validation:{valid:true,issues:[]}});
+
+test('Chaldea image ID routing preserves the entire fetched plan and its origin',()=>{
+ const original=chaldeaImageResult(),before=structuredClone(original);
+ const restored=readImageImportResult({...original,validation:{valid:false,issues:[{message:'请核对配置',severity:'error'}]},elapsedMs:350});
+ assert.equal(restored.kind,'chaldea');
+ if(restored.kind!=='chaldea')throw new Error('Chaldea image was treated as a formation screenshot');
+ assert.equal(restored.teamId,107574);assert.equal(restored.source,original.source);
+ assert.equal(restored.data,original.data);assert.deepEqual(restored.data,before.data);
+ assert.deepEqual(restored.data.unknown,{keep:['完整保留',0,false,null]});
+ assert.deepEqual(restored.data.actions,before.data.actions);assert.deepEqual(restored.data.delegate,before.data.delegate);
+ assert.equal(restored.validation?.valid,false);assert.equal(restored.elapsedMs,350);
+ assert.deepEqual(original,before);
+});
+
+test('Chaldea image results accept positive safe integer IDs without a six-digit limit',()=>{
+ for(const teamId of [1,107574,1_000_000,Number.MAX_SAFE_INTEGER]){
+  const result=readImageImportResult(chaldeaImageResult(teamId));
+  assert.equal(result.kind,'chaldea');if(result.kind==='chaldea')assert.equal(result.teamId,teamId);
+ }
+});
+
+test('Chaldea image results reject missing, ambiguous or unsafe IDs and noncanonical share links',()=>{
+ const base=chaldeaImageResult();
+ for(const teamId of [null,undefined,0,-1,1.5,'107574',true,NaN,Infinity,Number.MAX_SAFE_INTEGER+1]){
+  assert.throws(()=>readImageImportResult({...base,teamId}),/Team ID/);
+ }
+ for(const source of [undefined,'','javascript:alert(1)','https://example.com/laplace/share?id=107574','http://link.chaldea.center/laplace/share?id=107574','https://link.chaldea.center/laplace/share?id=107575','https://link.chaldea.center/laplace/share?id=0107574',base.source+'&extra=1']){
+  assert.throws(()=>readImageImportResult({...base,source}),/Team ID/);
+ }
+});
+
+test('Chaldea image previews reject malformed fetched data, warnings and validation',()=>{
+ const base=chaldeaImageResult();
+ for(const changed of [{schema:2},{schema:true},{warnings:null},{warnings:[{}]},{data:null},{data:{team:[],actions:[]}},{data:{team:{},actions:'bad'}},{validation:{valid:'true',issues:[]}},{validation:{valid:true,issues:[{message:null}]}}]){
+  assert.throws(()=>readImageImportResult({...base,...changed}));
+ }
+});

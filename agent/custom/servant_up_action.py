@@ -255,7 +255,8 @@ class ExecuteServantUp(CustomAction):
 
         self.tpl_dir = _resolve(layer, "强化从者") or ""
         self.tpl_base_dir = _resolve("base", "强化从者") or self.tpl_dir
-        self.face_dir = _resolve(layer, SERVANT_FACE_DIR) or _resolve("base", SERVANT_FACE_DIR) or ""
+        self.face_base_dir = _resolve("base", SERVANT_FACE_DIR) or ""
+        self.face_dir = _resolve(layer, SERVANT_FACE_DIR) or self.face_base_dir
         # 整理礼物盒（复用星级图标 + 决定/重置按钮）
         self.box_dir = _resolve(layer, "整理礼物盒") or _resolve("base", "整理礼物盒") or ""
 
@@ -289,8 +290,13 @@ class ExecuteServantUp(CustomAction):
             p = os.path.join(self.box_dir, name.split("/", 1)[1])
             return p if os.path.isfile(p) else name
         if name.startswith("servant_face/"):
-            p = os.path.join(self.face_dir, name.split("/", 1)[1])
-            return p if os.path.isfile(p) else name
+            filename = name.split("/", 1)[1]
+            p = os.path.join(self.face_dir, filename)
+            if os.path.isfile(p):
+                return p
+            # CN 可只覆盖某个灵基头像，其余文件仍逐张继承 base。
+            pb = os.path.join(getattr(self, "face_base_dir", self.face_dir), filename)
+            return pb if os.path.isfile(pb) else name
         p = os.path.join(self.tpl_dir, name)
         if os.path.isfile(p):
             return p
