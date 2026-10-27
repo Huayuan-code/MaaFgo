@@ -654,11 +654,11 @@ class CeBombPipelineTests(unittest.TestCase):
         # Keep real And/Or evaluation, including nested identity guards. A full
         # recognition double would conceal Maa's default box_index=0 behaviour.
         targets = {
-            "关闭详情执行": "搓丸子/详情关闭按钮.png",
+            "关闭详情执行": "友情召唤/详情关闭按钮.png",
             "提交强化执行": "从者技能强化/强化按钮.png",
             "保护半成品退出素材列表": "强化从者/返回强化菜单按钮.png",
-            "保护半成品关闭详情执行": "搓丸子/详情关闭按钮.png",
-            "保护成品关闭详情执行": "搓丸子/详情关闭按钮.png",
+            "保护半成品关闭详情执行": "友情召唤/详情关闭按钮.png",
+            "保护成品关闭详情执行": "友情召唤/详情关闭按钮.png",
         }
         composite_clicks = {name for name, node in self.ce.items()
             if node.get("action", {}).get("type") == "Click"
@@ -748,11 +748,11 @@ class CeBombPipelineTests(unittest.TestCase):
 
         def hit(name, state, source):
             if name == PREFIX + "成品关闭智能筛选":
-                self.assertEqual(source["param"]["template"], "搓丸子/开关开启.png")
+                self.assertEqual(source["param"]["template"], "强化从者/自动加载已选中.png")
                 return state["smart_filter"]
             if name == PREFIX + "成品确认排序":
                 smart = source["param"]["all_of"][2]["recognition"]["param"]["template"]
-                self.assertEqual(smart, "搓丸子/开关关闭.png")
+                self.assertEqual(smart, "强化从者/自动加载未选中.png")
                 return not state["smart_filter"]
             if name == PREFIX + "成品列表固定完成":
                 return not state["smart_filter"]

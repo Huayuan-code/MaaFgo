@@ -201,8 +201,8 @@
       "type": "TemplateMatch",
       "param": {
         "template": [
-          "搓丸子整理/详情已锁定.png",
-          "搓丸子整理/详情未锁定.png"
+          "友情召唤/详情已锁定.png",
+          "友情召唤/详情未锁定.png"
         ],
         "threshold": 0.8,
         "roi": [
@@ -250,7 +250,7 @@
     "recognition": {
       "type": "TemplateMatch",
       "param": {
-        "template": "搓丸子整理/详情已锁定.png",
+        "template": "友情召唤/详情已锁定.png",
         "threshold": 0.88,
         "roi": [
           0,
@@ -267,7 +267,7 @@
     "recognition": {
       "type": "TemplateMatch",
       "param": {
-        "template": "搓丸子整理/详情未锁定.png",
+        "template": "友情召唤/详情未锁定.png",
         "threshold": 0.88,
         "roi": [
           0,
@@ -1085,7 +1085,7 @@
     "recognition": {
       "type": "TemplateMatch",
       "param": {
-        "template": "搓丸子整理/详情关闭.png",
+        "template": "友情召唤/详情关闭按钮.png",
         "threshold": 0.8,
         "roi": [
           0,

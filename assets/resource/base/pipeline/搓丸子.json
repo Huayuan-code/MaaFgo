@@ -131,7 +131,7 @@
                                     "recognition": {
                                         "type": "TemplateMatch",
                                         "param": {
-                                            "template": "搓丸子/强化详情帮助.png",
+                                            "template": "强化从者/强化完成界面.png",
                                             "threshold": 0.8,
                                             "roi": [
                                                 360,
@@ -238,7 +238,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -286,7 +286,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -635,7 +635,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/开关开启.png",
+                "template": "强化从者/自动加载已选中.png",
                 "threshold": 0.92,
                 "roi": [
                     980,
@@ -671,7 +671,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/开关关闭.png",
+                "template": "强化从者/自动加载未选中.png",
                 "threshold": 0.92,
                 "roi": [
                     535,
@@ -740,7 +740,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/排序决定按钮.png",
+                                "template": "整理礼物盒/筛选面板决定按钮.png",
                                 "threshold": 0.84,
                                 "roi": [
                                     700,
@@ -755,7 +755,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/开关关闭.png",
+                                "template": "强化从者/自动加载未选中.png",
                                 "threshold": 0.92,
                                 "roi": [
                                     980,
@@ -771,7 +771,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/开关开启.png",
+                                "template": "强化从者/自动加载已选中.png",
                                 "threshold": 0.92,
                                 "roi": [
                                     535,
@@ -989,7 +989,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/开关开启.png",
+                "template": "强化从者/自动加载已选中.png",
                 "threshold": 0.92,
                 "roi": [
                     980,
@@ -1025,7 +1025,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/开关关闭.png",
+                "template": "强化从者/自动加载未选中.png",
                 "threshold": 0.92,
                 "roi": [
                     535,
@@ -1094,7 +1094,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/排序决定按钮.png",
+                                "template": "整理礼物盒/筛选面板决定按钮.png",
                                 "threshold": 0.84,
                                 "roi": [
                                     700,
@@ -1109,7 +1109,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/开关关闭.png",
+                                "template": "强化从者/自动加载未选中.png",
                                 "threshold": 0.92,
                                 "roi": [
                                     980,
@@ -1125,7 +1125,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/开关开启.png",
+                                "template": "强化从者/自动加载已选中.png",
                                 "threshold": 0.92,
                                 "roi": [
                                     535,
@@ -1343,7 +1343,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/开关开启.png",
+                "template": "强化从者/自动加载已选中.png",
                 "threshold": 0.92,
                 "roi": [
                     980,
@@ -1379,7 +1379,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/开关关闭.png",
+                "template": "强化从者/自动加载未选中.png",
                 "threshold": 0.92,
                 "roi": [
                     535,
@@ -1448,7 +1448,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/排序决定按钮.png",
+                                "template": "整理礼物盒/筛选面板决定按钮.png",
                                 "threshold": 0.84,
                                 "roi": [
                                     700,
@@ -1463,7 +1463,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/开关关闭.png",
+                                "template": "强化从者/自动加载未选中.png",
                                 "threshold": 0.92,
                                 "roi": [
                                     980,
@@ -1479,7 +1479,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/开关开启.png",
+                                "template": "强化从者/自动加载已选中.png",
                                 "threshold": 0.92,
                                 "roi": [
                                     535,
@@ -1697,7 +1697,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/开关开启.png",
+                "template": "强化从者/自动加载已选中.png",
                 "threshold": 0.92,
                 "roi": [
                     980,
@@ -1733,7 +1733,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/开关开启.png",
+                "template": "强化从者/自动加载已选中.png",
                 "threshold": 0.92,
                 "roi": [
                     535,
@@ -1802,7 +1802,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/排序决定按钮.png",
+                                "template": "整理礼物盒/筛选面板决定按钮.png",
                                 "threshold": 0.84,
                                 "roi": [
                                     700,
@@ -1817,7 +1817,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/开关关闭.png",
+                                "template": "强化从者/自动加载未选中.png",
                                 "threshold": 0.92,
                                 "roi": [
                                     980,
@@ -1833,7 +1833,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/开关关闭.png",
+                                "template": "强化从者/自动加载未选中.png",
                                 "threshold": 0.92,
                                 "roi": [
                                     535,
@@ -2215,7 +2215,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/强化详情帮助.png",
+                                                "template": "强化从者/强化完成界面.png",
                                                 "threshold": 0.8,
                                                 "roi": [
                                                     360,
@@ -2234,7 +2234,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/添加底卡占位.png",
+                                "template": "强化从者/强化界面标志.png",
                                 "threshold": 0.88,
                                 "roi": [
                                     80,
@@ -2256,7 +2256,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/详情锁定按钮已锁.png",
+                "template": "友情召唤/详情已锁定.png",
                 "threshold": 0.94,
                 "roi": [
                     0,
@@ -2274,7 +2274,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/详情锁定按钮未锁.png",
+                "template": "友情召唤/详情未锁定.png",
                 "threshold": 0.94,
                 "roi": [
                     0,
@@ -2304,29 +2304,6 @@
             }
         },
         "doc": "详情若不显示标记不能据此证明未标记；应结合列表当前格的卡片标记节点排除。"
-    },
-    "搓丸子-卡片已锁定": {
-        "timeout": 0,
-        "on_error": [],
-        "recognition": {
-            "type": "TemplateMatch",
-            "param": {
-                "template": "搓丸子/卡片已锁标志.png",
-                "threshold": 0.9,
-                "roi": [
-                    74,
-                    190,
-                    117,
-                    128
-                ],
-                "roi_offset": [
-                    -14,
-                    -7,
-                    20,
-                    13
-                ]
-            }
-        }
     },
     "搓丸子-卡片已标记": {
         "timeout": 0,
@@ -2511,7 +2488,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -2585,7 +2562,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮已锁.png",
+                                                "template": "友情召唤/详情已锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -2601,7 +2578,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮未锁.png",
+                                                "template": "友情召唤/详情未锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -2659,7 +2636,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮已锁.png",
+                                                "template": "友情召唤/详情已锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -2675,7 +2652,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮未锁.png",
+                                                "template": "友情召唤/详情未锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -2745,7 +2722,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮已锁.png",
+                                                "template": "友情召唤/详情已锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -2761,7 +2738,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮未锁.png",
+                                                "template": "友情召唤/详情未锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -2781,7 +2758,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/详情关闭按钮.png",
+                                "template": "友情召唤/详情关闭按钮.png",
                                 "threshold": 0.85,
                                 "roi": [
                                     0,
@@ -2869,7 +2846,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -2964,7 +2941,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -3012,7 +2989,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -3709,7 +3686,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -3757,7 +3734,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -3862,7 +3839,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/强化详情帮助.png",
+                                                "template": "强化从者/强化完成界面.png",
                                                 "threshold": 0.8,
                                                 "roi": [
                                                     360,
@@ -4158,7 +4135,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/强化详情帮助.png",
+                                                "template": "强化从者/强化完成界面.png",
                                                 "threshold": 0.8,
                                                 "roi": [
                                                     360,
@@ -4177,7 +4154,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/材料槽空位.png",
+                                "template": "强化从者/槽位标志.png",
                                 "threshold": 0.85,
                                 "roi": [
                                     370,
@@ -4285,7 +4262,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/详情锁定按钮已锁.png",
+                                "template": "友情召唤/详情已锁定.png",
                                 "threshold": 0.92,
                                 "roi": [
                                     0,
@@ -4301,7 +4278,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/详情锁定按钮未锁.png",
+                                "template": "友情召唤/详情未锁定.png",
                                 "threshold": 0.92,
                                 "roi": [
                                     0,
@@ -4331,7 +4308,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/详情锁定按钮已锁.png",
+                "template": "友情召唤/详情已锁定.png",
                 "threshold": 0.94,
                 "roi": [
                     0,
@@ -4354,7 +4331,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/详情锁定按钮未锁.png",
+                "template": "友情召唤/详情未锁定.png",
                 "threshold": 0.94,
                 "roi": [
                     0,
@@ -4720,7 +4697,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/保管室持有栏标志.png",
+                "template": "搓丸子整理/保管室持有列表.png",
                 "threshold": 0.8,
                 "roi": [
                     1010,
@@ -5035,7 +5012,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/保管室持有栏标志.png",
+                                "template": "搓丸子整理/保管室持有列表.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     1010,
@@ -5126,7 +5103,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/存入执行按钮.png",
+                "template": "搓丸子整理/存储执行按钮.png",
                 "threshold": 0.85,
                 "roi": [
                     650,
@@ -5227,7 +5204,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮已锁.png",
+                                                "template": "友情召唤/详情已锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -5243,7 +5220,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮未锁.png",
+                                                "template": "友情召唤/详情未锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -5364,7 +5341,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -5427,7 +5404,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/详情锁定按钮已锁.png",
+                "template": "友情召唤/详情已锁定.png",
                 "threshold": 0.94,
                 "roi": [
                     0,
@@ -5450,7 +5427,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/详情锁定按钮未锁.png",
+                "template": "友情召唤/详情未锁定.png",
                 "threshold": 0.94,
                 "roi": [
                     0,
@@ -5512,7 +5489,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮已锁.png",
+                                                "template": "友情召唤/详情已锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -5528,7 +5505,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮未锁.png",
+                                                "template": "友情召唤/详情未锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -5548,7 +5525,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/详情关闭按钮.png",
+                                "template": "友情召唤/详情关闭按钮.png",
                                 "threshold": 0.85,
                                 "roi": [
                                     0,
@@ -5614,7 +5591,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -5706,7 +5683,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
@@ -5767,7 +5744,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮已锁.png",
+                                                "template": "友情召唤/详情已锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -5783,7 +5760,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮未锁.png",
+                                                "template": "友情召唤/详情未锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -5843,7 +5820,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/详情锁定按钮已锁.png",
+                "template": "友情召唤/详情已锁定.png",
                 "threshold": 0.94,
                 "roi": [
                     0,
@@ -5866,7 +5843,7 @@
         "recognition": {
             "type": "TemplateMatch",
             "param": {
-                "template": "搓丸子/详情锁定按钮未锁.png",
+                "template": "友情召唤/详情未锁定.png",
                 "threshold": 0.94,
                 "roi": [
                     0,
@@ -5928,7 +5905,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮已锁.png",
+                                                "template": "友情召唤/详情已锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -5944,7 +5921,7 @@
                                         "recognition": {
                                             "type": "TemplateMatch",
                                             "param": {
-                                                "template": "搓丸子/详情锁定按钮未锁.png",
+                                                "template": "友情召唤/详情未锁定.png",
                                                 "threshold": 0.92,
                                                 "roi": [
                                                     0,
@@ -5964,7 +5941,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/详情关闭按钮.png",
+                                "template": "友情召唤/详情关闭按钮.png",
                                 "threshold": 0.85,
                                 "roi": [
                                     0,
@@ -6030,7 +6007,7 @@
                         "recognition": {
                             "type": "TemplateMatch",
                             "param": {
-                                "template": "搓丸子/强化详情帮助.png",
+                                "template": "强化从者/强化完成界面.png",
                                 "threshold": 0.8,
                                 "roi": [
                                     360,
