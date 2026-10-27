@@ -190,12 +190,18 @@ def decode_share_image(image) -> dict | None:
             if crop.shape[1] <= 720:
                 continue
             for left in (0, crop.shape[1] - 720):
-                found.update(_read_codes(crop[:, left:left + 720]))
-                try:
-                    return decode_share_blocks(list(found))
-                except EditorError as retry_error:
-                    if retry_error.code != "share_incomplete":
-                        raise
+                column = crop[:, left:left + 720]
+                # OpenCV's CPU paths can miss a finder pattern in one
+                # orientation. Rotate the same local pixels without resampling;
+                # only already-identified incomplete shares pay for these reads.
+                for rotation in (None, cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE):
+                    view = column if rotation is None else cv2.rotate(column, rotation)
+                    found.update(_read_codes(view))
+                    try:
+                        return decode_share_blocks(list(found))
+                    except EditorError as retry_error:
+                        if retry_error.code != "share_incomplete":
+                            raise
         # Mild screenshot/JPEG resampling can hinder a detector at one scale.
         # Retry only a known share image, never a whole unrelated screenshot.
         for top, bottom in sorted(scanned):
