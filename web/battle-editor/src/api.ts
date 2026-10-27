@@ -1,7 +1,7 @@
 let token='';
 export class ApiError extends Error {code:string;details:any;status:number;constructor(status:number,body:any){super(body?.error?.message||`服务请求失败 (${status})`);this.status=status;this.code=body?.error?.code;this.details=body?.error?.details;}}
-export async function api<T=any>(path:string,method='GET',data?:any):Promise<T> {
- const res=await fetch(`/api${path}`,{method,headers:{...(token?{'X-Editor-Token':token}:{}),...(data===undefined?{}:{'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data)});
+export async function api<T=any>(path:string,method='GET',data?:any,signal?:AbortSignal):Promise<T> {
+ const res=await fetch(`/api${path}`,{method,headers:{...(token?{'X-Editor-Token':token}:{}),...(data===undefined?{}:{'Content-Type':'application/json'})},body:data===undefined?undefined:JSON.stringify(data),signal});
  const body=await res.json();if(!res.ok)throw new ApiError(res.status,body);return body;
 }
 export async function session(){const result=await api('/session');token=result.token;return result;}

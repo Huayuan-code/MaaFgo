@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 
-from .storage import EditorError
+from .storage import EditorError, MAX_JSON_BYTES
 
 MAX_IMAGE_BYTES = 16 * 1024 * 1024
 MAX_IMAGE_PIXELS = 20_000_000
@@ -227,13 +227,20 @@ def stream_worker(root):
         raw = sys.stdin.buffer.read(length)
         if len(raw) != length: return
         try:
-            if index is None: index = ScreenshotIndex(root)
-            response = {'ok':True,'result':index.recognize(raw)}
+            from .share_image import decode_share_image
+            started = time.perf_counter()
+            shared = decode_share_image(decode_image(raw))
+            if shared is not None:
+                result = shared | {'elapsedMs': round((time.perf_counter() - started) * 1000)}
+            else:
+                if index is None: index = ScreenshotIndex(root)
+                result = index.recognize(raw)
+            response = {'ok':True,'result':result}
         except EditorError as exc:
             response = {'ok':False,'error':(exc.code,exc.message,exc.status)}
         except Exception:
             response = {'ok':False,'error':('image_recognition','截图识别失败，请换一张完整编队截图重试。',422)}
-        sys.stdout.buffer.write(json.dumps(response,ensure_ascii=False).encode('utf-8')+b'\n')
+        sys.stdout.buffer.write(json.dumps(response,ensure_ascii=False,separators=(',',':')).encode('utf-8')+b'\n')
         sys.stdout.buffer.flush()
 
 
@@ -284,7 +291,7 @@ class ScreenshotWorker:
                 def receive(process, responses):
                     try:
                         while True:
-                            line=process.stdout.readline(1024*1024)
+                            line=process.stdout.readline(MAX_JSON_BYTES + 1024*1024)
                             if not line: break
                             responses.put(json.loads(line))
                     except (OSError, ValueError): pass

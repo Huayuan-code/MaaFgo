@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 ORDER_CHANGE_IDS = {20, 210, 440}
+MAX_VALIDATION_ISSUES = 200
 CARD_TYPES = {1: "arts", 2: "buster", 3: "quick", "1": "arts", "2": "buster", "3": "quick", "arts": "arts", "buster": "buster", "quick": "quick"}
 DEFAULTS = {
     "newBattle": {"team": {"name": "未命名方案", "onFieldSvts": [None, None, None], "backupSvts": [None, None, None], "mysticCode": {"mysticCodeId": 210, "level": 10}}, "actions": []},
@@ -57,7 +58,14 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
     summary = {"turns": 0, "actions": 0, "skills": 0, "masterSkills": 0, "orderChanges": 0, "noblePhantasms": 0, "cards": 0, "servants": 0}
 
     def issue(severity, path, code, message, **location):
-        issues.append({"severity": severity, "path": path, "code": code, "message": message, **location})
+        if len(issues) < MAX_VALIDATION_ISSUES:
+            issues.append({"severity": severity, "path": path, "code": code, "message": message, **location})
+            return
+        if len(issues) == MAX_VALIDATION_ISSUES:
+            issues.append({"severity": severity, "path": "$", "code": "issues_truncated", "message": ""})
+        if severity == "error":
+            issues[-1]["severity"] = "error"
+        summary["omittedIssues"] = summary.get("omittedIssues", 0) + 1
 
     def error(path, code, message, **location):
         issue("error", path, code, message, **location)
@@ -83,6 +91,9 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
             error(f"{path}.{key}", "invalid_boolean", f"{key} 必须是布尔值", **location)
 
     def result():
+        if summary.get("omittedIssues"):
+            suffix = "其中包含阻断问题，请分批修正后重新检查。" if issues[-1]["severity"] == "error" else "方案数据仍完整保留，提醒不阻止保存。"
+            issues[-1]["message"] = f"问题较多，仅展开前 {MAX_VALIDATION_ISSUES} 项；另有 {summary['omittedIssues']} 项提示未展开。{suffix}"
         return {"valid": not any(i["severity"] == "error" for i in issues), "issues": issues, "summary": summary}
 
     if not isinstance(data, dict):

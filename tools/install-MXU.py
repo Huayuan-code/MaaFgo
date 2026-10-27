@@ -80,6 +80,7 @@ def validate_editor_bundle(root, *, packaged=False):
         "agent/battle_editor/validation.py", "agent/battle_editor/bond_optimizer.py",
         "agent/battle_editor/np_cards.py", "agent/battle_editor/np_card_metadata.py",
         "agent/battle_editor/screenshot_import.py", "agent/battle/perception/formation_candidates.py",
+        "agent/battle_editor/share_image.py",
         "agent/battle_editor/bbc_import.py", "agent/chaldea/bbc_importer.py", "agent/chaldea/servant_types.py",
         "agent/custom/battle_editor_action.py", "agent/custom/bond_matcher.py",
         "agent/chaldea/servant_aliases.py", "agent/battle/card_composer.py",

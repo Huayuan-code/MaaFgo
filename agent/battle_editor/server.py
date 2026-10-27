@@ -468,8 +468,14 @@ class EditorHandler(BaseHTTPRequestHandler):
                 from .bbc_import import import_bbc_document
                 result = import_bbc_document(self.server.root, body.get("config"), body.get("name"))
                 self._json(200, result | {"validation": self.server.validate(result["data"])})
+            elif method == "POST" and path == "/api/share-image/encode":
+                from .share_image import encode_share
+                self._json(200, encode_share(body.get("data")))
             elif image_request:
-                self._json(200, self.server._screenshot_worker.recognize(body))
+                result = self.server._screenshot_worker.recognize(body)
+                if result.get("kind") == "share":
+                    result = result | {"validation": self.server.validate(result["data"])}
+                self._json(200, result)
             elif method == "POST" and path == "/api/heartbeat":
                 self._json(200, {"ok": True, "mode": self.server.mode})
             elif method == "POST" and path == "/api/shutdown":

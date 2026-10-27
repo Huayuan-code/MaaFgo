@@ -3,15 +3,16 @@ import {ArrowLeft,ChevronRight,Clipboard,FolderOpen,ImagePlus,Link,LoaderCircle,
 import {Modal} from './EditorModal';
 import {api,apiImage} from './api';
 import type {Catalog,Json} from './model';
-import {clipboardImage,IMAGE_ACCEPT,imageMime,readScreenshotResult,screenshotTeam} from './screenshotImportModel';
-import type {ScreenshotResult,ScreenshotSlot} from './screenshotImportModel';
+import {clipboardImage,IMAGE_ACCEPT,imageMime,readImageImportResult,screenshotTeam,shareImagePreview} from './screenshotImportModel';
+import type {ScreenshotResult,ScreenshotSlot,ShareImageResult} from './screenshotImportModel';
 import {BBC_FILE_ACCEPT,bbcPreview,readBBCFile,readBBCImportResult} from './bbcImportModel';
 import type {BBCImportResult} from './bbcImportModel';
 import './importDialog.css';
 
-export function ImportDialog({catalog,battleDirectory,onClose,onDirectory,onJSON,onShare,onImage,onBBC}:{catalog:Catalog;battleDirectory?:string;onClose:()=>void;onDirectory:()=>void;onJSON:()=>void;onShare:(source:string)=>Promise<boolean>;onImage:(data:Json)=>Promise<boolean>;onBBC:(data:Json,validation:Json|null)=>Promise<boolean>}) {
+export function ImportDialog({catalog,battleDirectory,onClose,onDirectory,onJSON,onShare,onImage,onBBC,onShareImage}:{catalog:Catalog;battleDirectory?:string;onClose:()=>void;onDirectory:()=>void;onJSON:()=>void;onShare:(source:string)=>Promise<boolean>;onImage:(data:Json)=>Promise<boolean>;onBBC:(data:Json,validation:Json|null)=>Promise<boolean>;onShareImage:(data:Json,validation:Json|null)=>Promise<boolean>}) {
  const [source,setSource]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false),[submitting,setSubmitting]=useState(false),[preview,setPreview]=useState(''),[result,setResult]=useState<ScreenshotResult|null>(null),[editing,setEditing]=useState<{slot:number;type:'servant'|'equip'}|null>(null),[query,setQuery]=useState('');
  const [bbcResult,setBBCResult]=useState<BBCImportResult|null>(null),[loadingBBC,setLoadingBBC]=useState(false);
+ const [shareResult,setShareResult]=useState<ShareImageResult|null>(null);
  const errorRef=useRef<HTMLParagraphElement>(null);
  const input=useRef<HTMLInputElement>(null),mounted=useRef(true),pending=useRef(false),request=useRef<AbortController|null>(null),currentFile=useRef<File|null>(null),url=useRef('');
  const bbcInput=useRef<HTMLInputElement>(null),bbcActive=useRef(false);
@@ -21,10 +22,10 @@ export function ImportDialog({catalog,battleDirectory,onClose,onDirectory,onJSON
  const recognize=async(file:File)=>{
   if(pending.current){setError('请等待当前识别完成后再选择图片。');return;}
   let mime:string;try{mime=imageMime(file);}catch(cause){setError((cause as Error).message);return;}
-  pending.current=true;setBusy(true);setError('');setResult(null);setEditing(null);currentFile.current=file;
+  pending.current=true;setBusy(true);setError('');setResult(null);setShareResult(null);setBBCResult(null);setEditing(null);currentFile.current=file;
   if(url.current)URL.revokeObjectURL(url.current);url.current=URL.createObjectURL(file);setPreview(url.current);
   const controller=new AbortController();request.current=controller;
-  try{const value=readScreenshotResult(await apiImage(file,mime,controller.signal));if(mounted.current&&!controller.signal.aborted)setResult(value);}
+  try{const value=readImageImportResult(await apiImage(file,mime,controller.signal));if(mounted.current&&!controller.signal.aborted){if(value.kind==='share')setShareResult(value);else setResult(value);}}
   catch(cause){if(mounted.current&&!controller.signal.aborted)setError((cause as Error).message||'截图识别失败，请重试。');}
   finally{pending.current=false;if(mounted.current)setBusy(false);}
  };
@@ -44,7 +45,7 @@ export function ImportDialog({catalog,battleDirectory,onClose,onDirectory,onJSON
  const importShare=async()=>{if(pending.current)return;pending.current=true;setSubmitting(true);setError('');try{const ok=await onShare(source.trim());if(mounted.current&&!ok)setError('未切换方案，请先处理当前草稿提示。');}catch(cause){if(mounted.current)setError((cause as Error).message);}finally{pending.current=false;if(mounted.current)setSubmitting(false);}};
  const importBBC=async(file:File)=>{
   if(pending.current)return;
-  pending.current=true;bbcActive.current=true;setBusy(true);setLoadingBBC(true);setError('');setBBCResult(null);setPreview('');currentFile.current=null;if(url.current){URL.revokeObjectURL(url.current);url.current='';}
+  pending.current=true;bbcActive.current=true;setBusy(true);setLoadingBBC(true);setError('');setBBCResult(null);setShareResult(null);setPreview('');currentFile.current=null;if(url.current){URL.revokeObjectURL(url.current);url.current='';}
   try{const config=await readBBCFile(file);if(!mounted.current)return;const converted=readBBCImportResult(await api('/import-bbc','POST',{config,name:file.name}));if(mounted.current)setBBCResult(converted);}
   catch(cause){if(mounted.current)setError((cause as Error).message||'BBC 配置转换失败，请检查配置。');bbcActive.current=false;}
   finally{pending.current=false;if(mounted.current){setBusy(false);setLoadingBBC(false);}}
@@ -56,17 +57,34 @@ export function ImportDialog({catalog,battleDirectory,onClose,onDirectory,onJSON
   catch(cause){if(mounted.current)setError((cause as Error).message);}
   finally{pending.current=false;if(mounted.current)setSubmitting(false);}
  };
+ const commitShareImage=async()=>{
+  if(!shareResult||pending.current)return;
+  pending.current=true;setSubmitting(true);setError('');
+  try{const accepted=await onShareImage(shareResult.data,shareResult.validation);if(mounted.current&&!accepted)setError('当前草稿尚未安全保存，已保留原方案。请处理提示后重试。');}
+  catch(cause){if(mounted.current)setError((cause as Error).message);}
+  finally{pending.current=false;if(mounted.current)setSubmitting(false);}
+ };
  const bbc=bbcResult?bbcPreview(bbcResult.data,catalog):null;
+ const shared=shareResult?shareImagePreview(shareResult.data,catalog):null;
  const bbcIssues:Json[]=Array.isArray(bbcResult?.validation?.issues)?bbcResult.validation.issues.filter((issue:Json)=>issue.code!=='bbc_conversion_warning'):[];
- const showingResult=!!result||!!bbcResult;
+ const showingResult=!!result||!!bbcResult||!!shareResult;
  const items=editing?(editing.type==='servant'?catalog.servants:catalog.equips.filter(e=>e.recognizable===true)).filter(item=>`${item.name} ${item.id} ${item.nameJp??''}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0,40):[];
- return <Modal title={bbcResult?'核对 BBC 转换结果':result?'核对截图识别结果':'导入战斗方案'} wide={showingResult} closeDisabled={submitting} onClose={onClose}><div className="modal-content import-dialog">
+ return <Modal title={shareResult?'核对一图流内容':bbcResult?'核对 BBC 转换结果':result?'核对截图识别结果':'导入战斗方案'} wide={showingResult} closeDisabled={submitting} onClose={onClose}><div className="modal-content import-dialog">
   {!showingResult&&<><button className="import-config-entry" data-autofocus="" disabled={busy||submitting} onClick={onDirectory}><span className="import-entry-icon"><FolderOpen size={27}/></span><span><strong>从 config/Battle 选择</strong><small>导入工程中已有的战斗方案</small></span><ChevronRight size={22}/></button><p className="import-config-path">{battleDirectory??'当前 MaaFGO 实例的 config/Battle 目录'}</p></>}
   {result&&<button autoFocus className="text-button" disabled={submitting} onClick={()=>{setResult(null);setEditing(null);setError('');}}><ArrowLeft size={16}/>返回导入方式</button>}
-  {!showingResult&&<section className="import-image-section" aria-label="从编队截图导入"><div className="import-section-heading"><ImagePlus size={20}/><strong>从编队截图识别</strong><span>离线</span></div><div className="import-image-drop" tabIndex={0} aria-label="编队截图粘贴区，按 Ctrl+V 粘贴" onDragOver={e=>{e.preventDefault();}} onDrop={e=>{e.preventDefault();if(e.dataTransfer.files.length!==1){setError('请每次上传一张编队截图。');return;}void recognize(e.dataTransfer.files[0]);}}><p>拖入截图，或在本弹窗按 <kbd>Ctrl+V</kbd> 粘贴</p><div><button className="button" disabled={busy||submitting} onClick={()=>input.current?.click()}><Upload size={16}/>上传图片</button><button className="button" disabled={busy||submitting} onClick={()=>void pasteButton()}><Clipboard size={16}/>粘贴图片</button></div><small>PNG、JPG/JPEG、WebP · 静态图片 · 最大16 MiB</small></div><p className="import-help">请使用完整的游戏六人编队确认页截图，保留从者和礼装区域；支持不同分辨率和宽屏截图。</p></section>}
+  {!showingResult&&<section className="import-image-section" aria-label="从编队截图导入"><div className="import-section-heading"><ImagePlus size={20}/><strong>从截图 / 一图流导入</strong><span>离线</span></div><div className="import-image-drop" tabIndex={0} aria-label="编队截图粘贴区，按 Ctrl+V 粘贴" onDragOver={e=>{e.preventDefault();}} onDrop={e=>{e.preventDefault();if(e.dataTransfer.files.length!==1){setError('请每次上传一张编队截图或一图流。');return;}void recognize(e.dataTransfer.files[0]);}}><p>拖入图片，或在本弹窗按 <kbd>Ctrl+V</kbd> 粘贴</p><div><button className="button" disabled={busy||submitting} onClick={()=>input.current?.click()}><Upload size={16}/>上传图片</button><button className="button" disabled={busy||submitting} onClick={()=>void pasteButton()}><Clipboard size={16}/>粘贴图片</button></div><small>PNG、JPG/JPEG、WebP · 静态图片 · 最大16 MiB</small></div><p className="import-help">支持游戏六人编队确认页截图，或本工具导出的一图流。游戏截图请保留从者和礼装区域；一图流请保留完整图片及回导标记，推荐使用原始 PNG。</p></section>}
   {loadingBBC&&<p className="import-bbc-loading" role="status"><LoaderCircle size={18} className="local-import-spinner"/>正在离线转换 BBC 配置…</p>}
-  {preview&&<figure className="import-image-preview"><img src={preview} alt="待识别的编队截图"/>{busy&&<figcaption role="status"><LoaderCircle size={18} className="local-import-spinner"/>正在定位并识别，首次加载模板可能稍久…</figcaption>}{!busy&&!result&&<button className="button" disabled={submitting} onClick={()=>currentFile.current&&void recognize(currentFile.current)}>重新识别</button>}</figure>}
+  {preview&&<figure className="import-image-preview"><img src={preview} alt="待识别的编队截图或一图流"/>{busy&&<figcaption role="status"><LoaderCircle size={18} className="local-import-spinner"/>正在识别图片与分享标记，首次加载模板可能稍久…</figcaption>}{!busy&&!result&&!shareResult&&<button className="button" disabled={submitting} onClick={()=>currentFile.current&&void recognize(currentFile.current)}>重新识别</button>}</figure>}
   {error&&<p ref={errorRef} tabIndex={-1} className="import-error" role="alert">{error}</p>}
+  {shareResult&&shared&&<>
+   <button autoFocus className="text-button" disabled={submitting} onClick={()=>{setShareResult(null);setError('');}}><ArrowLeft size={16}/>返回导入方式</button>
+   <section className="import-bbc-summary" aria-label="一图流恢复摘要"><h3>{shareResult.title||shared.title}</h3><p>已从本工具一图流恢复完整方案，并通过数据校验。</p><div><span>{shared.turns} 回合</span><span>{shared.skills} 次技能</span><span>{shared.cards} 张指定出卡</span><span>{shared.mystic}</span></div></section>
+   <div className="screenshot-slot-grid">{shared.roster.map(slot=><article className={`screenshot-slot ${slot.support?'support':''}`} key={slot.slot}><header><strong>{slot.slot+1} · {slot.slot<3?'前排':'候补'}</strong>{slot.support&&<span className="import-bbc-support">{slot.supportLabel}</span>}</header><div className="screenshot-person">{slot.image?<img src={slot.image} alt=""/>:<span className="screenshot-placeholder">{slot.support?'助':slot.name==='不要求此位置'?'空':'?'}</span>}<div><strong>{slot.name}</strong></div></div><div>{slot.equips.length?slot.equips.map((equip,index)=><div className="screenshot-equip" key={index}>{equip.image&&<img src={equip.image} alt=""/>}<span>{equip.name}</span></div>):<div className="screenshot-equip"><span>不要求礼装</span></div>}</div></article>)}</div>
+   {shareResult.warnings.length>0&&<section className="import-bbc-notices has-warnings" aria-label="一图流导入提示"><strong>图片导入提示（{shareResult.warnings.length}）</strong><ul>{shareResult.warnings.map((warning,index)=><li key={index}>{warning}</li>)}</ul></section>}
+   {Array.isArray(shareResult.validation?.issues)&&shareResult.validation.issues.length>0&&<section className="import-bbc-validation" aria-label="一图流方案检查"><strong>方案检查</strong><ul>{shareResult.validation.issues.map((issue:Json,index:number)=><li className={issue.severity==='error'?'blocking':''} key={index}>{issue.message}</li>)}</ul></section>}
+   <p className="import-help">确认后建立独立草稿，保留从者、礼装、养成要求、御主服、完整回合及换人配置。图片中的分享标记用于恢复数据；请核对当前方案检查结果后继续编辑和保存。</p>
+   <button className="button primary full" disabled={submitting} onClick={()=>void commitShareImage()}>{submitting?'正在导入…':'确认并导入完整方案'}</button>
+  </>}
   {bbcResult&&bbc&&<>
    <button autoFocus className="text-button" disabled={submitting} onClick={()=>{setBBCResult(null);bbcActive.current=false;setError('');}}><ArrowLeft size={16}/>返回导入方式</button>
    <section className="import-bbc-summary" aria-label="BBC 转换摘要"><h3>{bbc.title}</h3><p>{bbcResult.sourceName}</p><div><span>{bbc.turns} 回合</span><span>{bbc.skills} 次技能</span><span>{bbc.cards} 张指定出卡</span><span>{bbc.mystic}</span></div></section>
