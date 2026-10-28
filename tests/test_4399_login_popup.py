@@ -27,7 +27,15 @@ FEATURES = {
         "template": "4399/4399-我知道了前往查看.png",
         "size": (144, 21),
         "threshold": 0.78,
+        "roi": [500, 440, 300, 80],
         "target": [769, 252, 15, 11],
+    },
+    "4399-关闭弹窗-我知道了前往查看-资料更新": {
+        "template": "4399/4399-我知道了前往查看.png",
+        "size": (144, 21),
+        "threshold": 0.78,
+        "roi": [500, 380, 300, 60],
+        "target": [768, 236, 16, 16],
     },
 }
 LOGIN_ENTRIES = (
@@ -46,6 +54,7 @@ class LoginPopupWiringTests(unittest.TestCase):
                 self.assertEqual(node["recognition"]["type"], "TemplateMatch")
                 self.assertEqual(node["recognition"]["param"]["template"], expected["template"])
                 self.assertEqual(node["recognition"]["param"]["threshold"], expected["threshold"])
+                self.assertEqual(node["recognition"]["param"].get("roi"), expected.get("roi"))
                 self.assertEqual(node["action"]["type"], "Click")
                 self.assertEqual(node["action"]["param"]["target"], expected["target"])
                 self.assertEqual(node["rate_limit"], 200)
@@ -56,10 +65,10 @@ class LoginPopupWiringTests(unittest.TestCase):
                     self.assertEqual(image.mode, "RGB")
                     self.assertEqual(image.size, expected["size"])
 
-    def test_login_stages_check_all_three_features_before_acting(self):
+    def test_login_stages_check_all_popup_nodes_before_acting(self):
         for entry in LOGIN_ENTRIES:
             with self.subTest(entry=entry):
-                self.assertEqual(LOGIN[entry]["next"][:3], list(FEATURES))
+                self.assertEqual(LOGIN[entry]["next"][:4], list(FEATURES))
 
     def test_only_4399_package_case_enables_the_features(self):
         case = next(c for c in OPTIONS["option"]["包名"]["cases"] if c["name"] == "4399服")

@@ -38,8 +38,14 @@ FEATURES = {
         "template": "4399-我知道了前往查看.png",
         "target": (769, 252, 15, 11),
     },
+    "notice_update": {
+        "node": "4399-关闭弹窗-我知道了前往查看-资料更新",
+        "template": "4399-我知道了前往查看.png",
+        "target": (768, 236, 16, 16),
+    },
 }
-EXPECTED = {1: "notice", 2: "large", 3: "small", 4: "small", 5: "small", 6: "small"}
+EXPECTED = {1: "notice", 2: "large", 3: "small", 4: "small", 5: "small", 6: "small",
+            7: "notice_update"}
 
 
 def read_image(path):
@@ -166,7 +172,7 @@ class PopupReplayTests(unittest.TestCase):
                         self.assertEqual(clicks, [])
 
     def test_click_repeats_until_feature_disappears(self):
-        for index, disappear_after in ((1, 1), (2, 2), (4, 3), (4, 4)):
+        for index, disappear_after in ((1, 1), (2, 2), (4, 3), (4, 4), (7, 2)):
             with self.subTest(screenshot=index, disappear_after=disappear_after):
                 succeeded, clicks = self.run_popup(
                     read_image(FIXTURES / f"test_{index}.png"), disappear_after)
