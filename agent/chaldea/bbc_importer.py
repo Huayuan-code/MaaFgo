@@ -114,7 +114,14 @@ def _servant_id(name: str, catalog: dict, slot: int) -> int:
     return int(sn)
 
 
-def _equip_ids(value: object, equips: dict) -> tuple[list[int | None], list[str]]:
+def _equip_ids(value: object, equips: dict, *, grand: bool = False) -> tuple[list[list[int]], list[str]]:
+    """Read BBC's executable CE choices, which differ by support mode.
+
+    Grand support uses three real cells with OR choices inside each cell. In
+    ordinary mode BBC checkMoreEquip ORs the three groups but only reads the
+    first template in each group; preserve that behavior and report ignored UI
+    choices rather than quietly widening the imported filter.
+    """
     warnings: list[str] = []
     by_name: dict[str, list[int]] = {}
     for key, name in equips.items():
@@ -127,23 +134,31 @@ def _equip_ids(value: object, equips: dict) -> tuple[list[int | None], list[str]
             raise BbcImportError("助战礼装最多只能有 3 个槽位")
         names = value
     else:
-        return [None, None, None], warnings
-    result: list[int | None] = [None, None, None]
+        return [[], [], []], warnings
+    result: list[list[int]] = [[], [], []]
     for index, raw in enumerate(names):
         if isinstance(raw, list):
             if not raw:
                 continue
-            if len(raw) != 1:
-                warnings.append(f"助战礼装第 {index + 1} 格有多个候选，未导入")
-                continue
-            raw = raw[0]
-        if not isinstance(raw, str) or not raw.strip():
-            continue
-        ids = by_name.get(raw.strip(), [])
-        if len(ids) == 1:
-            result[index] = ids[0]
+            if grand and len(raw) > 3:
+                raise BbcImportError(f"助战礼装第 {index + 1} 格超过 3 个候选，无法完整导入；请先减少候选")
+            if not grand and len(raw) > 1:
+                warnings.append(f"BBC 普通助战第 {index + 1} 组在实战仅检测首个礼装，已按其实际逻辑导入；该组后续 {len(raw) - 1} 个候选不会在 BBC 中执行")
+            choices = raw if grand else raw[:1]
         else:
-            warnings.append(f"助战礼装“{raw}”无法唯一匹配 Chaldea 礼装 ID，未导入")
+            choices = [raw]
+        target = index if grand else 0
+        for name in choices:
+            if not isinstance(name, str) or not name.strip():
+                continue
+            ids = by_name.get(name.strip(), [])
+            if len(ids) == 1:
+                if ids[0] not in result[target]:
+                    result[target].append(ids[0])
+            else:
+                warnings.append(f"助战礼装“{name}”无法唯一匹配 Chaldea 礼装 ID，未导入")
+        if len(result[target]) > 3:
+            raise BbcImportError(f"助战礼装第 {target + 1} 格超过 3 个可执行候选，无法完整导入；请先减少候选")
     return result, warnings
 
 
@@ -309,35 +324,40 @@ def convert_bbc_config(config: dict, catalog: dict, equips: dict) -> tuple[dict,
             raise BbcImportError(f"槽位 {index + 1} 的从者名无效: {name!r}")
     assist = config.get("assistIdx")
     assist_mode = config.get("assistMode", "从者礼装")
-    if assist_mode not in ("仅从者", "仅礼装", "从者礼装", "冠位助战"):
+    if assist_mode not in ("仅从者", "仅礼装", "从者礼装", "冠位助战", "冠位助战仅礼装"):
         raise BbcImportError(f"不支持的助战模式 assistMode={assist_mode!r}")
+    ce_only = assist_mode in ("仅礼装", "冠位助战仅礼装")
+    grand_support = assist_mode in ("冠位助战", "冠位助战仅礼装")
     if assist is not None and (type(assist) is not int or not 0 <= assist < 6):
         raise BbcImportError(f"助战索引 assistIdx={assist!r} 无效，应为 0～5")
-    if assist is not None and (slots[assist] is not None or assist_mode == "仅礼装"):
-        if assist_mode == "仅礼装":
+    if assist is not None and (slots[assist] is not None or ce_only):
+        if ce_only:
             slots[assist] = {"supportType": "friend"}
         slots[assist]["supportType"] = "friend"
-        if assist_mode != "仅礼装":
+        if not ce_only:
             _support_levels(config, slots[assist], warnings)
-        if assist_mode == "冠位助战":
+        if grand_support:
             slots[assist]["grandSvt"] = True
             bond_type = config.get("jbType")
             if bond_type in ("NP50", "初始"):
                 slots[assist]["classBoardData"] = {"grandBondEquipSkillChange": bond_type == "NP50"}
             elif bond_type not in (None, "", "任意"):
                 warnings.append(f"BBC 冠位羁绊礼装效果 {bond_type!r} 无法识别，未导入该筛选")
-        if assist_mode in ("仅礼装", "从者礼装", "冠位助战"):
-            equip_ids, equip_warnings = _equip_ids(config.get("assistEquip"), equips)
+        if assist_mode in ("仅礼装", "从者礼装", "冠位助战", "冠位助战仅礼装"):
+            equip_ids, equip_warnings = _equip_ids(config.get("assistEquip"), equips,
+                                                   grand=grand_support)
             warnings.extend(equip_warnings)
-            if assist_mode == "冠位助战" and (equip_ids[0] is not None or equip_ids[2] is not None):
+            if grand_support and (equip_ids[0] or equip_ids[2]):
                 warnings.append("BBC 冠位助战允许普通与报酬礼装互换；已按原配置保留固定槽位，当前原生助战不会自动交换，请核对礼装位置")
-            for index, equip_id in enumerate(equip_ids, 1):
-                if equip_id is not None:
-                    equipment = {"id": equip_id}
-                    if config.get("fullEquip") == 1:
-                        equipment["limitBreak"] = True
+            for index, ids in enumerate(equip_ids, 1):
+                if ids:
+                    choices = [{"id": equip_id, **({"limitBreak": True} if config.get("fullEquip") == 1 else {})}
+                               for equip_id in ids]
+                    equipment = choices[0]
+                    if len(choices) > 1:
+                        equipment["candidates"] = choices[1:]
                     slots[assist][f"equip{index}"] = equipment
-            if not any(slots[assist].get(f"equip{i}") for i in range(1, 4)) and assist_mode == "仅礼装":
+            if not any(slots[assist].get(f"equip{i}") for i in range(1, 4)) and ce_only:
                 raise BbcImportError("仅礼装助战没有能够导入的礼装筛选，无法生成可执行编队")
     elif assist is not None:
         warnings.append(f"助战索引 {assist!r} 没有对应从者，未标记助战")

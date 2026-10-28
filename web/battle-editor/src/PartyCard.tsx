@@ -3,8 +3,9 @@ import type {PointerEvent as ReactPointerEvent} from 'react';
 import {GripVertical,Plus,UserRound,ShieldCheck,X} from 'lucide-react';
 import {skillAt,hasServantIdentity,isUnspecifiedSupport,memberLabel} from './model';
 import type {Catalog,Json,Servant} from './model';
-import {equipForDisplay,hasStoredEquipRequirement} from './equipRequirements';
+import {equipCandidatesForDisplay,equipForDisplay,hasStoredEquipRequirement,supportsEquipCandidates} from './equipRequirements';
 import type {EquipDragPosition} from './equipDrag';
+import './candidateCarousel.css';
 
 export function SkillIcon({skill,index,append=false}:{skill?:Json;index:number;append?:boolean}) {
  const [failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[skill?.icon]);
@@ -16,6 +17,33 @@ export function SkillIcon({skill,index,append=false}:{skill?:Json;index:number;a
 function SafeImage({src,alt,className}:{src?:string|null;alt:string;className?:string}) {
  const [failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[src]);
  return src&&!failed?<img className={className} src={src} alt={alt} loading="lazy" draggable={false} onError={()=>setFailed(true)}/>:<span className="image-fallback" aria-label={`${alt} · 暂无图片`}>{alt.slice(0,1)||'◇'}</span>;
+}
+
+function CandidateArtwork({member,equipKey,catalog,paused=false}:{member:Json|null;equipKey:string;catalog:Catalog;paused?:boolean}) {
+ const candidates=equipCandidatesForDisplay(member,equipKey).filter(candidate=>Number.isSafeInteger(candidate.id)&&candidate.id>0).slice(0,supportsEquipCandidates(member,equipKey)?3:1),count=candidates.length;
+ const signature=candidates.map(candidate=>`${candidate.id}:${candidate.lv??''}:${candidate.limitBreak??''}`).join('|');
+ const [frame,setFrame]=useState(0),[animated,setAnimated]=useState(false);
+ useEffect(()=>{
+  setFrame(0);
+  if(count<2){setAnimated(false);return;}
+  const preference=window.matchMedia('(prefers-reduced-motion: reduce)');
+  let timer:ReturnType<typeof setInterval>|undefined;
+  const synchronize=()=>{
+   if(timer!==undefined){clearInterval(timer);timer=undefined;}
+   const active=!document.hidden&&!preference.matches&&!paused;
+   setAnimated(active);if(preference.matches)setFrame(0);
+   if(active)timer=setInterval(()=>setFrame(value=>(value+1)%count),3600);
+  };
+  preference.addEventListener('change',synchronize);document.addEventListener('visibilitychange',synchronize);synchronize();
+  return()=>{if(timer!==undefined)clearInterval(timer);preference.removeEventListener('change',synchronize);document.removeEventListener('visibilitychange',synchronize);};
+ },[signature,count,paused]);
+ const visible=count?frame%count:0,ce=candidates[visible],item=catalog.equips.find(equip=>equip.id===ce?.id),pulse=animated?' fgo-candidate-pulse':'';
+ return <>
+  <span key={`image-${visible}`} className={`fgo-equip-preview${pulse}`} style={{aspectRatio:item?.imageWidth&&item.imageHeight?`${item.imageWidth}/${item.imageHeight}`:'150/68'}}>{ce?<SafeImage src={item?.image} alt={item?.name??`礼装 #${ce.id}`}/>:<Plus size={20}/>} {count>1&&<span className="fgo-candidate-count" aria-hidden="true">{visible+1}/{count}</span>}</span>
+  <strong key={`name-${visible}`} className={pulse||undefined} title={item?.name}>{item?.name??(ce?`礼装 #${ce.id}`:'不要求礼装')}</strong>
+  <small key={`details-${visible}`} className={pulse||undefined}>{member?.grandSvt?`礼装 ${equipKey.slice(-1)} · `:''}{ce?.lv!=null?`Lv.${ce.lv}`:ce?'未指定等级':'点击选择'}{ce?.limitBreak?' ◆':''}</small>
+  {ce&&item?.recognizable===false&&<small>缺少工程识别模板</small>}
+ </>;
 }
 
 export interface PartyCardDragBindings {
@@ -43,9 +71,8 @@ export function PartyCard({member,servant,catalog,index,defaultSupport=false,sel
    <span className="fgo-card-skills">{[0,1,2].map(i=><span key={i}><SkillIcon skill={skillAt(member??undefined,servant,i)} index={i}/><b>{member?.skillLvs?.[i]??'—'}</b></span>)}</span></>:unspecified?<span className="fgo-member-stats">只按礼装要求选择助战</span>:null}
   </button>
   <div className={`fgo-card-equips ${member?.grandSvt?'grand-equips':''}`} aria-label={`槽位 ${index+1} 概念礼装`}>
-   {ceKeys.map((key,i)=>{const ce=equipForDisplay(member,key),item=catalog.equips.find(e=>e.id===ce?.id),stored=hasStoredEquipRequirement(member,key),drag=equipDrag.bindEquip({slot:index,key}),isSource=equipDrag.dragged?.slot===index&&equipDrag.dragged.key===key,isTarget=equipDrag.target?.slot===index&&equipDrag.target.key===key&&!isSource;return <div className={`fgo-equip-slot ${stored?'has-clear':''} ${isSource?'equip-drag-placeholder':''} ${isTarget?'equip-drop-target':''}`} key={key} data-equip-key={key} onPointerDownCapture={drag.onPointerDownCapture} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerEnd} onPointerCancel={drag.onPointerCancel} onLostPointerCapture={drag.onLostPointerCapture} onClickCapture={drag.onClickCapture} onDragStart={drag.onDragStart} onDragEnd={drag.onDragEnd} onDragOver={drag.onDragOver} onDrop={drag.onDrop}><button className={`fgo-equip-button ${!ce?'empty':''}`} disabled={!member&&!defaultSupport} draggable={!!ce} onPointerDown={drag.onPointerStart} onClick={()=>onEquip(key)} title={ce?'拖动仅调整这张礼装；点击更换礼装':undefined} aria-label={`选择槽位 ${index+1} 礼装 ${i+1}${item?`：${item.name}`:''}`}>
-    <span className="fgo-equip-preview" style={{aspectRatio:item?.imageWidth&&item.imageHeight?`${item.imageWidth}/${item.imageHeight}`:'150/68'}}>{ce?<SafeImage src={item?.image} alt={item?.name??`礼装 #${ce.id}`}/>:<Plus size={20}/>}</span>
-    <strong title={item?.name}>{item?.name??(ce?`礼装 #${ce.id}`:'不要求礼装')}</strong><small>{member?.grandSvt?`礼装 ${i+1} · `:''}{ce?.lv!=null?`Lv.${ce.lv}`:ce?'未指定等级':'点击选择'}{ce?.limitBreak?' ◆':''}</small>{ce&&item?.recognizable===false&&<small>缺少工程识别模板</small>}
+   {ceKeys.map((key,i)=>{const ce=equipForDisplay(member,key),item=catalog.equips.find(e=>e.id===ce?.id),stored=hasStoredEquipRequirement(member,key),drag=equipDrag.bindEquip({slot:index,key}),isSource=equipDrag.dragged?.slot===index&&equipDrag.dragged.key===key,isTarget=equipDrag.target?.slot===index&&equipDrag.target.key===key&&!isSource;return <div className={`fgo-equip-slot ${stored?'has-clear':''} ${isSource?'equip-drag-placeholder':''} ${isTarget?'equip-drop-target':''}`} key={key} data-equip-key={key} onPointerDownCapture={drag.onPointerDownCapture} onPointerMove={drag.onPointerMove} onPointerUp={drag.onPointerEnd} onPointerCancel={drag.onPointerCancel} onLostPointerCapture={drag.onLostPointerCapture} onClickCapture={drag.onClickCapture} onDragStart={drag.onDragStart} onDragEnd={drag.onDragEnd} onDragOver={drag.onDragOver} onDrop={drag.onDrop}><button className={`fgo-equip-button ${!ce?'empty':''}`} disabled={!member&&!defaultSupport} draggable={!!ce} onPointerDown={drag.onPointerStart} onClick={()=>onEquip(key)} title={ce?'拖动调整整组候选；点击更换首选，其余候选在详细设置中选择':undefined} aria-label={`选择槽位 ${index+1} 礼装 ${i+1}${item?`：${item.name}`:''}`}>
+    <CandidateArtwork member={member} equipKey={key} catalog={catalog} paused={isSource||dragging}/>
    </button>{stored&&<button type="button" className="fgo-equip-clear" data-no-drag="" draggable={false} aria-label={`清除槽位 ${index+1} 礼装 ${i+1} 要求`} title={`清除礼装 ${i+1} 要求（不要求礼装）`} onPointerDown={event=>event.stopPropagation()} onDragStart={event=>{event.preventDefault();event.stopPropagation();}} onClick={event=>{event.stopPropagation();onClearEquip(key);}}><X size={14} aria-hidden="true"/></button>}</div>;})}
   </div>
  </article>;

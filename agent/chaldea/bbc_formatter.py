@@ -42,6 +42,107 @@ def _extract_ce_id(svt_info: dict) -> Optional[int]:
     return None
 
 
+def _candidate_assist_settings(team_data: dict) -> Optional[dict]:
+    """Export the Maa CE-candidate extension only when BBC can express it.
+
+    Ordinary BBC assistEquip's outer groups are OR choices; nested candidates
+    inside a normal group are not executed by BBC. Grand support instead uses
+    three actual slots, each with its own list. BBC's fullEquip flag applies to
+    every option, so mixed/non-MLB constraints must not be silently weakened.
+    Existing single-CE exports retain their prior output shape.
+    """
+    front = list(team_data.get("onFieldSvts") or [])[:3]
+    backup = list(team_data.get("backupSvts") or [])[:3]
+    members = front + [None] * (3 - len(front)) + backup + [None] * (3 - len(backup))
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        for key in ("equip1", "equip2", "equip3"):
+            requirement = member.get(key)
+            if (isinstance(requirement, dict) and "candidates" in requirement
+                    and requirement["candidates"] is not None
+                    and not isinstance(requirement["candidates"], list)):
+                raise ValueError(f"BBC 导出的 {key}.candidates 必须是候选数组")
+    has_extension = any(isinstance(member, dict) and any(
+        isinstance(member.get(key), dict) and bool(member[key].get("candidates"))
+        for key in ("equip1", "equip2", "equip3")) for member in members)
+    if not has_extension:
+        return None
+    supports = [(index, member) for index, member in enumerate(members)
+                if isinstance(member, dict) and member.get("supportType") in ("friend", "fixed", "npc")]
+    if len(supports) != 1:
+        raise ValueError("BBC 多候选礼装导出必须恰有一个助战位置")
+    index, support = supports[0]
+    if support.get("supportType") == "npc":
+        raise ValueError("BBC 多候选礼装无法保留仅 NPC 助战限制，请使用原始 Chaldea JSON")
+    if any(isinstance(member, dict) and member is not support and any(
+            isinstance(member.get(key), dict) and member[key].get("candidates")
+            for key in ("equip1", "equip2", "equip3")) for member in members):
+        raise ValueError("BBC 不支持自有从者的多候选礼装要求，请使用原始 Chaldea JSON")
+    groups, statuses = [], []
+    for number in range(1, 4):
+        key = f"equip{number}"
+        raw = support.get(key)
+        if raw is None and number == 1 and support.get("ceId") is not None:
+            raw = {}
+        if raw is None:
+            groups.append([])
+            continue
+        if not isinstance(raw, dict):
+            raise ValueError(f"BBC 导出的 {key} 必须是礼装对象")
+        alternatives = raw.get("candidates") or []
+        if not isinstance(alternatives, list) or len(alternatives) > 2:
+            raise ValueError(f"BBC 导出的 {key} 最多支持 3 个礼装候选")
+        primary = dict(raw)
+        if number == 1:
+            # Resolve aliases per field, as native support does. Null IDs may
+            # inherit ceId; explicit zero IDs and null/false MLB never fall back.
+            if primary.get("id") is None:
+                primary["id"] = support.get("ceId")
+            if "limitBreak" not in primary:
+                primary["limitBreak"] = support.get("ceLimitBreak")
+        primary_id = primary.get("id")
+        if not alternatives and (primary_id is None or type(primary_id) is int and primary_id == 0):
+            groups.append([])
+            continue
+        names = []
+        for candidate_index, candidate in enumerate([primary, *alternatives]):
+            if not isinstance(candidate, dict) or type(candidate.get("id")) is not int or candidate["id"] <= 0:
+                raise ValueError(f"BBC 导出的 {key} 礼装候选必须包含有效 ID")
+            if candidate_index and candidate.get("candidates"):
+                raise ValueError("BBC 不支持嵌套的礼装候选")
+            status = candidate.get("limitBreak")
+            if status is not None and type(status) is not bool:
+                raise ValueError("BBC 礼装满破状态必须是布尔值或未指定")
+            if status is False:
+                raise ValueError("BBC 只能要求满破或不限制，不能要求某个候选为非满破；请使用原始 Chaldea JSON")
+            name = get_equip_name(candidate["id"])
+            if not name:
+                raise ValueError(f"BBC 礼装候选 {candidate['id']} 缺少名称，无法导出")
+            names.append(name)
+            statuses.append(status)
+        groups.append(names)
+    if len(set(statuses)) > 1:
+        raise ValueError("BBC 的 fullEquip 是全局设置，无法表达各候选不同的满破要求；请使用原始 Chaldea JSON")
+    grand = support.get("grandSvt") is True
+    ce_only = support.get("svtId") in (None, 0)
+    if not grand and (groups[1] or groups[2]):
+        raise ValueError("普通助战只有一个礼装位，不能将额外礼装槽自动当作同槽候选")
+    if grand:
+        equipment = [None if not names else names[0] if len(names) == 1 else names for names in groups]
+        mode = "冠位助战仅礼装" if ce_only else "冠位助战"
+    else:
+        equipment = groups[0][0] if len(groups[0]) == 1 else groups[0] + [None] * (3 - len(groups[0]))
+        mode = "仅礼装" if ce_only else "从者礼装"
+    settings = {"assistIdx": index, "assistMode": mode, "assistEquip": equipment,
+                "fullEquip": 1 if statuses and statuses[0] is True else 0}
+    if grand:
+        board = support.get("classBoardData") or {}
+        changed = board.get("grandBondEquipSkillChange") if isinstance(board, dict) else None
+        settings["jbType"] = "NP50" if changed is True else "初始" if changed is False else "任意"
+    return settings
+
+
 def _convert_svt_info(svt_data: Optional[dict], position: int, is_on_field: bool) -> Optional[ServantInfo]:
     """将 Chaldea 从者数据转换为内部 ServantInfo"""
     if svt_data is None:
@@ -239,6 +340,13 @@ def chaldea_to_bbc(share_data: dict) -> dict:
     mystic_code_id = formation.mystic_code.mystic_code_id
 
     assist_idx, assist_mode, assist_equip, used_servant = _determine_assist_info(formation)
+    candidate_settings = _candidate_assist_settings(team_data)
+    if candidate_settings is not None:
+        assist_idx = candidate_settings["assistIdx"]
+        assist_mode = candidate_settings["assistMode"]
+        assist_equip = candidate_settings["assistEquip"]
+        used_servant = [i for i, servant in enumerate(formation.on_field)
+                        if servant is not None and i != assist_idx]
 
     result: Dict[str, Any] = {
         "_source": "chaldea",
@@ -259,6 +367,8 @@ def chaldea_to_bbc(share_data: dict) -> dict:
     result["assistEquip"] = assist_equip
     result["master_equip"] = get_master_equip_sn(mystic_code_id)
     result["usedServant"] = used_servant
+    if candidate_settings is not None:
+        result.update(candidate_settings)
 
     result["connectMode"] = "ADB方式"
     result["snapshotDevice"] = ["normal", "127.0.0.1:7555"]

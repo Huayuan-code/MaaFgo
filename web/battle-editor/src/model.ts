@@ -1,4 +1,5 @@
 import {isAutoAttackCard,setAttackCard} from './attackCards';
+import {setEquipCandidate} from './equipRequirements';
 
 export type Json = Record<string, any>;
 export interface ServantBond {tags?:string[]|null;tags_by_ascension?:Record<string,string[]>|null;tags_by_costume?:string[]|Record<string,string[]>|null;alignment?:string|null;attribute?:string|null;gender?:string|null;sub_attribute?:string|null;[key:string]:unknown}
@@ -36,7 +37,7 @@ export function setMemberEquipRequirement(data:Json,slot:number,key:string,id:nu
   if(newTeamSupportSlot(data,newTeamDefault)!==slot)throw new Error('请先选择从者，或将这个位置设为仅要求礼装的助战。');
   member={supportType:'friend'};
  }
- member[key]={...(member[key]??{}),id};setMember(data,slot,member);
+ setEquipCandidate(member,key,0,id);setMember(data,slot,member);
 }
 export function assertEditable(value:any):asserts value is Json {
  const object=(v:any)=>v!=null&&typeof v==='object'&&!Array.isArray(v);

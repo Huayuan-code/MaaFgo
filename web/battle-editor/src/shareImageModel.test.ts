@@ -89,3 +89,23 @@ test('unrendered unknown JSON remains outside the visible-text budget',()=>{
  assert.equal(view.title,'测试方案');assert.equal(data.preservedUnknown.long,hidden);
  assert.doesNotMatch(JSON.stringify(view),/保真数据/);
 });
+
+test('share formation presents same-slot alternatives as OR while keeping grand CE slots separate',()=>{
+ const data=team();data.team.onFieldSvts[0]={supportType:'friend',grandSvt:true,
+  equip1:{id:1,lv:100,limitBreak:true,candidates:[{id:3,limitBreak:false,future:{keep:null}}]},
+  equip2:{id:2},equip3:{id:3,candidates:[{id:1,lv:50}]},future:{keep:['unchanged']}};
+ const before=structuredClone(data),equips=shareImageModel(data,catalog).members[0].equips;
+ assert.deepEqual(equips.map(e=>e.name),['万华镜','报酬礼装','羁绊礼装','报酬礼装','万华镜']);
+ assert.deepEqual(equips.map(e=>e.label),['普通礼装 · 候选 1/2','或 · 候选 2/2','羁绊礼装','报酬礼装 · 候选 1/2','或 · 候选 2/2']);
+ assert.match(equips[0].details,/Lv.100 · 满破/);assert.match(equips[1].details,/非满破/);assert.match(equips[4].details,/Lv.50 · 不要求满破/);
+ assert.deepEqual(equips.map(e=>e.candidateCount),[2,2,undefined,2,2]);
+ assert.deepEqual(data,before);
+});
+
+test('share alternatives resolve missing metadata with text and retain the legacy primary requirements',()=>{
+ const data=team();data.team.onFieldSvts[0]={supportType:'friend',ceId:1,ceLv:80,ceLimitBreak:false,equip1:{candidates:[{id:999,limitBreak:true}]}};
+ const before=structuredClone(data),equips=shareImageModel(data,catalog).members[0].equips;
+ assert.equal(equips.length,2);assert.equal(equips[0].name,'万华镜');assert.match(equips[0].details,/Lv.80 · 非满破/);
+ assert.equal(equips[1].name,'礼装 #999');assert.match(equips[1].details,/满破/);assert.equal(equips[1].image,undefined);
+ assert.deepEqual(data,before);
+});
