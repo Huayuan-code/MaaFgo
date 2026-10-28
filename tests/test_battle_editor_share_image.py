@@ -210,6 +210,41 @@ class ShareImageRecognitionTests(unittest.TestCase):
         self.assertEqual(error.exception.code, "share_incomplete")
         self.assertRegex(str(error.exception), r"\b[0-7]/8\b")
 
+    def test_multirow_upright_miss_is_recovered_from_real_rotated_column(self):
+        data = multirow_document()
+        encoded = encode_share(data)
+        missing = encoded["markers"][-1]["text"]
+        original_read = share_image._read_codes
+        recovered = []
+
+        def miss_until_column_is_rotated(crop):
+            values = original_read(crop)
+            # A 1200-high, 720-wide scan column becomes 720x1200 after
+            # a quarter turn. Every accepted value still comes from OpenCV
+            # decoding these actual image pixels; no missing text is supplied.
+            if crop.shape[:2] == (720, 1200) and missing in values:
+                recovered.append(crop.shape)
+                return values
+            return [value for value in values if value != missing]
+
+        with patch.object(share_image, "_read_codes", side_effect=miss_until_column_is_rotated):
+            self.assertEqual(decode_share_image(transported(render_packet(encoded)))["data"], data)
+        self.assertTrue(recovered, "必须旋转真实局部图像读回缺失码，不得接受不完整数据")
+
+    def test_multirow_generic_cpu_path_preserves_the_complete_packet(self):
+        # This CPU path reproduces the 7/8 miss seen by the Linux CI runner,
+        # even on Windows. Restore globals so subsequent tests are unaffected.
+        optimized, threads = cv2.useOptimized(), cv2.getNumThreads()
+        try:
+            cv2.setNumThreads(1)
+            cv2.setUseOptimized(False)
+            data = multirow_document()
+            image = transported(render_packet(encode_share(data)))
+            self.assertEqual(decode_share_image(image)["data"], data)
+        finally:
+            cv2.setUseOptimized(optimized)
+            cv2.setNumThreads(threads)
+
     def test_truncated_footer_never_falls_back_to_an_unrelated_game_image(self):
         with self.assertRaises(EditorError) as error:
             decode_share_image(self.image[:700])

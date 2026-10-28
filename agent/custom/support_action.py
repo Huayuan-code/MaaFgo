@@ -198,6 +198,20 @@ def _ce_template_paths(ce_dir, ce_name, status):
             for sub in statuses]
 
 
+def _custom_ce_candidates(attach, key):
+    """多选使用独立 attach 键，避免多个 case 的列表覆盖；兼容旧单选。"""
+    if attach.get(f"{key}-多选") is True:
+        prefix = f"{key}-候选:"
+        return [name[len(prefix):] for name, selected in attach.items()
+                if name.startswith(prefix) and selected is True] or [EMPTY_CE[0]]
+    value = attach[key]
+    # 也接受直接传入的文件名列表，便于复用 action 的外部调用。
+    values = value if isinstance(value, list) else [value]
+    if not all(isinstance(name, str) for name in values):
+        raise ValueError(f"礼装候选必须是文件名或文件名列表: {key}")
+    return list(dict.fromkeys(name.strip() for name in values if name.strip())) or [EMPTY_CE[0]]
+
+
 def _norm_img(img):
     """兼容 Maa screencap 返回的 ndarray/RGBA/PIL, 统一为 BGR uint8 ndarray"""
     import cv2
@@ -798,7 +812,7 @@ class SupportAction(CustomAction):
                 servant_id = criteria["servant_id"]
                 ce_bond = criteria["ce_bond"]
                 ce_targets = [
-                    (spec["name"], CE_ANCHOR_GRAND[spec["slot"] - 1]
+                    ([spec["name"]], CE_ANCHOR_GRAND[spec["slot"] - 1]
                      if support_type == "grand" else CE_ANCHOR_NORMAL, spec["status"])
                     for spec in criteria["ce_specs"]
                 ]
@@ -812,19 +826,18 @@ class SupportAction(CustomAction):
                 class_all = str(attach["class_all"]).strip()     # all=ALL 阶, def=按职介
                 skip_servant = class_name == "any"
                 servant_id = "" if skip_servant else str(attach["servant"]).strip()
-                # 既有自定义助战选项共用礼装状态；Chaldea 模式可逐格指定不同状态。
+                # 新配置逐格保存状态；旧配置仍兼容共用的 礼装状态 字段。
                 ce_status = str(attach["礼装状态"]).strip()
                 if support_type == "grand":
                     ce_bond = str(attach["ce_bond"]).strip()
-                    ce_targets = [
-                        (str(attach[f"冠位助战-1号礼装-{ce_status}"]).strip(), CE_ANCHOR_GRAND[0], ce_status),
-                        (str(attach[f"冠位助战-2号礼装-{ce_status}"]).strip(), CE_ANCHOR_GRAND[1], ce_status),
-                    ]
+                    slots = [(f"冠位助战-{i}号礼装", anchor) for i, anchor in enumerate(CE_ANCHOR_GRAND, 1)]
                 else:
                     ce_bond = "any"
-                    ce_targets = [
-                        (str(attach[f"普通助战-礼装-{ce_status}"]).strip(), CE_ANCHOR_NORMAL, ce_status),
-                    ]
+                    slots = [("普通助战-礼装", CE_ANCHOR_NORMAL)]
+                ce_targets = []
+                for slot, anchor in slots:
+                    status = str(attach.get(f"{slot}-状态", ce_status)).strip()
+                    ce_targets.append((_custom_ce_candidates(attach, f"{slot}-{status}"), anchor, status))
                 # 技能等级: 0=不要求。
                 active = [0] * 3 if skip_servant else [int(attach[f"skill_active_{i}"]) for i in range(1, 4)]
                 passive = [0] * 5 if skip_servant else [int(attach[f"skill_passive_{i}"]) for i in range(1, 6)]
@@ -833,7 +846,7 @@ class SupportAction(CustomAction):
 
             passive_need = any(v > 0 for v in passive)
 
-            ce_names = [n for n, _, _ in ce_targets if n]
+            ce_names = ["|".join(names) for names, _, _ in ce_targets]
             mfaalog.info(f"[SupportAction] 助战类型={support_type} 职介={class_name or '(未选)'} "
                          f"英灵={servant_id or ('(不要求)' if skip_servant else '(未选)')} "
                          f"礼装={'/'.join(ce_names) if ce_names else '(空)'} 主动={active} 被动={passive} "
@@ -845,7 +858,8 @@ class SupportAction(CustomAction):
             face_dir = _image_dir("base", "servant_face")
             ce_dir = _image_dir("base", "lizhuang")
             if source_mode == "chaldea":
-                for ce_name, _, status in ce_targets:
+                for names, _, status in ce_targets:
+                    ce_name = names[0]  # Chaldea 每格保持单个指定礼装。
                     if not any(os.path.isfile(path)
                                for path in _ce_template_paths(ce_dir, ce_name, status)):
                         display_name = os.path.splitext(ce_name)[0]
@@ -914,8 +928,9 @@ class SupportAction(CustomAction):
                     mfaalog.info(f"[SupportAction] 重定位后 框=({bx},{by})-({bx2},{by2})")
                     if not skip_servant and not self._match_servant(img, face_dir, bx, by, srv["images"], support_type):
                         continue
-                    if not all(self._match_ce(img, ce_dir, bx, by, name, anc, sub)
-                               for name, anc, sub in ce_targets):
+                    if not all(any(self._match_ce(img, ce_dir, bx, by, name, anc, sub)
+                                   for name in names)
+                               for names, anc, sub in ce_targets):
                         continue
                     # 冠位助战羁绊判断(50np/original/any)
                     if support_type == "grand" and not self._match_bond(img, bx, by, ce_bond):
