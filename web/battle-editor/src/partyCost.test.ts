@@ -19,6 +19,14 @@ const storage=(raw:string|null=null)=>{
  return {getItem:(key:string)=>entries.get(key)??null,setItem:(key:string,value:string)=>{entries.set(key,value);},entries};
 };
 
+test('support alternatives cost zero while unsupported owned alternatives cannot imply an exact cost',()=>{
+ const support=team({svtId:100,supportType:'friend',equip1:{id:10,candidates:[{id:20},{id:30}]}});
+ assert.deepEqual(partyCost(support,catalog),{knownTotal:0,complete:true,issues:[]});
+ const own=team({svtId:100,supportType:'none',equip1:{id:10,candidates:[{id:20}]}}),before=structuredClone(own);
+ const result=partyCost(own,catalog);
+ assert.equal(result.knownTotal,16);assert.equal(result.complete,false);assert.match(result.issues[0].message,/多候选/);assert.deepEqual(own,before);
+});
+
 test('sums all six normal slots including main essences and accepts known zero costs',()=>{
  const data=team({svtId:100,equip1:{id:10}},{svtId:200,equip1:{id:20}},{svtId:300,equip1:{id:30}},
   {svtId:100},{svtId:200},{svtId:300});

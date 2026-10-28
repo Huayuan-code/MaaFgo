@@ -64,6 +64,7 @@ function matchesServant(servant:Servant,id:number):boolean {
 function mainEquip(member:Json):{id?:number;issue?:string} {
  const stored=member.equip1;
  if(stored!=null&&!record(stored))return {issue:'主礼装记录无效，无法确定 COST。'};
+ if(stored?.candidates!=null&&(!Array.isArray(stored.candidates)||stored.candidates.length>0))return {issue:'自有从者配置了无法执行的多候选礼装，请调整成员类型或仅保留首选礼装。'};
  const currentId=stored?.id;
  if(currentId!=null&&currentId!==0&&!positiveId(currentId))return {issue:'主礼装 ID 无效，无法确定 COST。'};
  // An explicit current zero disables the legacy requirement, even a malformed one.

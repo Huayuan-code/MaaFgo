@@ -5,6 +5,18 @@ import type {Json} from './model';
 import {canDropEquipDrag,canStartEquipDrag,equipDragPosition,swapEquipRequirements} from './equipDrag';
 
 const at=(slot:number,key='equip1')=>({slot,key});
+
+test('candidate groups move as one requirement only between executable support slots',()=>{
+ const data:Json={team:{onFieldSvts:[{svtId:1,supportType:'friend',grandSvt:true,equip1:{id:101,candidates:[{id:202,limitBreak:true,future:{keep:null}}]},equip3:{id:303,limitBreak:false}},{svtId:2,supportType:'none',equip1:{id:404}},null],backupSvts:[null,null,null]},actions:[]};
+ const before=structuredClone(data);
+ assert.equal(canDropEquipDrag(data,at(0),at(1)),false);assert.equal(swapEquipRequirements(data,at(0),at(1)),false);assert.deepEqual(data,before);
+ assert.equal(canDropEquipDrag(data,at(1),at(0)),false);
+ assert.equal(canDropEquipDrag(data,at(0),at(0,'equip2')),false);
+ assert.equal(swapEquipRequirements(data,at(0),at(0,'equip3')),true);
+ assert.deepEqual(data.team.onFieldSvts[0].equip3,{id:101,candidates:[{id:202,limitBreak:true,future:{keep:null}}]});
+ assert.deepEqual(data.team.onFieldSvts[0].equip1,{id:303,limitBreak:false});
+ assert.deepEqual(data.actions,[]);
+});
 const fixture=():Json=>({
  team:{onFieldSvts:[
   {svtId:100,supportType:'none',lv:90,skillLvs:[10,10,10],equip1:{id:101,lv:80,limitBreak:true,future:{nested:['a',{value:1}]}},futureMember:{keep:1}},

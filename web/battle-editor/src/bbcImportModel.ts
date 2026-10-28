@@ -1,5 +1,6 @@
 import {assertEditable,members,memberLabel,servantFor} from './model';
 import type {Catalog,Json} from './model';
+import {equipCandidatesForDisplay} from './equipRequirements';
 
 export const BBC_FILE_ACCEPT='.json,application/json';
 export const MAX_BBC_BYTES=3*1024*1024;
@@ -23,13 +24,15 @@ export function readBBCImportResult(value:any):BBCImportResult {
 export function bbcPreview(data:Json,catalog:Catalog) {
  const roster=members(data).map((member,index)=>{
   const servant=member?.svtId?servantFor(catalog,member.svtId):undefined;
-  const equips=['equip1','equip2','equip3'].flatMap(key=>{
-   const requirement=member?.[key];
-   if(!requirement?.id)return [];
-   const item=catalog.equips.find(e=>e.id===requirement.id);
-   return [{id:requirement.id,name:item?.name??`礼装 #${requirement.id}`,image:item?.image}];
+  const equips=['equip1','equip2','equip3'].flatMap((key,equipIndex)=>{
+   const candidates=equipCandidatesForDisplay(member,key),label=member?.grandSvt?['普通礼装','羁绊礼装','报酬礼装'][equipIndex]:`礼装 ${equipIndex+1}`;
+   return candidates.map((requirement,candidateIndex)=>{
+    const item=catalog.equips.find(e=>e.id===requirement.id),baseName=item?.name??(requirement.id?`礼装 #${requirement.id}`:'未指定候选');
+    const details=[requirement.limitBreak===true?'满破':requirement.limitBreak===false?'非满破':'不要求满破',...(requirement.lv? [`Lv.${requirement.lv}`]:[])].join(' · ');
+    return {id:requirement.id,name:candidates.length>1?`${label} · ${candidateIndex?'或':'候选'} ${candidateIndex+1}/${candidates.length}：${baseName} · ${details}`:baseName,image:item?.image,sourceKey:key,candidateIndex,candidateCount:candidates.length};
+   });
   });
-  return {slot:index,name:member?memberLabel(member,catalog):'不要求此位置',image:servant?.image,support:member?.supportType==='friend',equips};
+  return {slot:index,name:member?memberLabel(member,catalog):'不要求此位置',image:servant?.image,support:['friend','npc','fixed'].includes(member?.supportType),equips};
  });
  const actions:Json[]=data.actions??[],mysticId=data.team?.mysticCode?.mysticCodeId;
  return {roster,title:typeof data.team?.name==='string'?data.team.name:'BBC 导入方案',turns:actions.filter(a=>a.type==='attack').length,skills:actions.filter(a=>a.type==='skill').length,cards:actions.filter(a=>a.type==='attack').reduce((count,a)=>count+(Array.isArray(a.attacks)?a.attacks.filter((card:Json)=>card.isAuto!==true).length:0),0),mystic:catalog.mysticCodes.find(m=>m.id===mysticId)?.name??(mysticId?`御主服 #${mysticId}`:'未指定御主服')};

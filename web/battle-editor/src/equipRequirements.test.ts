@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {Json} from './model';
-import {clearEquipRequirement,equipForDisplay,hasStoredEquipRequirement} from './equipRequirements';
+import {clearEquipRequirement,equipForDisplay,hasStoredEquipRequirement,equipCandidatesForDisplay,supportsEquipCandidates,setEquipCandidate,updateEquipCandidate,removeEquipCandidate} from './equipRequirements';
 
 test('clearing slot one removes the complete object and all legacy fallback fields only',()=>{
  const second={id:202,future:{keep:true}},third={id:303},board={grandBondEquipSkillChange:true,future:1};
@@ -70,4 +70,60 @@ test('invalid slot keys fail before mutating the member',()=>{
   assert.throws(()=>clearEquipRequirement(member,key));assert.throws(()=>hasStoredEquipRequirement(member,key));assert.throws(()=>equipForDisplay(member,key));
   assert.deepEqual(member,before);
  }
+});
+
+test('candidate display keeps the original tree and legacy requirements intact',()=>{
+ const member:Json={supportType:'friend',ceId:101,ceLv:80,ceLimitBreak:false,equip1:{candidates:[{id:202,limitBreak:true,future:{keep:null}}],future:'first'},future:'member'};
+ const before=structuredClone(member),choices=equipCandidatesForDisplay(member,'equip1');
+ assert.deepEqual(choices,[{id:101,lv:80,limitBreak:false,future:'first'},{id:202,limitBreak:true,future:{keep:null}}]);
+ (choices[1].future as Json).keep='display only';assert.deepEqual(member,before);
+});
+
+test('candidate selection is ordered OR within one slot and preserves per-option attributes',()=>{
+ const member:Json={supportType:'friend',ceId:101,ceLv:80,ceLimitBreak:false,unknown:{keep:true}};
+ setEquipCandidate(member,'equip1',1,202);setEquipCandidate(member,'equip1',2,303);
+ updateEquipCandidate(member,'equip1',1,{lv:100,limitBreak:true});
+ updateEquipCandidate(member,'equip1',2,{limitBreak:undefined});
+ assert.deepEqual(member,{supportType:'friend',equip1:{id:101,lv:80,limitBreak:false,candidates:[{id:202,lv:100,limitBreak:true},{id:303}]},unknown:{keep:true}});
+ assert.throws(()=>setEquipCandidate(member,'equip1',2,101));
+ assert.equal(member.equip1.candidates[1].id,303);
+});
+
+test('card replacement changes only the primary candidate and keeps its alternatives',()=>{
+ const member:Json={supportType:'friend',equip1:{id:101,lv:50,candidates:[{id:202,limitBreak:true},{id:303}],future:{keep:null}}};
+ setEquipCandidate(member,'equip1',0,404);
+ assert.deepEqual(member.equip1,{id:404,lv:50,candidates:[{id:202,limitBreak:true},{id:303}],future:{keep:null}});
+});
+
+test('removing the first promotes a complete next candidate and never revives legacy CE fields',()=>{
+ const member:Json={supportType:'friend',ceId:999,ceLv:12,equip1:{id:101,future:'removed',candidates:[{id:202,lv:100,limitBreak:true,future:{keep:null}},{id:303,limitBreak:false}]}};
+ removeEquipCandidate(member,'equip1',0);
+ assert.deepEqual(member,{supportType:'friend',equip1:{id:202,lv:100,limitBreak:true,future:{keep:null},candidates:[{id:303,limitBreak:false}]}});
+ removeEquipCandidate(member,'equip1',1);assert.equal(member.equip1.candidates,undefined);
+ removeEquipCandidate(member,'equip1',0);assert.deepEqual(member,{supportType:'friend'});
+});
+
+test('candidate edits can clear a legacy MLB restriction without it reappearing',()=>{
+ const member:Json={supportType:'friend',ceId:101,ceLimitBreak:true,ceLv:80};
+ updateEquipCandidate(member,'equip1',0,{limitBreak:undefined,lv:undefined});
+ assert.deepEqual(member,{supportType:'friend',equip1:{id:101}});
+});
+
+test('only executable support slots accept additional candidates and rejected edits are atomic',()=>{
+ for(const member of [{supportType:'none',equip1:{id:101}},{supportType:'friend',equip2:{id:101}},{supportType:'friend',grandSvt:true,equip2:{id:101}}] as Json[]){
+  const key=member.equip2?'equip2':'equip1',before=structuredClone(member);
+  assert.equal(supportsEquipCandidates(member,key),false);assert.throws(()=>setEquipCandidate(member,key,1,202));assert.deepEqual(member,before);
+ }
+ const member:Json={supportType:'npc',grandSvt:true,equip3:{id:101}};
+ assert.equal(supportsEquipCandidates(member,'equip3'),true);setEquipCandidate(member,'equip3',1,202);
+ assert.deepEqual(member.equip3,{id:101,candidates:[{id:202}]});
+ for(const index of [-1,3,1.5])assert.throws(()=>setEquipCandidate(member,'equip3',index,303));
+});
+
+test('incomplete and oversized imported candidate trees remain readable without automatic rewriting',()=>{
+ const member:Json={supportType:'friend',equip1:{id:101,candidates:[{id:202},null,{id:404}]}};
+ const before=structuredClone(member);
+ assert.deepEqual(equipCandidatesForDisplay(member,'equip1'),[{id:101},{id:202},{}]);
+ assert.throws(()=>setEquipCandidate(member,'equip1',0,505));assert.deepEqual(member,before);
+ const empty:Json={supportType:'friend'};assert.throws(()=>setEquipCandidate(empty,'equip1',1,202));assert.deepEqual(empty,{supportType:'friend'});
 });

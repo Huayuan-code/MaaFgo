@@ -811,10 +811,15 @@ class SupportAction(CustomAction):
                 class_all = "def"
                 servant_id = criteria["servant_id"]
                 ce_bond = criteria["ce_bond"]
+                groups = criteria.get("ce_groups")
+                if groups is None:
+                    groups = [{"slot": spec["slot"], "candidates": [spec]}
+                              for spec in criteria["ce_specs"]]
                 ce_targets = [
-                    ([spec["name"]], CE_ANCHOR_GRAND[spec["slot"] - 1]
-                     if support_type == "grand" else CE_ANCHOR_NORMAL, spec["status"])
-                    for spec in criteria["ce_specs"]
+                    ([(spec["name"], spec["status"]) for spec in group["candidates"]],
+                     CE_ANCHOR_GRAND[group["slot"] - 1]
+                     if support_type == "grand" else CE_ANCHOR_NORMAL)
+                    for group in groups
                 ]
                 active = criteria["active"]
                 passive = criteria["passive"]
@@ -837,7 +842,8 @@ class SupportAction(CustomAction):
                 ce_targets = []
                 for slot, anchor in slots:
                     status = str(attach.get(f"{slot}-状态", ce_status)).strip()
-                    ce_targets.append((_custom_ce_candidates(attach, f"{slot}-{status}"), anchor, status))
+                    ce_targets.append(([(name, status) for name in
+                                        _custom_ce_candidates(attach, f"{slot}-{status}")], anchor))
                 # 技能等级: 0=不要求。
                 active = [0] * 3 if skip_servant else [int(attach[f"skill_active_{i}"]) for i in range(1, 4)]
                 passive = [0] * 5 if skip_servant else [int(attach[f"skill_passive_{i}"]) for i in range(1, 6)]
@@ -846,7 +852,7 @@ class SupportAction(CustomAction):
 
             passive_need = any(v > 0 for v in passive)
 
-            ce_names = ["|".join(names) for names, _, _ in ce_targets]
+            ce_names = ["|".join(name for name, _ in choices) for choices, _ in ce_targets]
             mfaalog.info(f"[SupportAction] 助战类型={support_type} 职介={class_name or '(未选)'} "
                          f"英灵={servant_id or ('(不要求)' if skip_servant else '(未选)')} "
                          f"礼装={'/'.join(ce_names) if ce_names else '(空)'} 主动={active} 被动={passive} "
@@ -858,16 +864,16 @@ class SupportAction(CustomAction):
             face_dir = _image_dir("base", "servant_face")
             ce_dir = _image_dir("base", "lizhuang")
             if source_mode == "chaldea":
-                for names, _, status in ce_targets:
-                    ce_name = names[0]  # Chaldea 每格保持单个指定礼装。
-                    if not any(os.path.isfile(path)
-                               for path in _ce_template_paths(ce_dir, ce_name, status)):
-                        display_name = os.path.splitext(ce_name)[0]
-                        mfaalog.error(
-                            f"[SupportAction] 暂时没有 Chaldea 数据中礼装「{display_name}」的"
-                            f"{status}模板图。请联系 MaaFGO 开发者补充模板，或改用“自定义助战”继续任务。"
-                        )
-                        return CustomAction.RunResult(success=False)
+                for choices, _ in ce_targets:
+                    for ce_name, status in choices:
+                        if not any(os.path.isfile(path)
+                                   for path in _ce_template_paths(ce_dir, ce_name, status)):
+                            display_name = os.path.splitext(ce_name)[0]
+                            mfaalog.error(
+                                f"[SupportAction] 暂时没有 Chaldea 数据中礼装「{display_name}」的"
+                                f"{status}模板图。请联系 MaaFGO 开发者补充模板，或改用“自定义助战”继续任务。"
+                            )
+                            return CustomAction.RunResult(success=False)
             np_dir = os.path.join(base_dir, "nplevel")   # 宝具模板按 pkg 动态选择(base/cn)
             skill_dir = os.path.join(base_dir, "skill")   # 视图判断模板(主动/被动), 按 pkg 动态选择
             mfaalog.info(f"[SupportAction] 素材根: {base_dir} 宝具目录: {np_dir}")
@@ -929,8 +935,8 @@ class SupportAction(CustomAction):
                     if not skip_servant and not self._match_servant(img, face_dir, bx, by, srv["images"], support_type):
                         continue
                     if not all(any(self._match_ce(img, ce_dir, bx, by, name, anc, sub)
-                                   for name in names)
-                               for names, anc, sub in ce_targets):
+                                   for name, sub in choices)
+                               for choices, anc in ce_targets):
                         continue
                     # 冠位助战羁绊判断(50np/original/any)
                     if support_type == "grand" and not self._match_bond(img, bx, by, ce_bond):

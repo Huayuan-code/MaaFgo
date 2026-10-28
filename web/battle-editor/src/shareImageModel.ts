@@ -1,6 +1,6 @@
 import {assertEditable,hasServantIdentity,isSwap,memberLabel,members,servantFor,skillAt,turnsOf} from './model';
 import type {Catalog,Json} from './model';
-import {equipForDisplay} from './equipRequirements';
+import {equipCandidatesForDisplay} from './equipRequirements';
 import {isAutoAttackCard} from './attackCards';
 import {npAt} from './battlePreview';
 import {artworkColor,cardArtworkRequest,cardPreviewRegion} from './npCardRequest';
@@ -13,7 +13,7 @@ export const SHARE_IMAGE_MAX_PIXELS=20_000_000;
 export const SHARE_IMAGE_MAX_ACTIONS=200;
 export const SHARE_IMAGE_MAX_TEXT=50_000;
 export interface SharePerson {name:string;position:string;image?:string|null;classIcon?:string|null;support:string;slot:number|null;identified:boolean}
-export interface ShareEquip {name:string;image?:string|null;label:string;details:string}
+export interface ShareEquip {name:string;image?:string|null;label:string;details:string;candidateIndex?:number;candidateCount?:number}
 export interface ShareMember extends SharePerson {className:string;rarity:string;details:string;skills:{name:string;icon?:string;level:string}[];append:string;grand:boolean;equips:ShareEquip[]}
 export interface ShareCard {person?:SharePerson;label:string;name:string;color:string|null;image:string|null;automatic:boolean;deckLabel:string}
 export interface ShareSkill {kind:'skill'|'swap'|'unknown';actor:SharePerson;name:string;icon?:string;number:string;level:string;target?:SharePerson;swap?:[SharePerson,SharePerson];enemy:string;detail:string}
@@ -103,9 +103,11 @@ export function shareImageModel(data:Json,catalog:Catalog,options:{region?:strin
    const servant=hasServantIdentity(member)?servantFor(catalog,member.svtId):undefined;
    const grand=member?.grandSvt===true;
    const equips=['equip1','equip2','equip3'].flatMap((key,index)=>{
-    const requirement=equipForDisplay(member,key);if(!requirement)return [];
-    const item=catalog.equips.find(equip=>equip.id===requirement.id);
-    return [{label:grand?['普通礼装','羁绊礼装','报酬礼装'][index]:`礼装 ${index+1}`,name:item?.name??`礼装 #${requirement.id}`,image:item?.image,details:`Lv.${level(requirement.lv)} · ${requirement.limitBreak===true?'满破':requirement.limitBreak===false?'非满破':'不要求满破'}`}];
+    const candidates=equipCandidatesForDisplay(member,key),label=grand?['普通礼装','羁绊礼装','报酬礼装'][index]:`礼装 ${index+1}`;
+    return candidates.map((requirement,candidateIndex)=>{
+     const item=catalog.equips.find(equip=>equip.id===requirement.id);
+     return {label:candidates.length>1?`${candidateIndex?'或':label} · 候选 ${candidateIndex+1}/${candidates.length}`:label,name:item?.name??(requirement.id?`礼装 #${requirement.id}`:'未指定候选'),image:item?.image,details:`Lv.${level(requirement.lv)} · ${requirement.limitBreak===true?'满破':requirement.limitBreak===false?'非满破':'不要求满破'}`,...(candidates.length>1?{candidateIndex,candidateCount:candidates.length}:{})};
+    });
    });
    return {...person(member,slot,catalog),className:servant?.className??(member?'职介未指定':''),rarity:servant?.rarity==null?'':servant.rarity===0?'☆ · 0星':'★'.repeat(Math.max(0,Math.min(5,servant.rarity))),details:member?`Lv.${level(member.lv)} · 宝具 ${level(member.tdLv)}`:'',skills:hasServantIdentity(member)?[0,1,2].map(i=>({name:skillAt(member,servant,i)?.name??`技能 ${i+1}`,icon:skillAt(member,servant,i)?.icon,level:level(member.skillLvs?.[i])})):[],append:Array.isArray(member?.appendLvs)&&member.appendLvs.length?`追加 ${member.appendLvs.map(level).join('/')}`:'',grand,equips};
   }),

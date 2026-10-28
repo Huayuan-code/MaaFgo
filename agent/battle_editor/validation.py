@@ -242,7 +242,49 @@ def validate_battle(data: Any, catalog: dict | None = None) -> dict:
                 integer(equip, "id", ep, 0, **loc)
                 integer(equip, "lv", ep, 0, 100, **loc)
                 boolean(equip, "limitBreak", ep, **loc)
-                unknown(equip, {"id", "lv", "limitBreak"}, ep, **loc)
+                unknown(equip, {"id", "lv", "limitBreak", "candidates"}, ep, **loc)
+                candidates = equip.get("candidates")
+                if candidates is None:
+                    continue
+                cp = ep + ".candidates"
+                if not isinstance(candidates, list):
+                    error(cp, "invalid_equip_candidates", "额外候选礼装必须是对象数组或 null", **loc)
+                    continue
+                if len(candidates) > 2:
+                    error(cp, "too_many_equip_candidates", "每格礼装最多保留首选与两个额外候选；请减少候选后保存，数据不会被截断", **loc)
+                    continue
+                if not candidates:
+                    continue
+                if member.get("supportType") not in ("friend", "fixed", "npc"):
+                    error(cp, "equip_candidates_support_only", "多候选礼装仅用于助战筛选；自有从者自动编队仍需指定单张礼装", **loc)
+                elif key not in (("equip1", "equip3") if member.get("grandSvt") is True else ("equip1",)):
+                    error(cp, "unsupported_equip_candidates_slot", "普通助战仅主礼装支持候选；冠位助战仅普通与追加礼装支持卡面候选，羁绊礼装使用效果筛选", **loc)
+                else:
+                    warning(cp, "equip_candidates_extension", "MaaFGO 按任一候选匹配助战礼装；外部 Chaldea 标准仅识别首选，候选字段会完整保存", **loc)
+                primary_id = equip.get("id")
+                if primary_id is None and key == "equip1":
+                    primary_id = member.get("ceId")
+                if type(primary_id) is not int or not 0 < primary_id <= 9007199254740991:
+                    error(ep + ".id", "missing_equip_candidate_primary", "请先设置有效的首选礼装，再添加额外候选", **loc)
+                seen_ids = {primary_id} if type(primary_id) is int and primary_id > 0 else set()
+                for ci, candidate in enumerate(candidates):
+                    item_path = f"{cp}[{ci}]"
+                    if not isinstance(candidate, dict):
+                        error(item_path, "invalid_equip_candidate", "候选礼装必须是包含 ID 的对象", **loc)
+                        continue
+                    if "id" not in candidate:
+                        error(item_path + ".id", "missing_equip_candidate_id", "候选礼装缺少 ID", **loc)
+                    integer(candidate, "id", item_path, 1, 9007199254740991, nullable=False, **loc)
+                    integer(candidate, "lv", item_path, 0, 100, **loc)
+                    boolean(candidate, "limitBreak", item_path, **loc)
+                    if "candidates" in candidate:
+                        error(item_path + ".candidates", "nested_equip_candidates", "候选礼装不能再嵌套候选列表", **loc)
+                    unknown(candidate, {"id", "lv", "limitBreak", "candidates"}, item_path, **loc)
+                    candidate_id = candidate.get("id")
+                    if type(candidate_id) is int and candidate_id > 0:
+                        if candidate_id in seen_ids:
+                            error(item_path + ".id", "duplicate_equip_candidate", "同一格的候选礼装 ID 不能重复；同一礼装的任意满破状态请使用未指定", **loc)
+                        seen_ids.add(candidate_id)
             if member.get("grandSvt"):
                 warning(path, "grand_equip_boundary", "冠位三礼装会保存；当前自动编队跳过冠位从者礼装修改，助战礼装显示也受现有羁绊效果逻辑限制", **loc)
             if member.get("classBoardData") is not None and not isinstance(member["classBoardData"], dict):

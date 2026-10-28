@@ -1,5 +1,5 @@
 import type {Json} from './model';
-import {clearEquipRequirement,equipForDisplay,hasStoredEquipRequirement} from './equipRequirements';
+import {clearEquipRequirement,equipForDisplay,hasStoredEquipRequirement,supportsEquipCandidates} from './equipRequirements';
 
 export type EquipDragKey='equip1'|'equip2'|'equip3';
 export interface EquipDragPosition {slot:number;key:EquipDragKey}
@@ -28,6 +28,9 @@ function wellFormed(member:Json,key:EquipDragKey):boolean {
  const stored=member[key];
  if(stored!=null&&!record(stored))return false;
  if(record(stored)&&!emptyOrId(stored.id))return false;
+ if(record(stored)&&stored.candidates!=null){
+  if(!Array.isArray(stored.candidates)||stored.candidates.length>2||stored.candidates.some((candidate:unknown)=>!record(candidate)||!Number.isSafeInteger(candidate.id)||candidate.id<=0))return false;
+ }
  // An explicit zero suppresses the old ID. A current positive ID also wins.
  if(key==='equip1'&&stored?.id==null&&!emptyOrId(member.ceId))return false;
  return true;
@@ -44,7 +47,10 @@ export function canStartEquipDrag(data:Json,value:unknown):boolean {
 export function canDropEquipDrag(data:Json,from:unknown,to:unknown):boolean {
  const source=equipDragPosition(data,from),target=equipDragPosition(data,to);
  if(!source||!target||(source.slot===target.slot&&source.key===target.key)||!canStartEquipDrag(data,source))return false;
- return wellFormed(memberAt(data,target.slot)!,target.key);
+ const sourceMember=memberAt(data,source.slot)!,targetMember=memberAt(data,target.slot)!;
+ const sourceMultiple=Array.isArray(sourceMember[source.key]?.candidates)&&sourceMember[source.key].candidates.length>0;
+ const targetMultiple=Array.isArray(targetMember[target.key]?.candidates)&&targetMember[target.key].candidates.length>0;
+ return wellFormed(targetMember,target.key)&&(!sourceMultiple||supportsEquipCandidates(targetMember,target.key))&&(!targetMultiple||supportsEquipCandidates(sourceMember,source.key));
 }
 
 interface StoredCell {present:boolean;value?:unknown}

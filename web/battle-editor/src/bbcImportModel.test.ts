@@ -34,3 +34,15 @@ test('BBC preview has six fixed positions, resolves alias names and retains CE-o
  assert.equal(preview.turns,2);assert.equal(preview.skills,1);assert.equal(preview.cards,1);assert.equal(preview.mystic,'迦勒底战斗服');
  assert.deepEqual(data,before);
 });
+
+test('BBC preview exposes OR candidates within their real grand slots and keeps all fetched data untouched',()=>{
+ const source=structuredClone(data);source.team.onFieldSvts[2]={supportType:'npc',grandSvt:true,equip1:{id:20,limitBreak:true,candidates:[{id:999,limitBreak:false}]},equip2:{id:999},equip3:{id:20,candidates:[{id:998}]},unknown:{keep:null}};
+ const before=structuredClone(source),member=bbcPreview(source,catalog).roster[2];
+ assert.equal(member.support,true);
+ assert.deepEqual(member.equips.map(e=>e.sourceKey),['equip1','equip1','equip2','equip3','equip3']);
+ assert.deepEqual(member.equips.map(e=>e.id),[20,999,999,20,998]);
+ assert.match(member.equips[0].name,/普通礼装 · 候选 1\/2.*万华镜.*满破/);
+ assert.match(member.equips[1].name,/普通礼装 · 或 2\/2.*礼装 #999.*非满破/);
+ assert.match(member.equips[4].name,/报酬礼装 · 或 2\/2/);
+ assert.deepEqual(source,before);
+});

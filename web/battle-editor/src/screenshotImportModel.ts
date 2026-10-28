@@ -1,5 +1,6 @@
 import {assertEditable,members,memberLabel,servantFor,turnsOf} from './model';
 import type {Catalog,Json} from './model';
+import {equipCandidatesForDisplay} from './equipRequirements';
 
 export const IMAGE_ACCEPT='image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp';
 export const MAX_IMAGE_BYTES=16*1024*1024;
@@ -47,10 +48,13 @@ export function shareImagePreview(data:Json,catalog:Catalog) {
   const servant=member?.svtId?servantFor(catalog,member.svtId):undefined;
   const supportType=member?.supportType;
   const supportLabel=supportType==='friend'?'好友助战':supportType==='npc'?'NPC 助战':supportType==='fixed'?'固定助战':'';
-  const equips=['equip1','equip2','equip3'].flatMap(key=>{
-   const requirement=member?.[key];if(!requirement?.id)return [];
-   const equip=catalog.equips.find(item=>item.id===requirement.id);
-   return [{id:requirement.id,name:equip?.name??`礼装 #${requirement.id}`,image:equip?.image}];
+  const equips=['equip1','equip2','equip3'].flatMap((key,equipIndex)=>{
+   const candidates=equipCandidatesForDisplay(member,key),label=member?.grandSvt?['普通礼装','羁绊礼装','报酬礼装'][equipIndex]:`礼装 ${equipIndex+1}`;
+   return candidates.map((requirement,candidateIndex)=>{
+    const equip=catalog.equips.find(item=>item.id===requirement.id),baseName=equip?.name??(requirement.id?`礼装 #${requirement.id}`:'未指定候选');
+    const details=[requirement.limitBreak===true?'满破':requirement.limitBreak===false?'非满破':'不要求满破',...(requirement.lv?[`Lv.${requirement.lv}`]:[])].join(' · ');
+    return {id:requirement.id,name:candidates.length>1?`${label} · ${candidateIndex?'或':'候选'} ${candidateIndex+1}/${candidates.length}：${baseName} · ${details}`:baseName,image:equip?.image,sourceKey:key,candidateIndex,candidateCount:candidates.length};
+   });
   });
   return {slot,name:member?memberLabel(member,catalog):'不要求此位置',image:servant?.image,support:!!supportLabel,supportLabel,equips};
  });

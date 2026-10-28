@@ -2,7 +2,7 @@ import {apiPNG} from './api';
 import type {Catalog,Json} from './model';
 import type {CardPreviewConfig} from './npCardRequest';
 import {SHARE_IMAGE_MAX_HEIGHT,SHARE_IMAGE_MAX_PIXELS,SHARE_IMAGE_WIDTH,shareImageModel} from './shareImageModel';
-import type {ShareAction,ShareAttack,ShareImageModel,ShareMember,SharePerson,ShareSkill} from './shareImageModel';
+import type {ShareAction,ShareAttack,ShareEquip,ShareImageModel,ShareMember,SharePerson,ShareSkill} from './shareImageModel';
 
 export interface ShareImageMatrix {matrix:string[];text?:string}
 export interface EncodedShareImage {schema:1;format:'maafgo-share-image';digest?:string;anchor:ShareImageMatrix;markers:(ShareImageMatrix&{index:number;total:number})[]}
@@ -56,11 +56,12 @@ function drawMatrix(ctx:CanvasRenderingContext2D,value:ShareImageMatrix,x:number
  ctx.imageSmoothingEnabled=true;
 }
 
+function equipImageHeight(equip:ShareEquip):number{return (equip.candidateCount??1)>1?52:72;}
 function memberHeight(ctx:CanvasRenderingContext2D,member:ShareMember,w:number):number{
  let h=196+linesHeight(ctx,member.name,w-24,19,26,true)+20+24;
  if(member.skills.length)h+=62;
  if(member.append)h+=linesHeight(ctx,member.append,w-24,13,18)+6;
- if(member.equips.length)for(const equip of member.equips)h+=20+72+8+linesHeight(ctx,equip.name,w-24,17,23)+linesHeight(ctx,equip.details,w-24,12,17)+14;
+ if(member.equips.length)for(const equip of member.equips)h+=linesHeight(ctx,equip.label,w-24,12,18)+2+equipImageHeight(equip)+8+linesHeight(ctx,equip.name,w-24,17,23)+linesHeight(ctx,equip.details,w-24,12,17)+14;
  else h+=76;
  return h+14;
 }
@@ -126,8 +127,8 @@ function renderMember(ctx:CanvasRenderingContext2D,assets:Map<string,Asset>,memb
  if(member.append){top+=text(ctx,member.append,x+12,top,w-24,13,COLOR.muted,18)+6;}
  if(!member.equips.length){box(ctx,x+12,top+4,w-24,52,COLOR.faint,COLOR.line,4);text(ctx,'不要求礼装',x+20,top+21,w-40,15,COLOR.muted,21);return;}
  for(const equip of member.equips){
-  text(ctx,equip.label,x+12,top,w-24,12,COLOR.muted,18);top+=20;
-  image(ctx,assets,equip.image,x+12,top,w-24,72,'礼装','contain');top+=80;
+  top+=text(ctx,equip.label,x+12,top,w-24,12,equip.candidateIndex?COLOR.blue:COLOR.muted,18)+2;
+  const imageHeight=equipImageHeight(equip);image(ctx,assets,equip.image,x+12,top,w-24,imageHeight,'礼装','contain');top+=imageHeight+8;
   top+=text(ctx,equip.name,x+12,top,w-24,17,COLOR.ink,23,true);
   top+=text(ctx,equip.details,x+12,top,w-24,12,COLOR.muted,17)+14;
  }
